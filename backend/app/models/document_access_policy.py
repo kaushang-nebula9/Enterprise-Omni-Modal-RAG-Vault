@@ -5,6 +5,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.enums import user_role_enum, UserRole
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.models.document import Document
+    
 class DocumentAccessPolicy(Base):
     __tablename__ = "document_access_policies"
 

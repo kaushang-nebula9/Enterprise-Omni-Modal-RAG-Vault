@@ -5,6 +5,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.enums import message_role_enum, MessageRole
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.models.query_citation import QueryCitation
+    from app.models.query_session import QuerySession
+    
+
 class QueryMessage(Base):
     __tablename__ = "query_messages"
 

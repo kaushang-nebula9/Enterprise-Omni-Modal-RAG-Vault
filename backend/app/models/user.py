@@ -4,7 +4,15 @@ from sqlalchemy import String, DateTime, Uuid, ForeignKey, Boolean, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.enums import user_role_enum, UserRole
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from app.models.tenant import Tenant
+    from app.models.document import Document
+    from app.models.query_session import QuerySession
+    from app.models.refresh_token import RefreshToken
+    from app.models.invite_token import InviteToken
+    
 class User(Base):
     __tablename__ = "users"
 

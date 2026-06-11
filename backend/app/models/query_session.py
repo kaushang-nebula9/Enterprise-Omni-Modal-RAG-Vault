@@ -4,6 +4,14 @@ from sqlalchemy import String, DateTime, Uuid, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.models.user import User
+    from app.models.tenant import Tenant
+    from app.models.query_message import QueryMessage
+    
+
 class QuerySession(Base):
     __tablename__ = "query_sessions"
 

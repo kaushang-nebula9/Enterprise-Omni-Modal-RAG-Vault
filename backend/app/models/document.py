@@ -9,9 +9,16 @@ from app.models.enums import (
     visibility_enum, Visibility
 )
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.models.tenant import Tenant
+    from app.models.user import User
+    from app.models.document_access_policy import DocumentAccessPolicy
+    from app.models.query_citation import QueryCitation
+    
 class Document(Base):
     __tablename__ = "documents"
-
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, 
