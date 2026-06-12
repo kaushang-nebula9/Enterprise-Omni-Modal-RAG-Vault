@@ -5,6 +5,8 @@ export interface UserResponse {
   role: 'admin' | 'member'
   tenant_id: string
   is_active: boolean
+  has_password: boolean
+  avatar_url: string | null
   created_at: string
 }
 
@@ -45,4 +47,15 @@ export interface ResetPasswordPayload {
 export interface AcceptInvitePayload {
   token: string
   password: string
+}
+
+export interface GoogleOrgSetupPayload {
+  org_name: string
+  org_website: string
+  setup_token: string
+}
+
+export interface SetPasswordPayload {
+  new_password: string
+  confirm_password: string
 }

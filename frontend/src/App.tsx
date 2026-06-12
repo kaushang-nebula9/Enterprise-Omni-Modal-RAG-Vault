@@ -6,6 +6,7 @@ import RegisterPage from './pages/auth/RegisterPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import AcceptInvitePage from './pages/auth/AcceptInvitePage';
+import GoogleOrgSetupPage from './pages/auth/GoogleOrgSetupPage';
 import AuthGuard from './components/auth/AuthGuard';
 import DashboardPage from './pages/DashboardPage';
 
@@ -20,6 +21,7 @@ const App: React.FC = () => {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
+          <Route path="/register/google-org" element={<GoogleOrgSetupPage />} />
         </Route>
 
         {/* Protected Dashboard Route */}

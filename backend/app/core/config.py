@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = "re_YuPvPF1Q_D896vzzUHrrqzmcE1wFqPDju"
     FRONTEND_URL: str
 
+    GOOGLE_CLIENT_ID: str
+    GOOGLE_CLIENT_SECRET: str
+    GOOGLE_REDIRECT_URI: str
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

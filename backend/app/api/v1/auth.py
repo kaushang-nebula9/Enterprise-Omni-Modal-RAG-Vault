@@ -3,6 +3,7 @@ import secrets
 import re
 import random
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.core.config import settings
@@ -31,7 +32,15 @@ from app.schemas.auth import (
     AcceptInviteRequest,
     UserResponse,
     InviteMemberRequest,
-    MessageResponse
+    MessageResponse,
+    GoogleOrgSetupRequest,
+    SetPasswordRequest
+)
+from app.services.google_oauth_service import (
+    get_google_auth_url,
+    exchange_code_for_user_info,
+    create_google_setup_token,
+    verify_google_setup_token
 )
 from app.services.email_service import (
     send_invite_email,
@@ -612,3 +621,199 @@ def accept_invite(request: AcceptInviteRequest, db: Session = Depends(get_db)):
 def get_me(current_user: User = Depends(get_current_user)):
     """Protected route to get the current authenticated user's details."""
     return current_user
+
+@router.get("/google")
+def google_auth_init():
+    """Redirects the client to Google's OAuth consent screen."""
+    return RedirectResponse(url=get_google_auth_url(), status_code=302)
+
+@router.get("/google/callback")
+async def google_auth_callback(
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db)
+):
+    """Callback route for Google OAuth redirect."""
+    if not code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Authorization code missing"
+        )
+    
+    user_info = await exchange_code_for_user_info(code)
+    google_id = user_info["google_id"]
+    email = user_info["email"]
+    full_name = user_info["full_name"]
+    avatar_url = user_info["avatar_url"]
+    
+    user = db.query(User).filter(
+        (User.google_id == google_id) | (User.email == email)
+    ).first()
+    
+    if user:
+        if not user.google_id:
+            user.google_id = google_id
+            if avatar_url:
+                user.avatar_url = avatar_url
+            db.commit()
+            db.refresh(user)
+            
+        if not user.is_active:
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=inactive")
+            
+        # Generate tokens
+        access_token = create_access_token({
+            "sub": str(user.id),
+            "tenant_id": str(user.tenant_id),
+            "role": user.role.value
+        })
+        raw_refresh_token, hashed_refresh_token = create_refresh_token()
+        
+        expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        db_refresh_token = RefreshToken(
+            user_id=user.id,
+            token_hash=hashed_refresh_token,
+            expires_at=expires_at,
+            is_revoked=False
+        )
+        db.add(db_refresh_token)
+        db.commit()
+        
+        response = RedirectResponse(url=f"{settings.FRONTEND_URL}/dashboard")
+        
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            httponly=True,
+            samesite="lax",
+            secure=False
+        )
+        response.set_cookie(
+            key="refresh_token",
+            value=raw_refresh_token,
+            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+            httponly=True,
+            samesite="lax",
+            secure=False
+        )
+        return response
+    else:
+        token = create_google_setup_token(email, full_name, google_id, avatar_url)
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/register/google-org?setup_token={token}")
+
+@router.post("/google/complete-setup", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def google_complete_setup(
+    request: GoogleOrgSetupRequest,
+    response: Response,
+    db: Session = Depends(get_db)
+):
+    """Verifies setup token and performs single-transaction creation of Tenant and User."""
+    decoded = verify_google_setup_token(request.setup_token)
+    email = decoded["email"]
+    full_name = decoded["full_name"]
+    google_id = decoded["google_id"]
+    avatar_url = decoded.get("avatar_url")
+    
+    existing_user = db.query(User).filter(User.email == email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An account with this email already exists"
+        )
+        
+    try:
+        org_name = request.org_name
+        base_slug = re.sub(r'[^a-z0-9\-]', '', org_name.lower().replace(" ", "-"))
+        slug = base_slug or "tenant"
+        while db.query(Tenant).filter(Tenant.slug == slug).first():
+            slug = f"{base_slug}-{random.randint(1000, 9999)}"
+
+        tenant = Tenant(
+            name=org_name,
+            slug=slug
+        )
+        db.add(tenant)
+        db.flush()
+
+        user = User(
+            tenant_id=tenant.id,
+            email=email,
+            full_name=full_name,
+            hashed_password="",
+            role=UserRole.admin,
+            is_active=True,
+            google_id=google_id,
+            avatar_url=avatar_url,
+            has_password=False
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    # Generate tokens
+    access_token = create_access_token({
+        "sub": str(user.id),
+        "tenant_id": str(user.tenant_id),
+        "role": user.role.value
+    })
+    raw_refresh_token, hashed_refresh_token = create_refresh_token()
+    
+    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    db_refresh_token = RefreshToken(
+        user_id=user.id,
+        token_hash=hashed_refresh_token,
+        expires_at=expires_at,
+        is_revoked=False
+    )
+    db.add(db_refresh_token)
+    db.commit()
+
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        httponly=True,
+        samesite="lax",
+        secure=False
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=raw_refresh_token,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+        secure=False
+    )
+    return user
+
+@router.post("/set-password", response_model=MessageResponse)
+def set_password(
+    request: SetPasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Protected endpoint to set user password if they don't have one."""
+    if current_user.has_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You already have a password set. Use forgot password to change it."
+        )
+    
+    try:
+        current_user.hashed_password = hash_password(request.new_password)
+        current_user.has_password = True
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    return {"message": "Password set successfully."}

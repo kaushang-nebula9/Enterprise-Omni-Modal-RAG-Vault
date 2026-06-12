@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Eye, EyeOff, Mail, AlertTriangle, Info } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-import { login } from '../../services/authService';
+import { Eye, EyeOff, Mail, AlertTriangle } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { login, initiateGoogleLogin } from '../../services/authService';
 import { useAuthStore } from '../../store/authStore';
 
 const loginSchema = z.object({
@@ -17,11 +17,18 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const setUser = useAuthStore((state) => state.setUser);
+  const [searchParams] = useSearchParams();
+  const errorParam = searchParams.get('error');
   
   const [showPassword, setShowPassword] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-  const [googleToast, setGoogleToast] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (errorParam === 'inactive') {
+      setApiError('Your account is inactive. Please contact your administrator.');
+    }
+  }, [errorParam]);
 
   const {
     register,
@@ -57,8 +64,7 @@ const LoginPage: React.FC = () => {
   };
 
   const handleGoogleLogin = () => {
-    setGoogleToast(true);
-    setTimeout(() => setGoogleToast(false), 3000);
+    initiateGoogleLogin();
   };
 
   return (
@@ -100,13 +106,6 @@ const LoginPage: React.FC = () => {
           </svg>
           Sign in with Google
         </button>
-
-        {googleToast && (
-          <div className="absolute left-1/2 top-full z-10 mt-2 w-max -translate-x-1/2 rounded-md bg-slate-800 px-3 py-1.5 text-xs text-white shadow-lg animate-fade-in flex items-center gap-1.5">
-            <Info className="h-3.5 w-3.5 text-indigo-300" />
-            Google authentication is coming soon!
-          </div>
-        )}
       </div>
 
       {/* Divider */}

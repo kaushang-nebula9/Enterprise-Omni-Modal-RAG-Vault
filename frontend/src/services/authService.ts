@@ -7,7 +7,9 @@ import type {
   LoginPayload,
   ForgotPasswordPayload,
   ResetPasswordPayload,
-  AcceptInvitePayload
+  AcceptInvitePayload,
+  GoogleOrgSetupPayload,
+  SetPasswordPayload
 } from '../types/auth';
 
 export const registerSignup = async (data: RegisterSignupPayload): Promise<MessageResponse> => {
@@ -46,5 +48,19 @@ export const resetPassword = async (data: ResetPasswordPayload): Promise<Message
 
 export const acceptInvite = async (data: AcceptInvitePayload): Promise<MessageResponse> => {
   const response = await api.post<MessageResponse>('/api/v1/auth/accept-invite', data);
+  return response.data;
+};
+
+export const initiateGoogleLogin = (): void => {
+  window.location.href = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/v1/auth/google`;
+};
+
+export const completeGoogleSetup = async (data: GoogleOrgSetupPayload): Promise<UserResponse> => {
+  const response = await api.post<UserResponse>('/api/v1/auth/google/complete-setup', data);
+  return response.data;
+};
+
+export const setPassword = async (data: SetPasswordPayload): Promise<MessageResponse> => {
+  const response = await api.post<MessageResponse>('/api/v1/auth/set-password', data);
   return response.data;
 };

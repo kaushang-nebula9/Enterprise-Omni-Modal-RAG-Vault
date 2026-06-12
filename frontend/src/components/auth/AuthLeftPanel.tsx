@@ -15,7 +15,7 @@ const AuthLeftPanel: React.FC = () => {
 
         {/* Illustration */}
         <img
-          src="man-sitting.png"
+          src="/man-sitting.png"
           alt=""
           className="mt-12 h-[67%] opacity-90"
         />

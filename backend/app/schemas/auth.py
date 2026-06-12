@@ -51,6 +51,8 @@ class UserResponse(BaseModel):
     role: UserRole
     tenant_id: UUID
     is_active: bool
+    has_password: bool
+    avatar_url: str | None = None
     created_at: datetime
 
     model_config = {
@@ -71,3 +73,18 @@ class InviteMemberRequest(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+class GoogleOrgSetupRequest(BaseModel):
+    org_name: str = Field(..., min_length=2)
+    org_website: HttpUrl
+    setup_token: str = Field(..., min_length=1)
+
+class SetPasswordRequest(BaseModel):
+    new_password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
+
+    @model_validator(mode="after")
+    def validate_passwords(self) -> 'SetPasswordRequest':
+        if self.new_password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self
