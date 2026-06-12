@@ -39,13 +39,16 @@ from app.services.email_service import (
     send_forgot_password_otp_email
 )
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 serializer = URLSafeTimedSerializer(settings.SECRET_KEY)
 
-@router.post("/register/init", response_model=MessageResponse)
-def register_init(
+@router.post("/register/signup", response_model=MessageResponse)
+def register_signup(
     request: RegistrationInitRequest,
     response: Response,
     db: Session = Depends(get_db)
@@ -103,6 +106,7 @@ def register_init(
             otp=raw_otp,
             org_name=request.org_name
         )
+        logger.warning(f"Registration OTP for {request.email} is: {raw_otp}")
 
         return {"message": "OTP sent to your email. Please verify to complete registration."}
     except HTTPException as he:
@@ -284,6 +288,7 @@ def forgot_password_route(
             full_name=user.full_name,
             otp=raw_otp
         )
+        logger.warning(f"Forgot password OTP for {request.email} is: {raw_otp}")
     except HTTPException as he:
         db.rollback()
         raise he
