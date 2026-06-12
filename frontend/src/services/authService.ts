@@ -64,3 +64,9 @@ export const setPassword = async (data: SetPasswordPayload): Promise<MessageResp
   const response = await api.post<MessageResponse>('/api/v1/auth/set-password', data);
   return response.data;
 };
+
+export const updateProfile = async (data: { full_name?: string }): Promise<UserResponse> => {
+  const response = await api.patch<UserResponse>('/api/v1/auth/profile', data);
+  return response.data;
+};
+

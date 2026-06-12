@@ -20,6 +20,10 @@ export interface UserResponse {
   created_at: string
 }
 
+export interface UpdateProfilePayload {
+  full_name?: string
+}
+
 export interface MessageResponse {
   message: string
 }
@@ -68,4 +72,18 @@ export interface GoogleOrgSetupPayload {
 export interface SetPasswordPayload {
   new_password: string
   confirm_password: string
+}
+
+export interface TenantResponse {
+  id: string
+  name: string
+  slug: string
+  website: string | null
+  created_at: string
+}
+
+export interface AdminStatsResponse {
+  total_documents: number
+  total_members: number
+  total_roles: number
 }

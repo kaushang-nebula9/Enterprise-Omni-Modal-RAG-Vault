@@ -10,10 +10,6 @@ def send_invite_email(to_email: str, full_name: str, invite_token: str, organisa
     If sending fails, logs the error and raises an HTTPException.
     """
     resend.api_key = settings.RESEND_API_KEY
-    print("🩷🩷")
-    print("resend.api_key: ", resend.api_key)
-    print("🩷🩷")
-    print("settings.RESEND_API_KEY: ", settings.RESEND_API_KEY)
     invite_url = f"{settings.FRONTEND_URL}/accept-invite?token={invite_token}"
     
     if settings.RESEND_API_KEY == "API_KEY":

@@ -655,6 +655,21 @@ def get_me(current_user: User = Depends(get_current_user)):
     """Protected route to get the current authenticated user's details."""
     return current_user
 
+from app.schemas.auth import UpdateProfileRequest
+
+@router.patch("/profile", response_model=UserResponse)
+def update_profile(
+    request: UpdateProfileRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Protected route to update the current user's profile."""
+    if request.full_name is not None:
+        current_user.full_name = request.full_name
+        db.commit()
+        db.refresh(current_user)
+    return current_user
+
 @router.get("/google")
 def google_auth_init():
     """Redirects the client to Google's OAuth consent screen."""

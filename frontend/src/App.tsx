@@ -8,7 +8,17 @@ import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import AcceptInvitePage from './pages/auth/AcceptInvitePage';
 import GoogleOrgSetupPage from './pages/auth/GoogleOrgSetupPage';
 import AuthGuard from './components/auth/AuthGuard';
-import DashboardPage from './pages/DashboardPage';
+import DashboardLayout from './layouts/DashboardLayout';
+import ProtectedAdminRoute from './components/auth/ProtectedAdminRoute';
+import DashboardMainPage from './pages/dashboard/DashboardMainPage';
+import { TeamManagementPage } from './pages/dashboard/TeamManagementPage';
+import { RolesPermissionsPage } from './pages/dashboard/RolesPermissionsPage';
+import { OrganisationSettingsPage } from './pages/dashboard/OrganisationSettingsPage';
+import { ProfileSettingsPage } from './pages/dashboard/ProfileSettingsPage';
+import {
+  ChatPage,
+  ChatHistoryPage
+} from './pages/dashboard/Placeholders';
 
 const App: React.FC = () => {
   return (
@@ -29,10 +39,19 @@ const App: React.FC = () => {
           path="/dashboard"
           element={
             <AuthGuard>
-              <DashboardPage />
+              <DashboardLayout />
             </AuthGuard>
           }
-        />
+        >
+          <Route index element={<DashboardMainPage />} />
+          <Route path="team" element={<ProtectedAdminRoute><TeamManagementPage /></ProtectedAdminRoute>} />
+          <Route path="roles" element={<ProtectedAdminRoute><RolesPermissionsPage /></ProtectedAdminRoute>} />
+          <Route path="settings" element={<ProtectedAdminRoute><OrganisationSettingsPage /></ProtectedAdminRoute>} />
+          
+          <Route path="chat" element={<ChatPage />} />
+          <Route path="history" element={<ChatHistoryPage />} />
+          <Route path="profile" element={<ProfileSettingsPage />} />
+        </Route>
 
         {/* Root Redirect to Login */}
         <Route path="/" element={<Navigate to="/login" replace />} />

@@ -93,3 +93,6 @@ class SetPasswordRequest(BaseModel):
         if self.new_password != self.confirm_password:
             raise ValueError("Passwords do not match")
         return self
+
+class UpdateProfileRequest(BaseModel):
+    full_name: str | None = Field(None, min_length=2)
