@@ -9,7 +9,8 @@ import {
   History, 
   UserCircle,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FileText
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
@@ -20,6 +21,7 @@ interface SidebarProps {
 
 const adminLinks = [
   { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+  { name: 'Documents', icon: FileText, path: '/dashboard/documents' },
   { name: 'Team Management', icon: Users, path: '/dashboard/team' },
   { name: 'Roles and Permissions', icon: ShieldCheck, path: '/dashboard/roles' },
   { name: 'Organisation Settings', icon: Settings, path: '/dashboard/settings' },

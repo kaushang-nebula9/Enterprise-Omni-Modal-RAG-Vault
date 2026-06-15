@@ -15,6 +15,7 @@ import { TeamManagementPage } from './pages/dashboard/TeamManagementPage';
 import { RolesPermissionsPage } from './pages/dashboard/RolesPermissionsPage';
 import { OrganisationSettingsPage } from './pages/dashboard/OrganisationSettingsPage';
 import { ProfileSettingsPage } from './pages/dashboard/ProfileSettingsPage';
+import DocumentsPage from './pages/dashboard/DocumentsPage';
 import {
   ChatPage,
   ChatHistoryPage
@@ -44,6 +45,7 @@ const App: React.FC = () => {
           }
         >
           <Route index element={<DashboardMainPage />} />
+          <Route path="documents" element={<ProtectedAdminRoute><DocumentsPage /></ProtectedAdminRoute>} />
           <Route path="team" element={<ProtectedAdminRoute><TeamManagementPage /></ProtectedAdminRoute>} />
           <Route path="roles" element={<ProtectedAdminRoute><RolesPermissionsPage /></ProtectedAdminRoute>} />
           <Route path="settings" element={<ProtectedAdminRoute><OrganisationSettingsPage /></ProtectedAdminRoute>} />

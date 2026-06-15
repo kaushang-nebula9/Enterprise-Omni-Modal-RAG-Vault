@@ -18,8 +18,9 @@ PyMuPDF
 python-docx
 python-pptx
 openpyxl
-openai-whisper
-pydub
+langchain-text-splitters
+pandas
+RestrictedPython
 aiofiles
 pytest
 pytest-asyncio

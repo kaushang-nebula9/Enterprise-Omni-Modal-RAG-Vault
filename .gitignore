@@ -8,6 +8,9 @@ venv/
 .pytest_cache/
 .mypy_cache/
 
+# Uploads
+backend/uploads/
+
 # Node
 node_modules/
 dist/

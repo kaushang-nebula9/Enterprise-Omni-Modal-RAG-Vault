@@ -1,15 +1,16 @@
 from datetime import datetime
 import uuid
+from typing import Optional, TYPE_CHECKING
 from sqlalchemy import String, DateTime, Uuid, ForeignKey, Integer, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.enums import (
     file_type_enum, FileType,
     owner_type_enum, OwnerType,
-    visibility_enum, Visibility
+    visibility_enum, Visibility,
+    document_status_enum, DocumentStatus,
 )
-
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.models.tenant import Tenant
@@ -36,6 +37,14 @@ class Document(Base):
     visibility: Mapped[Visibility] = mapped_column(visibility_enum, nullable=False)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     qdrant_collection: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[DocumentStatus] = mapped_column(
+        document_status_enum,
+        nullable=False,
+        default=DocumentStatus.pending,
+        server_default="pending"
+    )
+    file_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    excel_schema: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 
