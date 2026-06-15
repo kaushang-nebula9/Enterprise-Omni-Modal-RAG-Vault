@@ -4,10 +4,7 @@ and stores vectors in Qdrant.
 """
 import os
 import uuid
-import shutil
 import logging
-import subprocess
-from glob import glob
 
 import fitz  # PyMuPDF
 import docx as python_docx
@@ -90,41 +87,24 @@ def _get_pptx_slide_text(slide) -> str:
     return "\n".join(texts)
 
 
-def extract_text_from_pptx(file_path: str, document_id: str) -> list[dict]:
+def extract_text_from_pptx(file_path: str) -> list[dict]:
     """
     Extract text and vision descriptions from each slide of a PPTX file.
 
     For each slide:
-      1. Extract text from all shapes and notes.
-      2. Render the slide to PNG via LibreOffice headless.
-      3. Describe the rendered image with Gemini Vision.
-      4. Merge extracted text + vision description.
-      5. If merged text > 2000 tokens (approx), split into two chunks.
+      1. Extract text from all shapes and notes using python-pptx.
+      2. Merge extracted text with the vision description from Gemini.
+      3. If merged text > 2000 tokens (approx), split into two chunks.
+
+    A single Gemini API call is made for the entire file via
+    describe_pptx_slides to get visual descriptions for all slides.
 
     Returns a list of dicts: {"text": "...", "slide_number": N, "slide_title": "..."}
-    Cleans up /tmp/{document_id}/ after processing.
     """
     prs = Presentation(file_path)
-    tmp_dir = os.path.join("/tmp", document_id)
-    os.makedirs(tmp_dir, exist_ok=True)
 
-    # Render all slides to PNG using LibreOffice
-    try:
-        subprocess.run(
-            [
-                "libreoffice",
-                "--headless",
-                "--convert-to",
-                "png",
-                "--outdir",
-                tmp_dir,
-                file_path,
-            ],
-            capture_output=True,
-            timeout=120,
-        )
-    except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
-        logger.warning("LibreOffice rendering failed (%s); skipping vision descriptions.", exc)
+    # Get visual descriptions for all slides in one API call
+    visual_descriptions = embedding_service.describe_pptx_slides(file_path)
 
     results = []
     for slide_idx, slide in enumerate(prs.slides, start=1):
@@ -136,31 +116,15 @@ def extract_text_from_pptx(file_path: str, document_id: str) -> list[dict]:
         # Extracted text
         extracted_text = _get_pptx_slide_text(slide)
 
-        # Vision description from rendered image
-        vision_description = ""
-        base_name = os.path.splitext(os.path.basename(file_path))[0]
-        # LibreOffice names slides like: filename.png (only one file for pptx)
-        # For multi-slide decks it may produce filename1.png, filename2.png, etc.
-        candidate_patterns = [
-            os.path.join(tmp_dir, f"{base_name}{slide_idx}.png"),
-            os.path.join(tmp_dir, f"{base_name}-{slide_idx}.png"),
-            os.path.join(tmp_dir, f"{base_name} ({slide_idx}).png"),
-        ]
-        if slide_idx == 1:
-            candidate_patterns.append(os.path.join(tmp_dir, f"{base_name}.png"))
-
-        image_path = None
-        for pattern in candidate_patterns:
-            if os.path.exists(pattern):
-                image_path = pattern
-                break
-
-        if image_path:
-            vision_description = embedding_service.describe_slide_image(image_path)
-
+        # Merge with vision description
+        vision_description = visual_descriptions.get(slide_idx, "")
         merged = extracted_text
         if vision_description:
             merged = extracted_text + "\n\n" + vision_description
+
+        merged = merged.strip()
+        if not merged:
+            continue
 
         # Approximate token count: word_count * 1.3
         approx_tokens = len(merged.split()) * 1.3
@@ -169,14 +133,7 @@ def extract_text_from_pptx(file_path: str, document_id: str) -> list[dict]:
             results.append({"text": merged[:mid], "slide_number": slide_idx, "slide_title": slide_title})
             results.append({"text": merged[mid:], "slide_number": slide_idx, "slide_title": slide_title})
         else:
-            if merged.strip():
-                results.append({"text": merged, "slide_number": slide_idx, "slide_title": slide_title})
-
-    # Clean up temp directory
-    try:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-    except Exception:
-        pass
+            results.append({"text": merged, "slide_number": slide_idx, "slide_title": slide_title})
 
     return results
 
@@ -319,7 +276,7 @@ def process_document(document_id: str, db: Session) -> None:
                 chunk_index += 1
 
         elif file_type == FileType.pptx:
-            slides = extract_text_from_pptx(abs_file_path, doc_id)
+            slides = extract_text_from_pptx(abs_file_path)
             for slide in slides:
                 if not slide["text"].strip():
                     continue
