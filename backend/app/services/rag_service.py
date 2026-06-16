@@ -78,10 +78,10 @@ def execute_excel_query(
     """
     try:
         # Load the dataframe
-        print("🩷1")
+        print("### 1\n")
         df = pd.read_excel(file_path, engine="openpyxl")
 
-        print("🩷2")
+        print("###  2\n")
         # Ask Gemini to generate the pandas code
         prompt = _EXCEL_CODE_PROMPT.format(
             columns=schema.get("columns", []),
@@ -92,50 +92,55 @@ def execute_excel_query(
             query=query,
         )
 
-        print("🩷3")
+        print("###  3 prompt: ", prompt, "\n")
         client = _get_client()
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.5-flash",
             contents=prompt,
         )
-        print("🩷4 resonse: ", response.text)
+        print("###  4 resonse: ", response.text, "\n")
         code = (response.text or "").strip()
 
-        print("🩷5")
+        print("###  5\n")
         # Strip markdown fences if present
         if code.startswith("```"):
             code = code.split("\n", 1)[-1]
             if code.endswith("```"):
                 code = code[: -len("```")].strip()
 
-        print("🩷6")
-        print("🩷6 code: ", code)
+        print("###  6 code: ", code, "\n")
         if not code:
             logger.warning("Gemini returned empty code for Excel query")
             return None
 
-        print("🩷7")
+        print("###  7\n")
         # Compile with RestrictedPython
         compiled = compile_restricted(code, filename="<excel_query>", mode="exec")
 
-        print("🩷8")
+        print("###  8\n")
         # Build restricted globals — only allow df and safe builtins
         from RestrictedPython.Guards import guarded_iter_unpack_sequence
         from RestrictedPython.Eval import default_guarded_getitem, default_guarded_getiter
 
-        print("🩷9")
+        print("###  9\n")
         restricted_globals = dict(safe_globals)
         restricted_globals["_getattr_"] = getattr
         restricted_globals["_getitem_"] = default_guarded_getitem
         restricted_globals["_getiter_"] = default_guarded_getiter
         restricted_globals["_iter_unpack_sequence_"] = guarded_iter_unpack_sequence
+        
+        # We use a pass-through write guard because full_write_guard wraps the object
+        # and breaks Pandas dataframe item assignments (df['a'] = 1)
+        restricted_globals["_write_"] = lambda x: x
+        restricted_globals["pd"] = pd
+        
         restricted_locals: dict = {"df": df}
-        print("🩷10")
+        print("###  10\n")
 
         # Execution with a 10-second timeout (threading approach for Windows)
         result_container: dict = {"result": None, "error": None}
 
-        print("🩷11")
+        print("###  11\n")
         def _execute():
             try:
                 exec(compiled, restricted_globals, restricted_locals)  # noqa: S102
@@ -143,23 +148,24 @@ def execute_excel_query(
             except Exception as exc:
                 result_container["error"] = str(exc)
 
-        print("🩷12")
+        print("###  12\n")
         thread = threading.Thread(target=_execute, daemon=True)
         thread.start()
         thread.join(timeout=10)
 
-        print("🩷13")
+        print("###  13\n")
         if thread.is_alive():
             logger.warning("Excel query execution timed out (10s)")
             return None
 
-        print("🩷14")
+        print("###  14\n")
         if result_container["error"]:
+            print("###  15: ", result_container["error"])
             logger.debug("Excel query execution error: %s", result_container["error"])
             return None
 
         result = result_container["result"]
-        print("🩷15 result: ", result)
+        print("###  15 result: ", result, "\n")
         if result is None:
             return None
 
@@ -202,45 +208,19 @@ def run_rag_pipeline(
     # ------------------------------------------------------------------
     query_vector = embedding_service.embed_text(query)
 
-    # ------------------------------------------------------------------
-    # 2. Fetch authorised documents
-    # ------------------------------------------------------------------
-    # Shared documents accessible via role-based access policies
-    shared_doc_ids = (
-        db.query(Document.id)
-        .join(DocumentAccessPolicy)
-        .filter(
-            Document.tenant_id == user.tenant_id,
-            Document.status == DocumentStatus.ready,
-            DocumentAccessPolicy.role_id == user.role_id,
-        )
-        .all()
-    )
-    shared_doc_ids = {str(d[0]) for d in shared_doc_ids}
-
-    # Private documents uploaded by this user
-    private_docs = (
-        db.query(Document)
-        .filter(
-            Document.uploaded_by == user.id,
-            Document.visibility == Visibility.private,
-            Document.status == DocumentStatus.ready,
-            Document.tenant_id == user.tenant_id,
-        )
-        .all()
-    )
-    private_doc_ids = {str(d.id) for d in private_docs}
-
-    # Separate Excel from non-Excel
+    # Fetch documents accessible via role-based access policies or uploaded by the user
     all_authorized_docs = (
         db.query(Document)
+        .outerjoin(DocumentAccessPolicy, Document.id == DocumentAccessPolicy.document_id)
         .filter(
             Document.tenant_id == user.tenant_id,
             Document.status == DocumentStatus.ready,
             or_(
-                Document.id.in_(shared_doc_ids | private_doc_ids),
-            ),
+                DocumentAccessPolicy.role_id == user.role_id,
+                Document.uploaded_by == user.id,
+            )
         )
+        .distinct()
         .all()
     )
 
@@ -292,14 +272,14 @@ def run_rag_pipeline(
         try:
             abs_path = get_absolute_path(doc.file_path)
             result = execute_excel_query(abs_path, doc.excel_schema, query)
-            print("🩷 16")
+            print("###  16 \n")
             if result is not None:
                 excel_results.append({
                     "filename": doc.filename,
                     "document_id": str(doc.id),
                     "result": result,
                 })
-            print("🩷 17")
+            print("###  17 \n")
         except Exception as exc:
             logger.warning("Excel query failed for %s: %s", doc.filename, exc)
 
@@ -334,12 +314,12 @@ def run_rag_pipeline(
     if excel_results:
         context_parts.append("[Excel Data Results]")
         for er in excel_results:
-            context_parts.append(f"Source: {er['filename']}\n{er['result']}")
+            context_parts.append(f"Source: {er['filename']}\nQuery: {query}\nResult: {er['result']}")
             context_parts.append("---")
 
     context_block = "\n".join(context_parts) if context_parts else "No relevant context found."
 
-    print("🩷🩷🩷 Context block: ", context_block)
+    print("############################### Context block: ", context_block)
 
     # ------------------------------------------------------------------
     # 6. Call Gemini for the final answer
@@ -356,11 +336,11 @@ User Question: {query}
 
 Answer:"""
 
-    print("🩷🩷🩷 Final prompt: ", final_prompt)
+    print("############################### Final prompt: ", final_prompt)
     try:
         client = _get_client()
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.5-flash",
             contents=final_prompt,
         )
         answer = (response.text or "").strip()

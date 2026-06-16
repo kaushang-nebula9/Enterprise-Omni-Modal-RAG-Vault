@@ -252,6 +252,10 @@ def update_document_access(
 
     # Validate each role
     new_role_ids = [str(rid) for rid in request.role_ids]
+    uploader_id = str(doc.uploaded_by)
+    if uploader_id not in new_role_ids:
+        new_role_ids.append(uploader_id)
+
     for role_id in request.role_ids:
         role = db.query(Role).filter(
             Role.id == role_id,

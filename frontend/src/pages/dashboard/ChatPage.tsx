@@ -4,6 +4,7 @@ import { SendHorizontal, Paperclip, FileText, ChevronDown, ChevronUp } from 'luc
 import { useAuthStore } from '../../store/authStore'
 import { chatService } from '../../services/chatService'
 import type { MessageResponse } from '../../types/chat'
+import ReactMarkdown from 'react-markdown'
 
 const ChatPage: React.FC = () => {
   const { user } = useAuthStore()
@@ -227,7 +228,9 @@ const ChatPage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="mr-auto max-w-2xl bg-white border border-slate-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm text-slate-800">
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    <ReactMarkdown>
+                      {msg.content}
+                    </ReactMarkdown>
                     <p className="text-slate-400 text-xs mt-1">{formatTime(msg.created_at)}</p>
 
                     {msg.citations.length > 0 && (

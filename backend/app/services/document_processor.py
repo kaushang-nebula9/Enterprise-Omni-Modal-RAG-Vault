@@ -5,6 +5,7 @@ and stores vectors in Qdrant.
 import os
 import uuid
 import logging
+import json
 
 import fitz  # PyMuPDF
 import docx as python_docx
@@ -69,11 +70,20 @@ def extract_excel_schema(file_path: str) -> dict:
     columns, dtypes, shape, and 3 sample rows.
     """
     df = pd.read_excel(file_path, engine="openpyxl")
+    
+    total_rows = int(df.shape[0])
+    total_cols = int(df.shape[1])
+    
+    # Use pandas to_json which correctly maps NaNs/NaTs to valid JSON 'null',
+    # then load it back as a dict to be safely stored in the JSONB column.
+    sample_json = df.head(3).to_json(orient="records", date_format="iso")
+    sample_records = json.loads(sample_json)
+    
     return {
         "columns": df.columns.tolist(),
         "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
-        "shape": {"rows": int(df.shape[0]), "columns": int(df.shape[1])},
-        "sample": df.head(3).to_dict(orient="records"),
+        "shape": {"rows": total_rows, "columns": total_cols},
+        "sample": sample_records,
     }
 
 
@@ -129,10 +139,11 @@ def process_document(document_id: str, db: Session) -> None:
         )
         role_ids = [str(policy.role_id) for policy in policies]
 
-        # For private documents with no access policies, store the uploader's
-        # user_id as a surrogate role_id so the RAG search can find them
-        if not role_ids and document.visibility == Visibility.private:
-            role_ids = [str(document.uploaded_by)]
+        # Always add the uploader's user_id as a surrogate role_id
+        # so the uploader can always query their own documents via RAG.
+        uploader_id = str(document.uploaded_by)
+        if uploader_id not in role_ids:
+            role_ids.append(uploader_id)
 
         tenant_id = str(document.tenant_id)
         doc_id = str(document.id)
