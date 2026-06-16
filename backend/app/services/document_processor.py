@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.models.document import Document
 from app.models.document_access_policy import DocumentAccessPolicy
-from app.models.enums import DocumentStatus, FileType
+from app.models.enums import DocumentStatus, FileType, Visibility
 from app.services import embedding_service, qdrant_service
 
 logger = logging.getLogger(__name__)
@@ -61,81 +61,6 @@ def extract_text_from_txt(file_path: str) -> str:
     with open(file_path, "r", encoding="utf-8", errors="replace") as f:
         return f.read()
 
-
-def _get_pptx_slide_text(slide) -> str:
-    """Extract all text from a single slide's shapes (titles, text boxes, tables, notes)."""
-    texts = []
-    for shape in slide.shapes:
-        if shape.has_text_frame:
-            for para in shape.text_frame.paragraphs:
-                line = "".join(run.text for run in para.runs).strip()
-                if line:
-                    texts.append(line)
-        # Tables
-        if shape.has_table:
-            for row in shape.table.rows:
-                row_text = " | ".join(
-                    cell.text.strip() for cell in row.cells if cell.text.strip()
-                )
-                if row_text:
-                    texts.append(row_text)
-    # Speaker notes
-    if slide.has_notes_slide:
-        notes_text = slide.notes_slide.notes_text_frame.text.strip()
-        if notes_text:
-            texts.append(f"[Speaker Notes] {notes_text}")
-    return "\n".join(texts)
-
-
-def extract_text_from_pptx(file_path: str) -> list[dict]:
-    """
-    Extract text and vision descriptions from each slide of a PPTX file.
-
-    For each slide:
-      1. Extract text from all shapes and notes using python-pptx.
-      2. Merge extracted text with the vision description from Gemini.
-      3. If merged text > 2000 tokens (approx), split into two chunks.
-
-    A single Gemini API call is made for the entire file via
-    describe_pptx_slides to get visual descriptions for all slides.
-
-    Returns a list of dicts: {"text": "...", "slide_number": N, "slide_title": "..."}
-    """
-    prs = Presentation(file_path)
-
-    # Get visual descriptions for all slides in one API call
-    visual_descriptions = embedding_service.describe_pptx_slides(file_path)
-
-    results = []
-    for slide_idx, slide in enumerate(prs.slides, start=1):
-        # Slide title
-        slide_title = ""
-        if slide.shapes.title and slide.shapes.title.text:
-            slide_title = slide.shapes.title.text.strip()
-
-        # Extracted text
-        extracted_text = _get_pptx_slide_text(slide)
-
-        # Merge with vision description
-        vision_description = visual_descriptions.get(slide_idx, "")
-        merged = extracted_text
-        if vision_description:
-            merged = extracted_text + "\n\n" + vision_description
-
-        merged = merged.strip()
-        if not merged:
-            continue
-
-        # Approximate token count: word_count * 1.3
-        approx_tokens = len(merged.split()) * 1.3
-        if approx_tokens > 2000 and len(merged) > 1:
-            mid = len(merged) // 2
-            results.append({"text": merged[:mid], "slide_number": slide_idx, "slide_title": slide_title})
-            results.append({"text": merged[mid:], "slide_number": slide_idx, "slide_title": slide_title})
-        else:
-            results.append({"text": merged, "slide_number": slide_idx, "slide_title": slide_title})
-
-    return results
 
 
 def extract_excel_schema(file_path: str) -> dict:
@@ -204,6 +129,11 @@ def process_document(document_id: str, db: Session) -> None:
         )
         role_ids = [str(policy.role_id) for policy in policies]
 
+        # For private documents with no access policies, store the uploader's
+        # user_id as a surrogate role_id so the RAG search can find them
+        if not role_ids and document.visibility == Visibility.private:
+            role_ids = [str(document.uploaded_by)]
+
         tenant_id = str(document.tenant_id)
         doc_id = str(document.id)
         file_type = document.file_type
@@ -233,6 +163,7 @@ def process_document(document_id: str, db: Session) -> None:
                             "file_type": "pdf",
                             "chunk_index": chunk_index,
                             "page_number": page["page_number"],
+                            "chunk_text": chunk,
                         },
                     })
                     chunk_index += 1
@@ -252,6 +183,7 @@ def process_document(document_id: str, db: Session) -> None:
                         "file_type": "docx",
                         "chunk_index": chunk_index,
                         "page_number": None,
+                        "chunk_text": chunk,
                     },
                 })
                 chunk_index += 1
@@ -271,16 +203,15 @@ def process_document(document_id: str, db: Session) -> None:
                         "file_type": "text",
                         "chunk_index": chunk_index,
                         "page_number": None,
+                        "chunk_text": chunk,
                     },
                 })
                 chunk_index += 1
 
         elif file_type == FileType.pptx:
-            slides = extract_text_from_pptx(abs_file_path)
+            slides = embedding_service.process_pptx_slides(abs_file_path)
             for slide in slides:
-                if not slide["text"].strip():
-                    continue
-                vector = embedding_service.embed_text(slide["text"])
+                vector = slide["vector"]
                 points.append({
                     "id": str(uuid.uuid4()),
                     "vector": vector,
@@ -292,6 +223,7 @@ def process_document(document_id: str, db: Session) -> None:
                         "chunk_index": chunk_index,
                         "slide_number": slide["slide_number"],
                         "slide_title": slide["slide_title"],
+                        "chunk_text": slide["text"],
                     },
                 })
                 chunk_index += 1
@@ -311,6 +243,7 @@ def process_document(document_id: str, db: Session) -> None:
                         "file_type": "audio",
                         "chunk_index": chunk_index,
                         "page_number": None,
+                        "chunk_text": chunk,
                     },
                 })
                 chunk_index += 1

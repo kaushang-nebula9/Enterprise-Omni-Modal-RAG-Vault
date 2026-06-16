@@ -8,7 +8,6 @@ import api from '../../services/api'; // For invite
 
 // We need an InviteMemberPayload that is currently handled via raw API or we can add it to adminService.
 // Wait, inviteMember is in authService.
-import { registerSignup, verifyRegistrationOTP, login, logout, getMe, forgotPassword, resetPassword, acceptInvite, initiateGoogleLogin, completeGoogleSetup, setPassword } from '../../services/authService';
 // Wait, `inviteMember` wasn't exported from authService in my previous check. Let me add it.
 // I'll define it here temporarily if not present, but I should add it to authService.
 import type { UserResponse, RoleResponse } from '../../types/auth';

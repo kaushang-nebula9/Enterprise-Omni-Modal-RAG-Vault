@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { updateProfile, setPassword as setPasswordAPI } from '../../services/authService';
 import { useAuthStore } from '../../store/authStore';
-import { UserCircle } from 'lucide-react';
 
 export const ProfileSettingsPage: React.FC = () => {
   const { user, setUser } = useAuthStore();

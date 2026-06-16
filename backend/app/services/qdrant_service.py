@@ -48,7 +48,20 @@ def get_or_create_tenant_collection(tenant_id: str) -> str:
                 distance=Distance.COSINE,
             ),
         )
-        logger.info("Created Qdrant collection: %s", collection_name)
+        
+        # Create indexes for fields we use in Filters
+        from qdrant_client.models import PayloadSchemaType
+        client.create_payload_index(
+            collection_name=collection_name,
+            field_name="role_ids",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
+        client.create_payload_index(
+            collection_name=collection_name,
+            field_name="document_id",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
+        logger.info("Created Qdrant collection and indexes: %s", collection_name)
     else:
         logger.debug("Qdrant collection already exists: %s", collection_name)
 
@@ -111,9 +124,9 @@ def search_vectors(
     of the user's role_ids (MatchAny).
     """
     client = _get_client()
-    results = client.search(
+    results = client.query_points(
         collection_name=collection_name,
-        query_vector=query_vector,
+        query=query_vector,
         query_filter=Filter(
             must=[
                 FieldCondition(
@@ -124,7 +137,7 @@ def search_vectors(
         ),
         limit=limit,
         with_payload=True,
-    )
+    ).points
     return [{"payload": hit.payload, "score": hit.score} for hit in results]
 
 

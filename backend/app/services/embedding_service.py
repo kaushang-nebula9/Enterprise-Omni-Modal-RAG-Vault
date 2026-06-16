@@ -70,65 +70,123 @@ def transcribe_audio(file_path: str) -> str:
         raise RuntimeError(f"Failed to transcribe audio '{file_path}': {exc}") from exc
 
 
-def describe_pptx_slides(file_path: str) -> dict[int, str]:
+def process_pptx_slides(file_path: str) -> list[dict]:
     """
-    Upload an entire PPTX file to Gemini 2.5 and get visual content descriptions
-    for every slide in a single API call.
-
-    Returns a dict mapping slide_number (int) to visual_description (str).
-    Returns an empty dict on failure to avoid crashing the pipeline.
+    Extract text, tables, charts, and images from a PPTX file using python-pptx.
+    Images are passed to Gemini Vision for description.
+    Merges content per slide, splits if too long, and generates embeddings.
+    
+    Returns a list of dicts: [{"slide_number": int, "slide_title": str, "text": str, "vector": list[float]}]
     """
-    import json
-    import google.generativeai as genai_legacy
-
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    
     client = _get_client()
     try:
-        # Upload the PPTX via the Gemini file API
-        genai_legacy.configure(api_key=settings.GEMINI_API_KEY)
-        uploaded_file = genai_legacy.upload_file(
-            file_path,
-            mime_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        )
-
-        prompt = (
-            "This is a PowerPoint presentation. For each slide, describe all visual content "
-            "in detail - including charts, graphs, diagrams, tables, images, icons, and any "
-            "other visual elements. Be specific about data values, labels, trends, colors "
-            "used to encode meaning, and key takeaways from each visual.\n\n"
-            "Respond in the following JSON format only, with no additional text:\n"
-            "{\n"
-            '  "slides": [\n'
-            "    {\n"
-            '      "slide_number": 1,\n'
-            '      "visual_description": "Description of all visual content on this slide. '
-            'If the slide has no visual content beyond text, return an empty string."\n'
-            "    }\n"
-            "  ]\n"
-            "}"
-        )
-
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[uploaded_file, prompt],
-        )
-
-        raw_text = (response.text or "").strip()
-
-        # Strip markdown code fences if the model wraps the JSON
-        if raw_text.startswith("```"):
-            raw_text = raw_text.split("\n", 1)[-1]  # remove first ```json line
-            if raw_text.endswith("```"):
-                raw_text = raw_text[: -len("```")].strip()
-
-        data = json.loads(raw_text)
-        result: dict[int, str] = {}
-        for slide in data.get("slides", []):
-            slide_num = int(slide.get("slide_number", 0))
-            desc = slide.get("visual_description", "")
-            if slide_num > 0:
-                result[slide_num] = desc
-        return result
-
+        prs = Presentation(file_path)
     except Exception as exc:
-        logger.warning("Failed to describe PPTX slides '%s': %s", file_path, exc)
-        return {}
+        logger.warning("Failed to open PPTX file '%s': %s", file_path, exc)
+        return []
+
+    results = []
+
+    for slide_idx, slide in enumerate(prs.slides, start=1):
+        slide_title = ""
+        if slide.shapes.title and slide.shapes.title.text:
+            slide_title = slide.shapes.title.text.strip()
+
+        texts = []
+        for shape in slide.shapes:
+            # Text frames (titles, bullet points)
+            if shape.has_text_frame:
+                for para in shape.text_frame.paragraphs:
+                    line = "".join(run.text for run in para.runs).strip()
+                    if line:
+                        texts.append(line)
+            # Tables
+            if shape.has_table:
+                for row in shape.table.rows:
+                    row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
+                    if row_text:
+                        texts.append(row_text)
+            
+            # Charts
+            if shape.has_chart:
+                try:
+                    chart = shape.chart
+                    c_title = chart.chart_title.text_frame.text if chart.has_title else "Untitled Chart"
+                    c_type = str(chart.chart_type).split('.')[-1]
+                    texts.append(f"Chart: {c_title}, Type: {c_type}")
+                    
+                    for series in chart.series:
+                        s_name = getattr(series, "name", "Series")
+                        cats = []
+                        try:
+                            cats = [c.label for c in chart.plots[0].categories]
+                        except Exception:
+                            pass
+                        
+                        vals = series.values
+                        if cats and len(cats) == len(vals):
+                            data_str = ", ".join(f"{c}: {v}" for c, v in zip(cats, vals))
+                        else:
+                            data_str = ", ".join(str(v) for v in vals)
+                        
+                        texts.append(f"Series [{s_name}]: {data_str}")
+                except Exception as exc:
+                    logger.warning("Failed to extract chart on slide %d: %s", slide_idx, exc)
+
+            # Images
+            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                try:
+                    image_bytes = shape.image.blob
+                    ext = shape.image.ext
+                    mime_type = f"image/{ext}" if ext else "image/png"
+                    
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=[
+                            genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                            "Describe this image in detail. Be specific about data, trends, and key takeaways."
+                        ],
+                    )
+                    time.sleep(0.5) # avoid rate limits
+                    desc = (response.text or "").strip()
+                    if desc:
+                        texts.append(f"[Image Description]: {desc}")
+                except Exception as exc:
+                    logger.warning("Failed to describe image on slide %d: %s", slide_idx, exc)
+
+        # Speaker notes
+        if slide.has_notes_slide:
+            notes_text = slide.notes_slide.notes_text_frame.text.strip()
+            if notes_text:
+                texts.append(f"[Speaker Notes] {notes_text}")
+
+        merged = "\n".join(texts).strip()
+        if not merged:
+            continue
+
+        # Chunk splitting logic (>2000 tokens approx)
+        approx_tokens = len(merged.split()) * 1.3
+        chunks = []
+        if approx_tokens > 2000 and len(merged) > 1:
+            mid = len(merged) // 2
+            chunks.append(merged[:mid])
+            chunks.append(merged[mid:])
+        else:
+            chunks.append(merged)
+            
+        for chunk in chunks:
+            try:
+                vector = embed_text(chunk)
+                results.append({
+                    "slide_number": slide_idx,
+                    "slide_title": slide_title,
+                    "text": chunk,
+                    "vector": vector
+                })
+            except Exception as exc:
+                logger.warning("Failed to embed chunk for slide %d: %s", slide_idx, exc)
+                
+    return results

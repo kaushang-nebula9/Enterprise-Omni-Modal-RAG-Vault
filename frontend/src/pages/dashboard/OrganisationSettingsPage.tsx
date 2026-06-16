@@ -3,17 +3,16 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { adminService } from '../../services/adminService';
 import { useAuthStore } from '../../store/authStore';
 import { useNavigate } from 'react-router-dom';
-import { logout as apiLogout } from '../../services/authService';
 
 export const OrganisationSettingsPage: React.FC = () => {
-  const { user, logout } = useAuthStore();
+  const { logout } = useAuthStore();
   const navigate = useNavigate();
 
   const [orgName, setOrgName] = useState('');
   const [orgWebsite, setOrgWebsite] = useState('');
   const [updateStatus, setUpdateStatus] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
 
-  const { data: orgData, isLoading: isLoadingOrg } = useQuery({
+  const { data: orgData } = useQuery({
     queryKey: ['organisation'],
     queryFn: adminService.getOrganisation,
   });

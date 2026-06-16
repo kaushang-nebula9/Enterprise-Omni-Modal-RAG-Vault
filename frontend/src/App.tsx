@@ -16,10 +16,8 @@ import { RolesPermissionsPage } from './pages/dashboard/RolesPermissionsPage';
 import { OrganisationSettingsPage } from './pages/dashboard/OrganisationSettingsPage';
 import { ProfileSettingsPage } from './pages/dashboard/ProfileSettingsPage';
 import DocumentsPage from './pages/dashboard/DocumentsPage';
-import {
-  ChatPage,
-  ChatHistoryPage
-} from './pages/dashboard/Placeholders';
+import ChatPage from './pages/dashboard/ChatPage';
+import ChatHistoryPage from './pages/dashboard/ChatHistoryPage';
 
 const App: React.FC = () => {
   return (
