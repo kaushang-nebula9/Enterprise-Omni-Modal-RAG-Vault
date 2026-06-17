@@ -6,9 +6,13 @@ import os
 import uuid
 import logging
 import json
+import zipfile
 
 import fitz  # PyMuPDF
+import pymupdf4llm
+import pymupdf  # alias for fitz (PyMuPDF)
 import docx as python_docx
+from docx.oxml.ns import qn
 import pandas as pd
 from pptx import Presentation
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -26,35 +30,326 @@ CHUNK_OVERLAP = 200
 
 
 # ---------------------------------------------------------------------------
+# Gemini Vision helper (used by both PDF and DOCX pipelines)
+# ---------------------------------------------------------------------------
+
+def describe_slide_image(image_path: str) -> str:
+    """
+    Send a local image file to Gemini Vision and return a detailed description.
+
+    This mirrors the inline Gemini Vision call used in the PPTX pipeline
+    inside embedding_service and is placed here so the PDF and DOCX pipelines
+    can call it without depending on additional files.
+
+    Returns an empty string if the call fails.
+    """
+    import time
+    from google import genai
+    from google.genai import types as genai_types
+    from app.core.config import settings
+
+    try:
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        with open(image_path, "rb") as f:
+            image_bytes = f.read()
+
+        ext = image_path.rsplit(".", 1)[-1].lower()
+        mime_map = {
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "gif": "image/gif",
+            "bmp": "image/bmp",
+            "webp": "image/webp",
+        }
+        mime_type = mime_map.get(ext, "image/png")
+
+        response = client.models.generate_content(
+            model="gemini-3.5-flash",
+            contents=[
+                genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                "Describe this image in detail. Be specific about data, trends, and key takeaways.",
+            ],
+        )
+        time.sleep(0.5)  # avoid rate limits
+        return (response.text or "").strip()
+    except Exception as exc:
+        logger.error("describe_slide_image: failed to describe image '%s': %s", image_path, exc)
+        return ""
+
+
+# ---------------------------------------------------------------------------
 # Text extractors
 # ---------------------------------------------------------------------------
 
-def extract_text_from_pdf(file_path: str) -> list[dict]:
+def extract_text_from_pdf(file_path: str, document_id: str) -> list[dict]:
     """
-    Extract text page-by-page from a PDF file using PyMuPDF.
+    Extract text, tables, and embedded images page-by-page from a PDF file.
+
+    Uses pymupdf4llm to produce clean Markdown per page, then queries each
+    page for raster images and sends qualifying images to Gemini Vision for
+    description.  Small decorative images (< 100×100 px) are skipped.
 
     Returns a list of dicts: {"text": "...", "page_number": N}
-    Pages with no extractable text are skipped.
+    Pages with no extractable content after merging are skipped.
     """
-    pages = []
+    results = []
     doc = fitz.open(file_path)
-    for page_num, page in enumerate(doc, start=1):
-        text = page.get_text().strip()
-        if text:
-            pages.append({"text": text, "page_number": page_num})
+
+    for page_index in range(len(doc)):
+        page = doc[page_index]
+
+        # ── 1. Extract Markdown via pymupdf4llm ──────────────────────────────
+        page_markdown = pymupdf4llm.to_markdown(doc, pages=[page_index])
+        print("#################")
+        print(f"PDF PAGE {page_index + 1} - PyMuPDF4LLM extracted Markdown: ", page_markdown, "\n")
+
+        # ── 2. Embedded image discovery ───────────────────────────────────────
+        image_list = page.get_images(full=True)
+        print("#################")
+        print(f"PDF PAGE {page_index + 1} - Number of embedded images found: ", len(image_list), "\n")
+
+        image_descriptions: list[str] = []
+
+        for img_index, img_info in enumerate(image_list):
+            xref = img_info[0]
+            try:
+                pix = pymupdf.Pixmap(doc, xref)
+
+                # Convert CMYK (> 4 channels) to RGB
+                if pix.n > 4:
+                    pix = pymupdf.Pixmap(pymupdf.csRGB, pix)
+
+                # Skip tiny decorative images
+                if pix.width < 100 or pix.height < 100:
+                    print("#################")
+                    print(
+                        f"PDF PAGE {page_index + 1} - Skipping small decorative image (too small): ",
+                        pix.width,
+                        "x",
+                        pix.height,
+                        "\n",
+                    )
+                    continue
+
+                # Save to /tmp for Gemini Vision
+                temp_image_path = f"/tmp/{document_id}_page{page_index}_img{img_index}.png"
+                pix.save(temp_image_path)
+
+                print("#################")
+                print(
+                    f"PDF PAGE {page_index + 1} - Sending image to Gemini Vision: ",
+                    temp_image_path,
+                    "\n",
+                )
+
+                try:
+                    image_description = describe_slide_image(temp_image_path)
+                    print("#################")
+                    print(
+                        f"PDF PAGE {page_index + 1} - Gemini Vision description: ",
+                        image_description,
+                        "\n",
+                    )
+                    if image_description:
+                        image_descriptions.append(f"[Visual Content: {image_description}]")
+                except Exception as vision_exc:
+                    logger.error(
+                        "PDF PAGE %d - Gemini Vision call failed for image %d: %s",
+                        page_index + 1,
+                        img_index,
+                        vision_exc,
+                    )
+                    print("#################")
+                    print(
+                        f"PDF PAGE {page_index + 1} - Gemini Vision call failed for image {img_index}: ",
+                        vision_exc,
+                        "\n",
+                    )
+                finally:
+                    # Always clean up temp file
+                    if os.path.exists(temp_image_path):
+                        os.remove(temp_image_path)
+
+            except Exception as img_exc:
+                logger.error(
+                    "PDF PAGE %d - Failed to process image xref %d: %s",
+                    page_index + 1,
+                    xref,
+                    img_exc,
+                )
+                print("#################")
+                print(
+                    f"PDF PAGE {page_index + 1} - Failed to process image xref {xref}: ",
+                    img_exc,
+                    "\n",
+                )
+
+        # ── 3. Merge Markdown + image descriptions ────────────────────────────
+        parts = [page_markdown] + [f"\n\n{desc}" for desc in image_descriptions]
+        merged_content = "".join(parts)
+
+        print("#################")
+        print(f"PDF PAGE {page_index + 1} - Final merged content: ", merged_content, "\n")
+
+        # ── 4. Skip empty pages ───────────────────────────────────────────────
+        if not merged_content.strip():
+            print("#################")
+            print(f"PDF PAGE {page_index + 1} - Skipping empty page\n")
+            continue
+
+        results.append({"text": merged_content, "page_number": page_index + 1})
+
     doc.close()
-    return pages
+
+    print("#################")
+    print("PDF EXTRACTION COMPLETE - Total pages extracted: ", len(results), "\n")
+
+    return results
 
 
-def extract_text_from_docx(file_path: str) -> str:
+def extract_text_from_docx(file_path: str, document_id: str) -> str:
     """
-    Extract all paragraph text from a DOCX file using python-docx.
+    Extract all text, tables, and embedded images from a DOCX file.
 
-    Returns the full document text as a single newline-joined string.
+    Text and tables are traversed in document order via the XML body.
+    Tables are rendered as Markdown tables.  Images are extracted from the
+    ZIP archive inside the DOCX and described by Gemini Vision.
+
+    Returns the full merged content as a single string.
     """
-    document = python_docx.Document(file_path)
-    paragraphs = [para.text for para in document.paragraphs if para.text.strip()]
-    return "\n".join(paragraphs)
+    doc = python_docx.Document(file_path)
+
+    # ── 1. Text and table extraction (document order) ─────────────────────────
+    print("#################")
+    print("DOCX EXTRACTION - Starting text and table extraction\n")
+
+    text_parts: list[str] = []
+
+    heading_prefix_map = {
+        "heading 1": "#",
+        "heading 2": "##",
+        "heading 3": "###",
+        "heading 4": "####",
+        "heading 5": "#####",
+        "heading 6": "######",
+    }
+
+    for child in doc.element.body:
+        if child.tag == qn("w:p"):
+            # ── Paragraph ──────────────────────────────────────────────────
+            para = python_docx.text.paragraph.Paragraph(child, doc)
+            para_text = para.text.strip()
+            if not para_text:
+                continue
+
+            style_name = (para.style.name or "").lower() if para.style else ""
+            if style_name.startswith("heading"):
+                prefix = heading_prefix_map.get(style_name, "#")
+                text_parts.append(f"{prefix} {para_text}")
+            else:
+                text_parts.append(para_text)
+
+        elif child.tag == qn("w:tbl"):
+            # ── Table ──────────────────────────────────────────────────────
+            table = python_docx.table.Table(child, doc)
+            rows = table.rows
+            if not rows:
+                continue
+
+            md_rows: list[str] = []
+            for row_idx, row in enumerate(rows):
+                cells = [cell.text.strip() for cell in row.cells]
+                md_rows.append("| " + " | ".join(cells) + " |")
+                if row_idx == 0:
+                    # Add separator after header row
+                    md_rows.append("| " + " | ".join(["---"] * len(cells)) + " |")
+
+            text_parts.append("\n".join(md_rows))
+
+    extracted_text_and_tables = "\n\n".join(text_parts)
+
+    print("#################")
+    print("DOCX EXTRACTION - Extracted text and tables: ", extracted_text_and_tables, "\n")
+
+    # ── 2. Image extraction from ZIP archive ──────────────────────────────────
+    print("#################")
+    print("DOCX EXTRACTION - Opening ZIP archive to find media files\n")
+
+    image_descriptions: list[str] = []
+    image_extensions = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
+
+    with zipfile.ZipFile(file_path, "r") as z:
+        media_files = [f for f in z.namelist() if f.startswith("word/media/")]
+
+    print("#################")
+    print("DOCX EXTRACTION - Media files found in word/media/: ", media_files, "\n")
+
+    with zipfile.ZipFile(file_path, "r") as z:
+        for index, media_file in enumerate(media_files):
+            ext = os.path.splitext(media_file)[1].lower()
+
+            if ext not in image_extensions:
+                print("#################")
+                print("DOCX EXTRACTION - Skipping non-image media file: ", media_file, "\n")
+                continue
+
+            temp_image_path = f"/tmp/{document_id}_img_{index}{ext}"
+
+            try:
+                with z.open(media_file) as img_data:
+                    with open(temp_image_path, "wb") as tmp_f:
+                        tmp_f.write(img_data.read())
+
+                print("#################")
+                print("DOCX EXTRACTION - Sending image to Gemini Vision: ", temp_image_path, "\n")
+
+                try:
+                    image_description = describe_slide_image(temp_image_path)
+                    print("#################")
+                    print("DOCX EXTRACTION - Gemini Vision description: ", image_description, "\n")
+                    if image_description:
+                        image_descriptions.append(f"[Visual Content: {image_description}]")
+                except Exception as vision_exc:
+                    logger.error(
+                        "DOCX EXTRACTION - Gemini Vision call failed for '%s': %s",
+                        media_file,
+                        vision_exc,
+                    )
+                    print("#################")
+                    print(
+                        "DOCX EXTRACTION - Gemini Vision call failed for: ",
+                        media_file,
+                        " Error: ",
+                        vision_exc,
+                        "\n",
+                    )
+            except Exception as extract_exc:
+                logger.error(
+                    "DOCX EXTRACTION - Failed to extract media file '%s': %s",
+                    media_file,
+                    extract_exc,
+                )
+                print("#################")
+                print(
+                    "DOCX EXTRACTION - Failed to extract media file: ",
+                    media_file,
+                    " Error: ",
+                    extract_exc,
+                    "\n",
+                )
+            finally:
+                if os.path.exists(temp_image_path):
+                    os.remove(temp_image_path)
+
+    # ── 3. Merge text + tables + image descriptions ────────────────────────────
+    all_parts = [extracted_text_and_tables] + [f"\n\n{desc}" for desc in image_descriptions]
+    final_merged_content = "".join(all_parts)
+
+    print("#################")
+    print("DOCX EXTRACTION - Final merged content (text + tables + images): ", final_merged_content, "\n")
+
+    return final_merged_content
 
 
 def extract_text_from_txt(file_path: str) -> str:
@@ -159,7 +454,10 @@ def process_document(document_id: str, db: Session) -> None:
         chunk_index = 0
 
         if file_type == FileType.pdf:
-            pages = extract_text_from_pdf(abs_file_path)
+            print("#################")
+            print("Starting PDF pipeline for document: ", document.filename, "\n")
+
+            pages = extract_text_from_pdf(abs_file_path, doc_id)
             for page in pages:
                 chunks = chunk_text(page["text"])
                 for chunk in chunks:
@@ -179,8 +477,15 @@ def process_document(document_id: str, db: Session) -> None:
                     })
                     chunk_index += 1
 
+            total_chunk_count = chunk_index
+            print("#################")
+            print("PDF pipeline complete - Total chunks embedded and stored in Qdrant: ", total_chunk_count, "\n")
+
         elif file_type == FileType.docx:
-            full_text = extract_text_from_docx(abs_file_path)
+            print("#################")
+            print("Starting DOCX pipeline for document: ", document.filename, "\n")
+
+            full_text = extract_text_from_docx(abs_file_path, doc_id)
             chunks = chunk_text(full_text)
             for chunk in chunks:
                 vector = embedding_service.embed_text(chunk)
@@ -198,6 +503,10 @@ def process_document(document_id: str, db: Session) -> None:
                     },
                 })
                 chunk_index += 1
+
+            total_chunk_count = chunk_index
+            print("#################")
+            print("DOCX pipeline complete - Total chunks embedded and stored in Qdrant: ", total_chunk_count, "\n")
 
         elif file_type == FileType.text:
             full_text = extract_text_from_txt(abs_file_path)
