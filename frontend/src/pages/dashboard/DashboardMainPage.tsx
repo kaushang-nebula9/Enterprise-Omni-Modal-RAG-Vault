@@ -1,16 +1,16 @@
 import React from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import AdminDashboardPage from './AdminDashboardPage';
-import MemberDashboardPage from './MemberDashboardPage';
 
 const DashboardMainPage: React.FC = () => {
   const { user } = useAuthStore();
   
-  // Conditionally render based on admin status
+  // Members go directly to chat; admins see their overview dashboard
   if (user?.role.is_admin) {
     return <AdminDashboardPage />;
   }
-  return <MemberDashboardPage />;
+  return <Navigate to="/dashboard/chat" replace />;
 };
 
 export default DashboardMainPage;

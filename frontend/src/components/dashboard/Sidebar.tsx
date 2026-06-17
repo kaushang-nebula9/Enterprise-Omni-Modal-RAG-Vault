@@ -28,7 +28,6 @@ const adminLinks = [
 ];
 
 const memberLinks = [
-  { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { name: 'Chat', icon: MessageSquare, path: '/dashboard/chat' },
   { name: 'Chat History', icon: History, path: '/dashboard/history' },
   { name: 'Profile Settings', icon: UserCircle, path: '/dashboard/profile' },

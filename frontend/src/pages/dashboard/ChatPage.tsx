@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { SendHorizontal, Paperclip, FileText, ChevronDown, ChevronUp } from 'lucide-react'
+import { SendHorizontal, Plus, FileText, ChevronDown, ChevronUp, X, Loader2 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { chatService } from '../../services/chatService'
 import type { MessageResponse } from '../../types/chat'
 import ReactMarkdown from 'react-markdown'
+
+interface UploadedFile {
+  file: File
+  status: 'uploading' | 'ready'
+  error?: string
+}
 
 const ChatPage: React.FC = () => {
   const { user } = useAuthStore()
@@ -17,6 +23,7 @@ const ChatPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [expandedCitations, setExpandedCitations] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -172,15 +179,27 @@ const ChatPage: React.FC = () => {
     const file = e.target.files?.[0]
     if (!file || !sessionId) return
 
-    try {
-      await chatService.uploadPrivateDocument(sessionId, file)
-      setToast({ message: 'Document uploaded. You can now ask questions about it.', type: 'success' })
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Failed to upload document.'
-      setToast({ message: msg, type: 'error' })
+    // Reset file input immediately so the same file can be re-selected
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
     }
 
-    // Reset file input
+    // Show the file pill in "uploading" state
+    setUploadedFile({ file, status: 'uploading' })
+
+    try {
+      await chatService.uploadPrivateDocument(sessionId, file)
+      setUploadedFile({ file, status: 'ready' })
+      setToast({ message: 'Document ready. You can now ask questions about it.', type: 'success' })
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.message || 'Failed to upload document.'
+      setUploadedFile({ file, status: 'ready', error: msg })
+      setToast({ message: msg, type: 'error' })
+    }
+  }
+
+  const handleRemoveFile = () => {
+    setUploadedFile(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -201,6 +220,15 @@ const ChatPage: React.FC = () => {
   }
 
   const isAdmin = user?.role?.is_admin ?? false
+  const isFileUploading = uploadedFile?.status === 'uploading'
+  // Send is disabled while the AI is replying OR a document is still being processed
+  const isSendDisabled = !inputValue.trim() || isLoading || isFileUploading
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
 
   return (
     <div className="flex flex-col -m-6 h-[calc(100vh-4rem)]">
@@ -304,50 +332,100 @@ const ChatPage: React.FC = () => {
       </div>
 
       {/* Input bar */}
-      <div className="bg-white border-t border-slate-200 px-4 py-4">
-        <div className="max-w-3xl mx-auto flex items-center gap-3">
-          {/* Upload button (members only) */}
-          {!isAdmin && (
-            <>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="text-slate-400 hover:text-indigo-600 p-2 rounded-lg hover:bg-slate-100 transition-colors"
-                title="Upload a document"
+      <div className="border-slate-200 px-4 pt-3 pb-4">
+        <div className="max-w-3xl mx-auto">
+
+          {/* Input row */}
+          <div className="relative border border-slate-200 rounded-3xl bg-slate-50 focus-within:ring-2 focus-within:ring-indigo-500">
+          {/* File preview inside input */}
+          {uploadedFile && (
+            <div className="px-3 pt-3">
+              <div
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm ${
+                  uploadedFile.error
+                    ? 'border-red-200 bg-red-50 text-red-700'
+                    : uploadedFile.status === 'uploading'
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                }`}
               >
-                <Paperclip className="w-5 h-5" />
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-            </>
+                {uploadedFile.status === 'uploading' ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <FileText className="w-4 h-4" />
+                )}
+                
+                <span className="max-w-[180px] truncate ">
+                  {uploadedFile.file.name}
+                </span>
+                <span>
+                  {formatFileSize(uploadedFile.file.size)}
+                </span>
+
+                {uploadedFile.status !== 'uploading' && (
+                  <button
+                    onClick={handleRemoveFile}
+                    className="hover:bg-black/5 rounded-full p-1"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
           )}
 
-          {/* Text input */}
-          <textarea
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask about your documents..."
-            rows={1}
-            className="flex-1 border border-slate-200 rounded-xl px-4 py-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none bg-slate-50"
-            style={{ maxHeight: '120px' }}
-          />
+          {/* Input area */}
+          <div className="relative">
+            {!isAdmin && (
+              <>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isFileUploading}
+                  type="button"
+                  className="absolute left-2 bottom-3 z-10 flex items-center justify-center w-8 h-8 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-slate-200"
+                >
+                  <Plus className="w-5 h-5" strokeWidth={2.5} />
+                </button>
 
-          {/* Send button */}
-          <button
-            onClick={() => handleSend()}
-            disabled={!inputValue.trim() || isLoading}
-            className="bg-indigo-700 hover:bg-indigo-600 text-white rounded-xl p-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <SendHorizontal className="w-5 h-5" />
-          </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+              </>
+            )}
+
+            <textarea
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                isFileUploading
+                  ? "Please wait while the document is processed..."
+                  : "Ask about your documents..."
+              }
+              rows={1}
+              className={`w-full bg-transparent py-3 resize-none focus:outline-none border-0 ${
+                !isAdmin ? "pl-12 pr-14" : "pl-4 pr-14"
+              }`}
+              style={{ maxHeight: "120px" }}
+            />
+
+            <button
+              onClick={() => handleSend()}
+              disabled={isSendDisabled}
+              type="button"
+              className="absolute right-2 bottom-2.5 flex items-center justify-center w-9 h-9 rounded-full bg-indigo-700 hover:bg-indigo-600 text-white disabled:opacity-50"
+            >
+              <SendHorizontal className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        {/* Error display */}
-        {error && <p className="text-red-500 text-sm mt-1 max-w-3xl mx-auto">{error}</p>}
+          {/* Error display */}
+          {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
+        </div>
       </div>
     </div>
   )
