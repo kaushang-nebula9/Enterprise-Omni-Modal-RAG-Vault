@@ -3,13 +3,13 @@ import uuid
 from sqlalchemy import String, DateTime, Uuid, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
+from app.models.query_message import QueryMessage
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.tenant import Tenant
-    from app.models.query_message import QueryMessage
     
 
 class QuerySession(Base):
@@ -38,4 +38,9 @@ class QuerySession(Base):
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="query_sessions")
     tenant: Mapped["Tenant"] = relationship("Tenant", back_populates="query_sessions")
-    messages: Mapped[list["QueryMessage"]] = relationship("QueryMessage", back_populates="session", cascade="all, delete-orphan")
+    messages: Mapped[list["QueryMessage"]] = relationship(
+        "QueryMessage",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="QueryMessage.created_at.asc()",
+    )

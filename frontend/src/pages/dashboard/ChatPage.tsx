@@ -86,7 +86,11 @@ const ChatPage: React.FC = () => {
         if (existingSessionId) {
           const session = await chatService.getSession(existingSessionId)
           setSessionId(session.id)
-          setMessages(session.messages)
+          // Sort chronologically — joinedload order is non-deterministic in some DB/ORM configurations
+          const sortedMessages = [...session.messages].sort(
+            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          )
+          setMessages(sortedMessages)
           sessionReadyRef.current = true
 
           if (autoQuery) {

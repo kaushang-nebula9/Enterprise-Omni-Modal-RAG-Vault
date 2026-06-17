@@ -123,7 +123,13 @@ def get_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found",
         )
+
+    # joinedload does not guarantee ordering — sort messages chronologically
+    # before serialisation so the client always receives them oldest-first.
+    session.messages.sort(key=lambda m: m.created_at)
+
     return session
+
 
 
 @router.delete("/sessions/{session_id}")
