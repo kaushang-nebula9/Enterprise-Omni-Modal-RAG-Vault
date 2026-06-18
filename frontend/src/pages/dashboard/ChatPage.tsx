@@ -133,10 +133,14 @@ const ChatPage: React.FC = () => {
       try {
         const session = await chatService.getSession(urlSessionId)
         setSessionId(session.id)
-        // Sort chronologically
-        const sortedMessages = [...session.messages].sort(
-          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        )
+        // Sort chronologically, fallback to role for identical timestamps
+        const sortedMessages = [...session.messages].sort((a, b) => {
+          const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          if (timeDiff !== 0) return timeDiff
+          if (a.role === 'user' && b.role === 'assistant') return -1
+          if (a.role === 'assistant' && b.role === 'user') return 1
+          return 0
+        })
         setMessages(sortedMessages)
         setUploadedFile(null) // clear any attached file from previous chat
 

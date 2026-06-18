@@ -126,7 +126,8 @@ def get_session(
 
     # joinedload does not guarantee ordering — sort messages chronologically
     # before serialisation so the client always receives them oldest-first.
-    session.messages.sort(key=lambda m: m.created_at)
+    # Fallback to role if timestamps are identical.
+    session.messages.sort(key=lambda m: (m.created_at, 0 if m.role == MessageRole.user else 1))
 
     return session
 
@@ -225,6 +226,7 @@ def send_query(
         session_id=session_id,
         role=MessageRole.user,
         content=content,
+        created_at=datetime.now(timezone.utc),
     )
     db.add(user_message)
     db.flush()
@@ -246,6 +248,7 @@ def send_query(
         session_id=session_id,
         role=MessageRole.assistant,
         content=rag_result["answer"],
+        created_at=datetime.now(timezone.utc),
     )
     db.add(assistant_message)
     db.flush()
