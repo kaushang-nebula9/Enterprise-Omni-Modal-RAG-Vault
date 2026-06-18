@@ -21,23 +21,65 @@ def _get_client() -> genai.Client:
     return _client
 
 
+# ---------------------------------------------------------------------------
+# Text Embedding
+# ---------------------------------------------------------------------------
+
+# -- Sentence Transformers (ACTIVE) -----------------------------------------
+# Temporary replacement for Gemini embeddings to avoid API rate limits.
+# Model: BAAI/bge-large-en-v1.5  |  Output dimension: 1024
+# To switch back to Gemini: comment this block and uncomment the Gemini block below.
+
+from sentence_transformers import SentenceTransformer as _SentenceTransformer
+
+_st_model: _SentenceTransformer | None = None
+
+
+def _get_st_model() -> _SentenceTransformer:
+    """Lazily load and cache the SentenceTransformer model."""
+    global _st_model
+    if _st_model is None:
+        logger.info("Loading SentenceTransformer model: BAAI/bge-large-en-v1.5")
+        _st_model = _SentenceTransformer("BAAI/bge-large-en-v1.5")
+    return _st_model
+
+
 def embed_text(text: str) -> list[float]:
     """
-    Generate a text embedding using the gemini-embedding-2-preview model.
+    Generate a 1024-dimensional text embedding using BAAI/bge-large-en-v1.5
+    via Sentence Transformers (local, no API calls).
 
-    Adds a 0.5-second delay after the API call to avoid rate limiting.
     Raises an exception with a clear message if the call fails.
     """
-    client = _get_client()
     try:
-        result = client.models.embed_content(
-            model="gemini-embedding-2-preview",
-            contents=text,
-        )
-        time.sleep(0.5)
-        return result.embeddings[0].values
+        model = _get_st_model()
+        vector = model.encode(text, normalize_embeddings=True)
+        return vector.tolist()
     except Exception as exc:
         raise RuntimeError(f"Failed to generate embedding: {exc}") from exc
+
+
+# -- Gemini Embedding (COMMENTED OUT — restore when rate limits are lifted) --
+#
+# def embed_text(text: str) -> list[float]:
+#     """
+#     Generate a text embedding using the gemini-embedding-2-preview model.
+#
+#     Adds a 0.5-second delay after the API call to avoid rate limiting.
+#     Raises an exception with a clear message if the call fails.
+#     """
+#     client = _get_client()
+#     try:
+#         result = client.models.embed_content(
+#             model="gemini-embedding-2-preview",
+#             contents=text,
+#         )
+#         time.sleep(0.5)
+#         return result.embeddings[0].values
+#     except Exception as exc:
+#         raise RuntimeError(f"Failed to generate embedding: {exc}") from exc
+
+# ---------------------------------------------------------------------------
 
 
 def transcribe_audio(file_path: str) -> str:

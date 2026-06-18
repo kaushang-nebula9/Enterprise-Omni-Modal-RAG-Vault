@@ -30,28 +30,23 @@ CHUNK_OVERLAP = 200
 
 
 # ---------------------------------------------------------------------------
-# Gemini Vision helper (used by both PDF and DOCX pipelines)
+# Image description helper (used by both PDF and DOCX pipelines)
 # ---------------------------------------------------------------------------
 
 def describe_slide_image(image_path: str) -> str:
     """
-    Send a local image file to Gemini Vision and return a detailed description.
-
-    This mirrors the inline Gemini Vision call used in the PPTX pipeline
-    inside embedding_service and is placed here so the PDF and DOCX pipelines
-    can call it without depending on additional files.
+    Send a local image file to Claude Vision and return a detailed description.
 
     Returns an empty string if the call fails.
     """
-    import time
-    from google import genai
-    from google.genai import types as genai_types
+    import base64
+    from anthropic import Anthropic
     from app.core.config import settings
 
+    # -- Anthropic Vision (ACTIVE) --------------------------------------------
+    # To switch back to Gemini: comment this block, uncomment the Gemini block below.
     try:
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        with open(image_path, "rb") as f:
-            image_bytes = f.read()
+        client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
         ext = image_path.rsplit(".", 1)[-1].lower()
         mime_map = {
@@ -59,23 +54,81 @@ def describe_slide_image(image_path: str) -> str:
             "jpg": "image/jpeg",
             "jpeg": "image/jpeg",
             "gif": "image/gif",
-            "bmp": "image/bmp",
             "webp": "image/webp",
         }
         mime_type = mime_map.get(ext, "image/png")
 
-        response = client.models.generate_content(
-            model="gemini-3.5-flash",
-            contents=[
-                genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-                "Describe this image in detail. Be specific about data, trends, and key takeaways.",
-            ],
+        with open(image_path, "rb") as f:
+            image_bytes = f.read()
+        b64_image = base64.b64encode(image_bytes).decode("utf-8")
+        
+        system_prompt = "If the image is a chart or a graph, then give exact values and analyze the data in a structured format."
+        
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=4096,
+            temperature=0,
+            system=system_prompt,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": mime_type,
+                                "data": b64_image,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": "Describe this image in detail. Be specific about data, trends, and key takeaways."
+                        }
+                    ],
+                }
+            ]
         )
-        time.sleep(0.5)  # avoid rate limits
-        return (response.text or "").strip()
+        response_text = message.content[0].text
+        return response_text.strip()
     except Exception as exc:
-        logger.error("describe_slide_image: failed to describe image '%s': %s", image_path, exc)
+        logger.error("describe_slide_image (Claude): failed to describe image '%s': %s", image_path, exc)
         return ""
+
+    # -- Gemini Vision (COMMENTED OUT — restore when switching back) ----------
+    # import time
+    # from google import genai
+    # from google.genai import types as genai_types
+    # from app.core.config import settings
+    #
+    # try:
+    #     client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    #     with open(image_path, "rb") as f:
+    #         image_bytes = f.read()
+    #
+    #     ext = image_path.rsplit(".", 1)[-1].lower()
+    #     mime_map = {
+    #         "png": "image/png",
+    #         "jpg": "image/jpeg",
+    #         "jpeg": "image/jpeg",
+    #         "gif": "image/gif",
+    #         "bmp": "image/bmp",
+    #         "webp": "image/webp",
+    #     }
+    #     mime_type = mime_map.get(ext, "image/png")
+    #
+    #     response = client.models.generate_content(
+    #         model="gemini-3.5-flash",
+    #         contents=[
+    #             genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+    #             "Describe this image in detail. Be specific about data, trends, and key takeaways.",
+    #         ],
+    #     )
+    #     time.sleep(0.5)  # avoid rate limits
+    #     return (response.text or "").strip()
+    # except Exception as exc:
+    #     logger.error("describe_slide_image: failed to describe image '%s': %s", image_path, exc)
+    #     return ""
 
 
 # ---------------------------------------------------------------------------

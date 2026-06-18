@@ -4,6 +4,10 @@ RAG (Retrieval-Augmented Generation) service.
 Handles:
   - Excel query execution in a RestrictedPython sandbox
   - Full RAG pipeline: embed query → Qdrant search → Excel pipeline → LLM answer
+
+NOTE — Anthropic (Claude) is ACTIVE for all LLM calls.
+       Gemini 2.5 Flash code is commented out below each active block.
+       To restore Gemini: uncomment the Gemini blocks and comment the Anthropic blocks.
 """
 import logging
 import threading
@@ -18,6 +22,8 @@ from sqlalchemy import or_
 from google import genai
 from google.genai import types as genai_types
 
+from anthropic import Anthropic
+
 from app.core.config import settings
 from app.models.document import Document
 from app.models.document_access_policy import DocumentAccessPolicy
@@ -30,17 +36,32 @@ from app.services.storage_service import get_absolute_path
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Gemini client
+# Gemini client (kept for future restoration — currently unused)
 # ---------------------------------------------------------------------------
 
-_client: genai.Client | None = None
+_gemini_client: genai.Client | None = None
 
 
-def _get_client() -> genai.Client:
-    global _client
-    if _client is None:
-        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
-    return _client
+def _get_gemini_client() -> genai.Client:
+    global _gemini_client
+    if _gemini_client is None:
+        _gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    return _gemini_client
+
+
+# ---------------------------------------------------------------------------
+# Anthropic client (ACTIVE)
+# ---------------------------------------------------------------------------
+
+_anthropic_client: Anthropic | None = None
+
+
+def _get_anthropic_client() -> Anthropic:
+    """Lazily initialise and return the Anthropic client."""
+    global _anthropic_client
+    if _anthropic_client is None:
+        _anthropic_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    return _anthropic_client
 
 
 # ---------------------------------------------------------------------------
@@ -71,7 +92,7 @@ def execute_excel_query(
     query: str,
 ) -> Optional[str]:
     """
-    Generate a pandas query via Gemini and execute it in a RestrictedPython
+    Generate a pandas query via Claude and execute it in a RestrictedPython
     sandbox with a 10-second timeout.
 
     Returns str(result) on success, None on any failure.
@@ -82,7 +103,7 @@ def execute_excel_query(
         df = pd.read_excel(file_path, engine="openpyxl")
 
         print("###  2\n")
-        # Ask Gemini to generate the pandas code
+        # Build the prompt
         prompt = _EXCEL_CODE_PROMPT.format(
             columns=schema.get("columns", []),
             dtypes=schema.get("dtypes", {}),
@@ -93,13 +114,29 @@ def execute_excel_query(
         )
 
         print("###  3 prompt: ", prompt, "\n")
-        client = _get_client()
-        response = client.models.generate_content(
-            model="gemini-3.5-flash",
-            contents=prompt,
+
+        # -- Anthropic LLM call (ACTIVE) ------------------------------------------
+        # To switch back to Gemini: comment this block, uncomment the Gemini block below.
+        client = _get_anthropic_client()
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=8192,
+            temperature=0.1,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
         )
-        print("###  4 resonse: ", response.text, "\n")
-        code = (response.text or "").strip()
+        code = (message.content[0].text or "").strip()
+
+        # -- Gemini LLM call for Excel code gen (COMMENTED OUT) --------------
+        # gemini_client = _get_gemini_client()
+        # response = gemini_client.models.generate_content(
+        #     model="gemini-2.5-flash",
+        #     contents=prompt,
+        # )
+        # code = (response.text or "").strip()
+
+        print("###  4 response: ", code, "\n")
 
         print("###  5\n")
         # Strip markdown fences if present
@@ -110,7 +147,7 @@ def execute_excel_query(
 
         print("###  6 code: ", code, "\n")
         if not code:
-            logger.warning("Gemini returned empty code for Excel query")
+            logger.warning("Anthropic returned empty code for Excel query")
             return None
 
         print("###  7\n")
@@ -198,7 +235,7 @@ def run_rag_pipeline(
       2. Fetch authorised documents
       3. Qdrant semantic search (non-Excel)
       4. Excel code-gen pipeline
-      5. Build context → Gemini → return answer + citations
+      5. Build context → Anthropic (Claude) → return answer + citations
     """
     tenant_id = str(user.tenant_id)
     role_id = str(user.role_id)
@@ -322,11 +359,9 @@ def run_rag_pipeline(
     print("############################### Context block: ", context_block)
 
     # ------------------------------------------------------------------
-    # 6. Call Gemini for the final answer
+    # 6. Call LLM for the final answer
     # ------------------------------------------------------------------
-    final_prompt = f"""{_SYSTEM_PROMPT}
-
-Context:
+    final_prompt = f"""Context:
 {context_block}
 
 Conversation History (recent messages):
@@ -337,18 +372,41 @@ User Question: {query}
 Answer:"""
 
     print("############################### Final prompt: ", final_prompt)
+
+    # -- Anthropic LLM call (ACTIVE) ----------------------------------------------
+    # To switch back to Gemini: comment this block, uncomment the Gemini block below.
     try:
-        client = _get_client()
-        response = client.models.generate_content(
-            model="gemini-3.5-flash",
-            contents=final_prompt,
+        anthropic_client = _get_anthropic_client()
+        message = anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=8192,
+            temperature=0,
+            system=_SYSTEM_PROMPT,
+            messages=[
+                {"role": "user", "content": final_prompt}
+            ]
         )
-        answer = (response.text or "").strip()
+        answer = (message.content[0].text or "").strip()
         if not answer:
             answer = "I could not generate an answer. Please try rephrasing your question."
     except Exception as exc:
-        logger.error("Gemini answer generation failed: %s", exc)
+        logger.error("Anthropic answer generation failed: %s", exc)
         answer = "I encountered an error while generating an answer. Please try again."
+
+    # -- Gemini answer generation (COMMENTED OUT) ----------------------------
+    # try:
+    #     gemini_client = _get_gemini_client()
+    #     full_gemini_prompt = f"{_SYSTEM_PROMPT}\n\n{final_prompt}"
+    #     response = gemini_client.models.generate_content(
+    #         model="gemini-2.5-flash",
+    #         contents=full_gemini_prompt,
+    #     )
+    #     answer = (response.text or "").strip()
+    #     if not answer:
+    #         answer = "I could not generate an answer. Please try rephrasing your question."
+    # except Exception as exc:
+    #     logger.error("Gemini answer generation failed: %s", exc)
+    #     answer = "I encountered an error while generating an answer. Please try again."
 
     # ------------------------------------------------------------------
     # 7. Build citations list

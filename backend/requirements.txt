@@ -12,6 +12,8 @@ python-jose[cryptography]
 python-multipart
 httpx
 qdrant-client
+sentence-transformers
+anthropic
 google-generativeai
 google-genai
 PyMuPDF
