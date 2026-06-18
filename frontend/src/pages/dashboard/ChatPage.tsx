@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { SendHorizontal, Plus, FileText, ChevronDown, ChevronUp, X, Loader2 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { chatService } from '../../services/chatService'
@@ -14,7 +15,8 @@ interface UploadedFile {
 
 const ChatPage: React.FC = () => {
   const { user } = useAuthStore()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const queryClient = useQueryClient()
 
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<MessageResponse[]>([])
@@ -47,7 +49,8 @@ const ChatPage: React.FC = () => {
     try {
       const newSession = await chatService.createSession()
       setSessionId(newSession.id)
-      window.history.replaceState(null, '', `?session=${newSession.id}`)
+      setSearchParams({ session: newSession.id }, { replace: true })
+      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
       return newSession.id
     } catch (err: any) {
       const msg = err?.response?.data?.detail || err?.message || 'Failed to create chat session.'
@@ -100,6 +103,7 @@ const ChatPage: React.FC = () => {
         citations: response.citations,
       }
       setMessages((prev) => [...prev, assistantMsg])
+      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
     } catch (err: any) {
       const msg = err?.response?.data?.detail || err?.message || 'Failed to get a response.'
       setError(msg)
@@ -187,6 +191,7 @@ const ChatPage: React.FC = () => {
         citations: response.citations,
       }
       setMessages((prev) => [...prev, assistantMsg])
+      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
     } catch (err: any) {
       const msg = err?.response?.data?.detail || err?.message || 'Failed to get a response.'
       setError(msg)

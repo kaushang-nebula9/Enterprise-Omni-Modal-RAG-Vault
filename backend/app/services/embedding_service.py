@@ -183,17 +183,51 @@ def process_pptx_slides(file_path: str) -> list[dict]:
                 try:
                     image_bytes = shape.image.blob
                     ext = shape.image.ext
-                    mime_type = f"image/{ext}" if ext else "image/png"
+                    import base64
+                    from anthropic import Anthropic
+                    from app.core.config import settings
+
+                    anthropic_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
                     
-                    response = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=[
-                            genai_types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-                            "Describe this image in detail. Be specific about data, trends, and key takeaways."
-                        ],
+                    mime_map = {
+                        "png": "image/png",
+                        "jpg": "image/jpeg",
+                        "jpeg": "image/jpeg",
+                        "gif": "image/gif",
+                        "webp": "image/webp",
+                    }
+                    ext_lower = (ext or "").lower()
+                    mime_type = mime_map.get(ext_lower, "image/png")
+                    
+                    b64_image = base64.b64encode(image_bytes).decode("utf-8")
+                    system_prompt = "If the image is a chart or a graph, then give exact values and analyze the data in a structured format."
+                    
+                    message = anthropic_client.messages.create(
+                        model="claude-haiku-4-5-20251001",
+                        max_tokens=4096,
+                        temperature=0,
+                        system=system_prompt,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "image",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": mime_type,
+                                            "data": b64_image,
+                                        },
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": "Describe this image in detail. Be specific about data, trends, and key takeaways."
+                                    }
+                                ],
+                            }
+                        ]
                     )
-                    time.sleep(0.5) # avoid rate limits
-                    desc = (response.text or "").strip()
+                    desc = message.content[0].text.strip()
                     if desc:
                         texts.append(f"[Image Description]: {desc}")
                 except Exception as exc:
