@@ -17,7 +17,6 @@ import { OrganisationSettingsPage } from './pages/dashboard/OrganisationSettings
 import { ProfileSettingsPage } from './pages/dashboard/ProfileSettingsPage';
 import DocumentsPage from './pages/dashboard/DocumentsPage';
 import ChatPage from './pages/dashboard/ChatPage';
-import ChatHistoryPage from './pages/dashboard/ChatHistoryPage';
 
 const App: React.FC = () => {
   return (
@@ -49,7 +48,6 @@ const App: React.FC = () => {
           <Route path="settings" element={<ProtectedAdminRoute><OrganisationSettingsPage /></ProtectedAdminRoute>} />
           
           <Route path="chat" element={<ChatPage />} />
-          <Route path="history" element={<ChatHistoryPage />} />
           <Route path="profile" element={<ProfileSettingsPage />} />
         </Route>
 

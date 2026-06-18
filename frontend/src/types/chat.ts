@@ -23,6 +23,10 @@ export interface MessageResponse {
   content: string
   created_at: string
   citations: CitationResponse[]
+  attached_file?: {
+    name: string
+    size: number
+  }
 }
 
 export interface SessionDetailResponse extends SessionResponse {
