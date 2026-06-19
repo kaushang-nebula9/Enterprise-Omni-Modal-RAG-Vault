@@ -13,6 +13,7 @@ import {
   Trash2,
   X,
   AlertTriangle,
+  ChevronDown,
 } from 'lucide-react'
 import { documentService } from '../../services/documentService'
 import type { DocumentResponse, FileType, DocumentStatus } from '../../types/document'
@@ -256,6 +257,11 @@ type ModalState =
 export default function YourDocumentsPage() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const [filterType, setFilterType] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  
   const [modal, setModal] = useState<ModalState>({ type: 'none' })
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -265,9 +271,37 @@ export default function YourDocumentsPage() {
   })
 
   const filteredDocuments = useMemo(() => {
-    const q = search.toLowerCase()
-    return q ? documents.filter((d) => d.filename.toLowerCase().includes(q)) : documents
-  }, [documents, search])
+    return documents.filter((doc) => {
+      // 1. Search name
+      if (search && !doc.filename.toLowerCase().includes(search.toLowerCase())) return false;
+      
+      // 2. Type filter
+      if (filterType !== 'all' && doc.file_type !== filterType) return false;
+
+      // 3. Status filter
+      if (filterStatus !== 'all' && doc.status !== filterStatus) return false;
+
+      // 4. Date filter
+      if (startDate || endDate) {
+        const uploadedDate = new Date(doc.uploaded_at);
+        uploadedDate.setHours(0, 0, 0, 0);
+
+        if (startDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          if (uploadedDate < start) return false;
+        }
+        
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          if (uploadedDate > end) return false;
+        }
+      }
+
+      return true;
+    })
+  }, [documents, search, filterType, filterStatus, startDate, endDate])
 
   function handleSuccess(message: string) {
     setModal({ type: 'none' })
@@ -307,16 +341,83 @@ export default function YourDocumentsPage() {
         </button>
       </div>
 
-      {/* Search bar */}
-      <div className="relative">
-        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-        <input
-          type="text"
-          placeholder="Search your documents by name..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-shadow"
-        />
+      {/* Filters & Search */}
+      <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
+        {/* Search */}
+        <div className="relative w-full flex-1 min-w-[200px]">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search documents by name..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all"
+          />
+        </div>
+
+        <div className="hidden lg:block w-px h-8 bg-slate-200 mx-1 shrink-0"></div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap items-center justify-end gap-3 w-full lg:w-auto shrink-0">
+          {/* File Type */}
+          <div className="relative shrink-0">
+            <select
+              value={filterType}
+              onChange={(e) => {
+                setFilterType(e.target.value)
+                e.target.blur()
+              }}
+              className="peer appearance-none w-32 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer hover:bg-slate-100 transition-colors"
+            >
+              <option value="all">All Types</option>
+              <option value="pdf">PDF</option>
+              <option value="text">TXT</option>
+              <option value="audio">Audio</option>
+              <option value="pptx">PPTX</option>
+              <option value="docx">DOCX</option>
+              <option value="excel">Excel</option>
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+          </div>
+
+          {/* Status */}
+          <div className="relative shrink-0">
+            <select
+              value={filterStatus}
+              onChange={(e) => {
+                setFilterStatus(e.target.value)
+                e.target.blur()
+              }}
+              className="peer appearance-none w-36 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer hover:bg-slate-100 transition-colors"
+            >
+              <option value="all">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="processing">Processing</option>
+              <option value="ready">Ready</option>
+              <option value="failed">Failed</option>
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+          </div>
+
+          {/* Date Range */}
+          <div className="flex items-center bg-white border border-slate-200 rounded-xl px-2 hover:bg-slate-100 transition-colors focus-within:ring-2 focus-within:ring-indigo-400 focus-within:bg-white overflow-hidden">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="bg-transparent text-sm text-slate-700 font-medium py-2 focus:outline-none cursor-pointer w-[115px]"
+              title="Start Date"
+            />
+            <span className="text-slate-300 font-medium px-1">-</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="bg-transparent text-sm text-slate-700 font-medium py-2 focus:outline-none cursor-pointer w-[115px]"
+              title="End Date"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Table */}
