@@ -17,6 +17,7 @@ export interface DocumentResponse {
   qdrant_collection: string
   status: DocumentStatus
   file_path: string | null
+  file_size?: number | null
   uploaded_at: string
   updated_at: string
   access_policies: RoleResponse[]

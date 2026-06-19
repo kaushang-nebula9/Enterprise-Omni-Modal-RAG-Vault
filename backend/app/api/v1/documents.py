@@ -134,6 +134,7 @@ def upload_document(
         qdrant_collection=collection_name,
         status=DocumentStatus.pending,
         file_path=file_path,
+        file_size=file.size,
     )
     db.add(document)
 

@@ -44,6 +44,7 @@ class Document(Base):
         server_default="pending"
     )
     file_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     excel_schema: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

@@ -31,6 +31,7 @@ const adminLinks = [
 
 const memberLinks = [
   { name: 'New Chat', icon: MessageSquare, path: '/dashboard/chat' },
+  { name: 'Your Documents', icon: FileText, path: '/dashboard/your-documents' },
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {

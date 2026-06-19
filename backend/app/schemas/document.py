@@ -18,6 +18,7 @@ class DocumentResponse(BaseModel):
     qdrant_collection: str
     status: DocumentStatus
     file_path: Optional[str] = None
+    file_size: Optional[int] = None
     uploaded_at: datetime
     updated_at: datetime
 

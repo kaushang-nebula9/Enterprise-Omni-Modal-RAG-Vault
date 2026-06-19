@@ -62,4 +62,38 @@ export const documentService = {
     })
     return response.data
   },
+
+  // Personal Documents Endpoints
+  getPersonalDocuments: async (): Promise<DocumentResponse[]> => {
+    const response = await api.get('/api/v1/personal-documents')
+    return response.data
+  },
+
+  uploadPersonalDocument: async (file: File): Promise<DocumentResponse> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await api.post('/api/v1/personal-documents/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data
+  },
+
+  downloadPersonalDocument: async (documentId: string, filename: string): Promise<void> => {
+    const response = await api.get(`/api/v1/personal-documents/${documentId}/download`, {
+      responseType: 'blob',
+    })
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', filename)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  },
+
+  deletePersonalDocument: async (documentId: string): Promise<MessageResponse> => {
+    const response = await api.delete(`/api/v1/personal-documents/${documentId}`)
+    return response.data
+  },
 }
