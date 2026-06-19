@@ -4,7 +4,7 @@ All routes are admin-only and scoped to the current user's tenant.
 """
 import uuid
 import logging
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -20,7 +20,7 @@ from app.schemas.document import (
     UpdateDocumentAccessRequest,
 )
 from app.services.storage_service import save_file, delete_file, get_absolute_path
-from app.services.document_processor import process_document
+from app.services.document_processor import process_document, process_document_bg
 from app.services.qdrant_service import delete_document_vectors, update_document_payload
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,7 @@ def _load_document_with_policies(db: Session, document_id: uuid.UUID, tenant_id:
 
 @router.post("/upload", response_model=DocumentWithAccessResponse, status_code=status.HTTP_201_CREATED)
 def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     role_ids: list[str] = Form(...),
     current_admin: User = Depends(require_admin),
@@ -148,8 +149,8 @@ def upload_document(
 
     db.commit()
 
-    # Run the ingestion pipeline synchronously
-    process_document(str(document_id), db)
+    # Run the ingestion pipeline in the background
+    background_tasks.add_task(process_document_bg, str(document_id))
 
     # Reload with policies and roles eager-loaded
     doc = _load_document_with_policies(db, document_id, tenant_id)

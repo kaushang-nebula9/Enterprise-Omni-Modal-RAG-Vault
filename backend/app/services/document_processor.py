@@ -651,3 +651,16 @@ def process_document(document_id: str, db: Session) -> None:
             db.commit()
         except Exception:
             db.rollback()
+
+
+def process_document_bg(document_id: str):
+    """
+    Wrapper for process_document to be used with FastAPI BackgroundTasks.
+    It provisions its own DB session so that the processing isn't tied to the request lifecycle.
+    """
+    from app.db.session import SessionLocal
+    db = SessionLocal()
+    try:
+        process_document(document_id, db)
+    finally:
+        db.close()
