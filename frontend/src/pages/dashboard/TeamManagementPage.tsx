@@ -1,16 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminService } from '../../services/adminService';
 import { roleService } from '../../services/roleService';
 import { useAuthStore } from '../../store/authStore';
-import { MoreVertical, UserPlus, X } from 'lucide-react';
+import {
+  UserPlus,
+  X,
+  Search,
+  ChevronDown,
+  UserMinus,
+  UserCheck,
+  Users,
+  Pencil,
+  Trash2,
+  AlertTriangle
+} from 'lucide-react';
 import api from '../../services/api'; // For invite
-
-// We need an InviteMemberPayload that is currently handled via raw API or we can add it to adminService.
-// Wait, inviteMember is in authService.
-// Wait, `inviteMember` wasn't exported from authService in my previous check. Let me add it.
-// I'll define it here temporarily if not present, but I should add it to authService.
 import type { UserResponse, RoleResponse } from '../../types/auth';
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
 
 const inviteMemberAPI = async (data: { full_name: string; email: string; role_id: string }) => {
   const response = await api.post('/api/v1/auth/invite-member', data);
@@ -26,32 +40,51 @@ export const TeamManagementPage: React.FC = () => {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [deactivatingUserId, setDeactivatingUserId] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
-  const [dropdownOpenId, setDropdownOpenId] = useState<string | null>(null);
 
-  const { data: members, isLoading: loadingMembers } = useQuery({
+  // Search & Filter State
+  const [search, setSearch] = useState('');
+  const [filterRole, setFilterRole] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const { data: members = [], isLoading: loadingMembers } = useQuery({
     queryKey: ['members'],
     queryFn: adminService.getMembers,
   });
 
-  const { data: roles } = useQuery({
+  const { data: roles = [] } = useQuery({
     queryKey: ['roles'],
     queryFn: roleService.getRoles,
   });
 
+  function handleSuccess(message: string) {
+    queryClient.invalidateQueries({ queryKey: ['members'] });
+    setSuccessMessage(message);
+    setTimeout(() => setSuccessMessage(null), 4000);
+  }
+
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => adminService.updateMember(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['members'] });
+    onSuccess: (data, variables) => {
       setEditingUserId(null);
       setDeactivatingUserId(null);
+      if (variables.data.role_id) {
+        handleSuccess('Member role updated successfully');
+      } else if (variables.data.is_active !== undefined) {
+        handleSuccess(`Member ${variables.data.is_active ? 'activated' : 'deactivated'} successfully`);
+      } else {
+        handleSuccess('Member updated successfully');
+      }
     }
   });
 
   const deleteMutation = useMutation({
     mutationFn: adminService.deleteMember,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['members'] });
       setDeletingUserId(null);
+      handleSuccess('Member removed successfully');
     }
   });
 
@@ -70,147 +103,357 @@ export const TeamManagementPage: React.FC = () => {
       setInviteName('');
       setInviteEmail('');
       setInviteRole('');
+      handleSuccess('Member invited successfully');
       setTimeout(() => setIsInviteModalOpen(false), 2000);
     } catch (err: any) {
       setInviteStatus({ type: 'error', msg: err.response?.data?.detail || 'Failed to send invite' });
     }
   };
 
+  const filteredMembers = useMemo(() => {
+    return members.filter((m: UserResponse) => {
+      // 1. Search name or email
+      if (search) {
+        const query = search.toLowerCase();
+        const matchesName = m.full_name?.toLowerCase().includes(query);
+        const matchesEmail = m.email?.toLowerCase().includes(query);
+        if (!matchesName && !matchesEmail) return false;
+      }
+      
+      // 2. Role filter
+      if (filterRole !== 'all' && m.role.id !== filterRole) return false;
+
+      // 3. Status filter
+      if (filterStatus !== 'all') {
+        const isActive = filterStatus === 'active';
+        if (m.is_active !== isActive) return false;
+      }
+
+      // 4. Date filter
+      if (startDate || endDate) {
+        const joinedDate = new Date(m.created_at);
+        joinedDate.setHours(0, 0, 0, 0);
+
+        if (startDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          if (joinedDate < start) return false;
+        }
+        
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          if (joinedDate > end) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [members, search, filterRole, filterStatus, startDate, endDate]);
+
   return (
-    <div className="flex flex-col gap-6 w-full max-w-6xl mx-auto h-full text-slate-800 dark:text-slate-100">
-      <div className="flex justify-between items-center shrink-0">
-        <div>
-          <h1 className="text-2xl font-semibold font-sora text-slate-800 dark:text-slate-100">Team Management</h1>
-          <p className="text-slate-500 dark:text-slate-400">Manage your organisation's members and their roles.</p>
+    <div className="space-y-6 text-slate-800 dark:text-slate-100 animate-in fade-in duration-300">
+      {/* Success toast */}
+      {successMessage && (
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-3 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium animate-fade-in">
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          {successMessage}
         </div>
-        <button 
+      )}
+
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Team Management</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Manage your organisation's members and their roles</p>
+        </div>
+        <button
           onClick={() => setIsInviteModalOpen(true)}
-          className="flex items-center gap-2 bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+          className="flex items-center gap-2 bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-800 dark:hover:bg-indigo-600 text-white font-semibold rounded-xl px-4 py-2.5 transition-colors shadow-sm"
         >
           <UserPlus className="w-4 h-4" />
           Invite Member
         </button>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm flex-1 flex flex-col">
-        <div className="overflow-x-auto flex-1">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 text-sm">
-              <tr>
-                <th className="px-6 py-4 font-medium">Member</th>
-                <th className="px-6 py-4 font-medium">Role</th>
-                <th className="px-6 py-4 font-medium">Status</th>
-                <th className="px-6 py-4 font-medium">Joined</th>
-                <th className="px-6 py-4 font-medium w-16"></th>
+      {/* Filters & Search */}
+      <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
+        {/* Search */}
+        <div className="relative w-full flex-1 min-w-[200px]">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
+          <input
+            id="member-search"
+            type="text"
+            placeholder="Search members by name or email..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-900 transition-all"
+          />
+        </div>
+
+        <div className="hidden lg:block w-px h-8 bg-slate-200 dark:bg-slate-800 mx-1 shrink-0"></div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap items-center justify-end gap-3 w-full lg:w-auto shrink-0">
+          {/* Role Filter */}
+          <div className="relative shrink-0">
+            <select
+              value={filterRole}
+              onChange={(e) => {
+                setFilterRole(e.target.value);
+                e.target.blur();
+              }}
+              className="peer appearance-none w-32 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <option value="all">All Roles</option>
+              {roles.map((r: RoleResponse) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+          </div>
+
+          {/* Status Filter */}
+          <div className="relative shrink-0">
+            <select
+              value={filterStatus}
+              onChange={(e) => {
+                setFilterStatus(e.target.value);
+                e.target.blur();
+              }}
+              className="peer appearance-none w-36 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+          </div>
+
+          {/* Date Range */}
+          <div className="flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-2 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus-within:ring-2 focus-within:ring-indigo-400 dark:focus-within:ring-indigo-500 focus-within:bg-white dark:focus-within:bg-slate-900 overflow-hidden">
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="bg-transparent text-sm text-slate-700 dark:text-slate-300 font-medium py-2 focus:outline-none cursor-pointer w-[115px]"
+              title="Start Date"
+            />
+            <span className="text-slate-300 dark:text-slate-600 font-medium px-1">-</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="bg-transparent text-sm text-slate-700 dark:text-slate-300 font-medium py-2 focus:outline-none cursor-pointer w-[115px]"
+              title="End Date"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
+                <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Member</th>
+                <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Role</th>
+                <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Status</th>
+                <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Joined</th>
+                <th className="px-4 py-3.5 text-right font-semibold text-slate-600 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loadingMembers ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <tr key={i} className="border-b border-slate-100 dark:border-slate-800">
+                    {Array.from({ length: 5 }).map((_, j) => (
+                      <td key={j} className="px-4 py-4">
+                        <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" style={{ width: `${60 + (j * 13) % 40}%` }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-400 dark:text-slate-500">Loading members...</td>
-                </tr>
-              ) : members?.map((m: UserResponse) => (
-                <tr key={m.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
-                        {m.avatar_url ? (
-                          <img src={m.avatar_url} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          m.full_name.substring(0, 2).toUpperCase()
-                        )}
-                      </div>
+                  <td colSpan={5} className="px-4 py-16 text-center text-slate-400 dark:text-slate-500">
+                    <div className="flex flex-col items-center gap-3">
+                      <Users className="w-12 h-12 text-slate-200 dark:text-slate-800" />
                       <div>
-                        <div className="font-medium text-slate-900 dark:text-slate-200">{m.full_name} {m.id === currentUser?.id && '(You)'}</div>
-                        <div className="text-sm text-slate-500 dark:text-slate-450">{m.email}</div>
+                        <p className="font-medium text-slate-500 dark:text-slate-400">
+                          {search ? 'No members match your search' : 'No members yet'}
+                        </p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-block bg-indigo-100 dark:bg-indigo-950/60 text-indigo-755 dark:text-indigo-400 rounded-full px-3 py-1 text-xs font-medium">
-                      {m.role.name}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    {m.is_active ? (
-                      <span className="inline-block bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400 rounded-full px-3 py-1 text-xs font-medium">Active</span>
-                    ) : (
-                      <span className="inline-block bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400 rounded-full px-3 py-1 text-xs font-medium">Inactive</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
-                    {new Date(m.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 relative">
-                    <button 
-                      onClick={() => setDropdownOpenId(dropdownOpenId === m.id ? null : m.id)}
-                      className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-105 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                    >
-                      <MoreVertical className="w-5 h-5" />
-                    </button>
-                    {dropdownOpenId === m.id && (
-                      <div className="absolute right-6 top-10 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-lg rounded-lg py-1 z-10">
-                        <button 
+                </tr>
+              ) : (
+                filteredMembers.map((m: UserResponse) => (
+                  <tr
+                    key={m.id}
+                    className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                  >
+                    {/* Member */}
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
+                          {m.avatar_url ? (
+                            <img src={m.avatar_url} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            m.full_name.substring(0, 2).toUpperCase()
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium text-slate-800 dark:text-slate-200 truncate" title={m.full_name}>
+                            {m.full_name} {m.id === currentUser?.id && '(You)'}
+                          </div>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 truncate" title={m.email}>{m.email}</div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Role */}
+                    <td className="px-4 py-3.5">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400">
+                        {m.role.name}
+                      </span>
+                    </td>
+
+                    {/* Status */}
+                    <td className="px-4 py-3.5">
+                      {m.is_active ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400">
+                          Inactive
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Joined */}
+                    <td className="px-4 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                      {formatDate(m.created_at)}
+                    </td>
+
+                    {/* Actions */}
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          title="Change Role"
                           disabled={m.id === currentUser?.id || m.role.is_admin}
-                          onClick={() => { setEditingUserId(m.id); setDropdownOpenId(null); }}
-                          className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => setEditingUserId(m.id)}
+                          className="p-2 text-slate-400 dark:text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 dark:disabled:hover:text-slate-500 disabled:cursor-not-allowed"
                         >
-                          Change Role
+                          <Pencil className="w-4 h-4" />
                         </button>
-                        <button 
+                        <button
+                          title={m.is_active ? 'Deactivate' : 'Activate'}
                           disabled={m.id === currentUser?.id || m.role.is_admin}
-                          onClick={() => { setDeactivatingUserId(m.id); setDropdownOpenId(null); }}
-                          className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => setDeactivatingUserId(m.id)}
+                          className={`p-2 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed text-slate-400 dark:text-slate-500 ${
+                            m.is_active
+                              ? 'hover:text-indigo-650 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40'
+                              : 'hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                          }`}
                         >
-                          {m.is_active ? 'Deactivate' : 'Activate'}
+                          {m.is_active ? <UserMinus className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
                         </button>
-                        <button 
+                        <button
+                          title="Remove Member"
                           disabled={m.id === currentUser?.id || m.role.is_admin}
-                          onClick={() => { setDeletingUserId(m.id); setDropdownOpenId(null); }}
-                          className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => setDeletingUserId(m.id)}
+                          className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 dark:disabled:hover:text-slate-500 disabled:cursor-not-allowed"
                         >
-                          Remove Member
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* Footer count */}
+        {!loadingMembers && filteredMembers.length > 0 && (
+          <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950">
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              Showing {filteredMembers.length} of {members.length} member{members.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Invite Modal */}
       {isInviteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-slate-800 dark:text-slate-100">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 dark:border-slate-800">
-              <h2 className="text-xl font-semibold font-sora">Invite Member</h2>
-              <button onClick={() => setIsInviteModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"><X className="w-5 h-5"/></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-slate-800">
+              <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Invite Member</h2>
+              <button
+                onClick={() => setIsInviteModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors rounded-lg p-1 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <form onSubmit={handleInvite} className="p-6 flex flex-col gap-4">
+            <form onSubmit={handleInvite} className="px-6 py-5 space-y-5">
               {inviteStatus && (
-                <div className={`p-3 rounded-lg text-sm ${inviteStatus.type === 'success' ? 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-900/50' : 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900/50'}`}>
-                  {inviteStatus.msg}
+                <div className={`flex items-start gap-2 p-3 rounded-lg text-sm border ${
+                  inviteStatus.type === 'success'
+                    ? 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-900/50'
+                    : 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/50'
+                }`}>
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span className="text-sm">{inviteStatus.msg}</span>
                 </div>
               )}
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Full Name</label>
-                <input required value={inviteName} onChange={e=>setInviteName(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Full Name</label>
+                <input
+                  required
+                  value={inviteName}
+                  onChange={(e) => setInviteName(e.target.value)}
+                  className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 transition-all"
+                />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Email Address</label>
-                <input required type="email" value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Email Address</label>
+                <input
+                  required
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 transition-all"
+                />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Role</label>
-                <select required value={inviteRole} onChange={e=>setInviteRole(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none bg-white transition-all">
-                  <option value="">Select a role...</option>
-                  {roles?.map((r: RoleResponse) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </select>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Role</label>
+                <div className="relative">
+                  <select
+                    required
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value)}
+                    className="peer appearance-none w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <option value="">Select a role...</option>
+                    {roles?.map((r: RoleResponse) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+                </div>
               </div>
-              <button type="submit" className="mt-2 w-full bg-indigo-700 dark:bg-indigo-500 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 dark:hover:bg-indigo-400 transition-colors">
+              <button
+                type="submit"
+                className="w-full bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-800 dark:hover:bg-indigo-600 text-white font-semibold rounded-xl px-4 py-2.5 transition-colors shadow-sm"
+              >
                 Send Invite
               </button>
             </form>
@@ -220,13 +463,42 @@ export const TeamManagementPage: React.FC = () => {
 
       {/* Delete Confirmation */}
       {deletingUserId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm p-6 text-center text-slate-800 dark:text-slate-100">
-            <h3 className="text-lg font-semibold mb-2">Remove Member</h3>
-            <p className="text-slate-500 dark:text-slate-400 mb-6">Are you sure you want to permanently remove this member? This action cannot be undone.</p>
-            <div className="flex gap-3 w-full">
-              <button onClick={() => setDeletingUserId(null)} className="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium transition-colors">Cancel</button>
-              <button onClick={() => deleteMutation.mutate(deletingUserId)} className="flex-1 py-2 rounded-lg bg-red-655 dark:bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white font-medium transition-colors">Remove</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
+            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800">
+              <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Remove Member</h2>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-normal">
+                Are you sure you want to permanently remove{' '}
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {members?.find((m: UserResponse) => m.id === deletingUserId)?.full_name}
+                </span>
+                ? This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-3 px-6 pb-6">
+              <button
+                onClick={() => setDeletingUserId(null)}
+                className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate(deletingUserId)}
+                disabled={deleteMutation.isPending}
+                className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl px-4 py-2.5 transition-colors disabled:opacity-70"
+              >
+                {deleteMutation.isPending ? (
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                Remove
+              </button>
             </div>
           </div>
         </div>
@@ -234,16 +506,43 @@ export const TeamManagementPage: React.FC = () => {
 
       {/* Deactivate/Activate Confirmation */}
       {deactivatingUserId && (() => {
-        const target = members?.find(m => m.id === deactivatingUserId);
+        const target = members?.find((m: UserResponse) => m.id === deactivatingUserId);
         const newStatus = !target?.is_active;
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm p-6 text-center text-slate-800 dark:text-slate-100">
-              <h3 className="text-lg font-semibold mb-2">{newStatus ? 'Activate' : 'Deactivate'} Member</h3>
-              <p className="text-slate-500 dark:text-slate-400 mb-6">Are you sure you want to {newStatus ? 'activate' : 'deactivate'} this member?</p>
-              <div className="flex gap-3 w-full">
-                <button onClick={() => setDeactivatingUserId(null)} className="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium transition-colors">Cancel</button>
-                <button onClick={() => updateMutation.mutate({ id: deactivatingUserId, data: { is_active: newStatus }})} className="flex-1 py-2 rounded-lg bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-medium transition-colors">Confirm</button>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
+              <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800">
+                <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                  {newStatus ? 'Activate' : 'Deactivate'} Member
+                </h2>
+              </div>
+              <div className="px-6 py-5">
+                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-normal">
+                  Are you sure you want to {newStatus ? 'activate' : 'deactivate'}{' '}
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{target?.full_name}</span>?
+                </p>
+              </div>
+              <div className="flex gap-3 px-6 pb-6">
+                <button
+                  onClick={() => setDeactivatingUserId(null)}
+                  className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => updateMutation.mutate({ id: deactivatingUserId, data: { is_active: newStatus } })}
+                  disabled={updateMutation.isPending}
+                  className="flex-1 flex items-center justify-center gap-2 bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-800 dark:hover:bg-indigo-600 text-white font-semibold rounded-xl px-4 py-2.5 transition-colors disabled:opacity-70"
+                >
+                  {updateMutation.isPending ? (
+                    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                  ) : (
+                    'Confirm'
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -252,32 +551,63 @@ export const TeamManagementPage: React.FC = () => {
 
       {/* Change Role Modal */}
       {editingUserId && (() => {
-        const target = members?.find(m => m.id === editingUserId);
+        const target = members?.find((m: UserResponse) => m.id === editingUserId);
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md p-6 text-slate-800 dark:text-slate-100">
-              <h3 className="text-lg font-semibold mb-4">Change Role</h3>
-              <div className="space-y-1 mb-6">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Select Role</label>
-                <select 
-                  defaultValue={target?.role_id}
-                  id="roleSelect"
-                  className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-100"
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-slate-800">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Change Role</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-xs">{target?.full_name}</p>
+                </div>
+                <button
+                  onClick={() => setEditingUserId(null)}
+                  className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-350 transition-colors rounded-lg p-1 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
-                  {roles?.map((r: RoleResponse) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </select>
-              </div>
-              <div className="flex gap-3 w-full">
-                <button onClick={() => setEditingUserId(null)} className="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-900 text-slate-650 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium transition-colors">Cancel</button>
-                <button 
-                  onClick={() => {
-                    const el = document.getElementById('roleSelect') as HTMLSelectElement;
-                    if (el) updateMutation.mutate({ id: editingUserId, data: { role_id: el.value } });
-                  }} 
-                  className="flex-1 py-2 rounded-lg bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-medium transition-colors"
-                >
-                  Save
+                  <X className="w-5 h-5" />
                 </button>
+              </div>
+              <div className="px-6 py-5 space-y-5">
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Select Role</label>
+                  <div className="relative">
+                    <select
+                      defaultValue={target?.role_id}
+                      id="roleSelect"
+                      className="peer appearance-none w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      {roles?.map((r: RoleResponse) => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setEditingUserId(null)}
+                    className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      const el = document.getElementById('roleSelect') as HTMLSelectElement;
+                      if (el) updateMutation.mutate({ id: editingUserId, data: { role_id: el.value } });
+                    }}
+                    disabled={updateMutation.isPending}
+                    className="flex-1 flex items-center justify-center bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-800 dark:hover:bg-indigo-600 text-white font-semibold rounded-xl px-4 py-2.5 transition-colors disabled:opacity-70"
+                  >
+                    {updateMutation.isPending ? (
+                      <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                      </svg>
+                    ) : (
+                      'Save Changes'
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
