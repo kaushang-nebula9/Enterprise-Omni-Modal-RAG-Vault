@@ -9,13 +9,14 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_admin, get_current_user
 from app.models.user import User
 from app.models.document import Document
 from app.models.document_access_policy import DocumentAccessPolicy
 from app.models.role import Role
 from app.models.enums import DocumentStatus, FileType, OwnerType, Visibility
 from app.schemas.document import (
+    DocumentResponse,
     DocumentWithAccessResponse,
     UpdateDocumentAccessRequest,
 )
@@ -171,6 +172,28 @@ def get_documents(
         .filter(
             Document.tenant_id == current_admin.tenant_id,
             Document.owner_type == OwnerType.organisation,
+        )
+        .all()
+    )
+    return docs
+
+
+@router.get("/authorized", response_model=list[DocumentResponse])
+def get_authorized_documents(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return all organisation-owned documents for the user's tenant where the user's
+    role is in the document's access policies.
+    """
+    docs = (
+        db.query(Document)
+        .join(DocumentAccessPolicy, Document.id == DocumentAccessPolicy.document_id)
+        .filter(
+            Document.tenant_id == current_user.tenant_id,
+            Document.owner_type == OwnerType.organisation,
+            DocumentAccessPolicy.role_id == current_user.role_id,
         )
         .all()
     )

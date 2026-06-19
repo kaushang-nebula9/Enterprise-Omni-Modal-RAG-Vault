@@ -26,6 +26,14 @@ export const documentService = {
   },
 
   /**
+   * Fetch all documents authorized for the current member user.
+   */
+  getAuthorizedDocuments: async (): Promise<DocumentResponse[]> => {
+    const response = await api.get('/api/v1/documents/authorized')
+    return response.data
+  },
+
+  /**
    * Download a document file — triggers a browser file download.
    */
   downloadDocument: async (documentId: string, filename: string): Promise<void> => {

@@ -266,3 +266,44 @@ def process_pptx_slides(file_path: str) -> list[dict]:
                 logger.warning("Failed to embed chunk for slide %d: %s", slide_idx, exc)
                 
     return results
+
+
+_anthropic_client = None
+
+
+def _get_anthropic_client():
+    """Lazily initialise and return the Anthropic client."""
+    global _anthropic_client
+    if _anthropic_client is None:
+        from anthropic import Anthropic
+        _anthropic_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    return _anthropic_client
+
+
+def generate_document_description(content_sample: str, file_type: str) -> str | None:
+    """
+    Generate a single concise sentence (max 50 words) describing the document's content.
+    Uses Claude to generate the description best-effort.
+    """
+    try:
+        client = _get_anthropic_client()
+        prompt = (
+            "Based on the following content from a document, write a single concise sentence "
+            "(max 50 words) describing what this document is about. Do not mention the file format. "
+            "Be specific about the topic or purpose.\n\n"
+            f"Content: {content_sample}\n\n"
+            "Description:"
+        )
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=150,
+            temperature=0,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return (message.content[0].text or "").strip()
+    except Exception as exc:
+        logger.error("Failed to generate document description: %s", exc)
+        return None
+

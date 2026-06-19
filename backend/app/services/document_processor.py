@@ -505,12 +505,15 @@ def process_document(document_id: str, db: Session) -> None:
 
         points: list[dict] = []
         chunk_index = 0
+        content_sample = ""
 
         if file_type == FileType.pdf:
             print("#################")
             print("Starting PDF pipeline for document: ", document.filename, "\n")
 
             pages = extract_text_from_pdf(abs_file_path, doc_id)
+            combined_text = "\n".join(page["text"] for page in pages)
+            content_sample = combined_text[:2000]
             for page in pages:
                 chunks = chunk_text(page["text"])
                 for chunk in chunks:
@@ -543,6 +546,7 @@ def process_document(document_id: str, db: Session) -> None:
             print("Starting DOCX pipeline for document: ", document.filename, "\n")
 
             full_text = extract_text_from_docx(abs_file_path, doc_id)
+            content_sample = full_text[:2000]
             chunks = chunk_text(full_text)
             for chunk in chunks:
                 vector = embedding_service.embed_text(chunk)
@@ -571,6 +575,7 @@ def process_document(document_id: str, db: Session) -> None:
 
         elif file_type == FileType.text:
             full_text = extract_text_from_txt(abs_file_path)
+            content_sample = full_text[:2000]
             chunks = chunk_text(full_text)
             for chunk in chunks:
                 vector = embedding_service.embed_text(chunk)
@@ -595,6 +600,8 @@ def process_document(document_id: str, db: Session) -> None:
 
         elif file_type == FileType.pptx:
             slides = embedding_service.process_pptx_slides(abs_file_path)
+            combined_text = "\n".join(slide["text"] for slide in slides)
+            content_sample = combined_text[:2000]
             for slide in slides:
                 vector = slide["vector"]
                 sparse_vector = qdrant_service.generate_sparse_vector(slide["text"])
@@ -619,6 +626,7 @@ def process_document(document_id: str, db: Session) -> None:
 
         elif file_type == FileType.audio:
             transcription = embedding_service.transcribe_audio(abs_file_path)
+            content_sample = transcription[:2000]
             chunks = chunk_text(transcription)
             for chunk in chunks:
                 vector = embedding_service.embed_text(chunk)
@@ -647,6 +655,21 @@ def process_document(document_id: str, db: Session) -> None:
             document.chunk_count = 0
             document.status = DocumentStatus.ready
             db.commit()
+
+            # Generate and save description for Excel
+            try:
+                excel_sample = f"Columns: {schema['columns']}. Sample data: {schema['sample']}"
+                description = embedding_service.generate_document_description(
+                    excel_sample, document.file_type.value
+                )
+                if description is not None:
+                    document.description = description
+                    db.commit()
+                    print("#################")
+                    print("Generated document description: ", description, "\n")
+            except Exception as desc_exc:
+                logger.error("Failed to generate and save document description for Excel: %s", desc_exc)
+
             logger.info("Excel document %s processed (schema only, no vectors)", doc_id)
             return
 
@@ -657,6 +680,21 @@ def process_document(document_id: str, db: Session) -> None:
         document.chunk_count = chunk_index
         document.status = DocumentStatus.ready
         db.commit()
+
+        # Generate and save description for non-Excel
+        try:
+            if content_sample:
+                description = embedding_service.generate_document_description(
+                    content_sample, document.file_type.value
+                )
+                if description is not None:
+                    document.description = description
+                    db.commit()
+                    print("#################")
+                    print("Generated document description: ", description, "\n")
+        except Exception as desc_exc:
+            logger.error("Failed to generate and save document description: %s", desc_exc)
+
         logger.info(
             "Document %s processed: %d chunks upserted into %s",
             doc_id,

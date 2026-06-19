@@ -21,4 +21,5 @@ export interface DocumentResponse {
   uploaded_at: string
   updated_at: string
   access_policies: RoleResponse[]
+  description: string | null
 }

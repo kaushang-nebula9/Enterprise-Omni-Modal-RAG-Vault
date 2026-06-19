@@ -264,10 +264,28 @@ export default function YourDocumentsPage() {
   
   const [modal, setModal] = useState<ModalState>({ type: 'none' })
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [expandedDocIds, setExpandedDocIds] = useState<Set<string>>(new Set())
+
+  const toggleExpand = (docId: string) => {
+    setExpandedDocIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(docId)) {
+        next.delete(docId)
+      } else {
+        next.add(docId)
+      }
+      return next
+    })
+  }
 
   const { data: documents = [], isLoading: docsLoading } = useQuery({
     queryKey: ['personal-documents'],
     queryFn: documentService.getPersonalDocuments,
+  })
+
+  const { data: authorizedDocuments = [], isLoading: authDocsLoading } = useQuery({
+    queryKey: ['authorized-documents'],
+    queryFn: documentService.getAuthorizedDocuments,
   })
 
   const filteredDocuments = useMemo(() => {
@@ -329,7 +347,7 @@ export default function YourDocumentsPage() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Your Documents</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Your documents</h1>
           <p className="text-sm text-slate-500 mt-0.5">Manage your personal files and documents</p>
         </div>
         <button
@@ -423,7 +441,15 @@ export default function YourDocumentsPage() {
       {/* Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
+            <colgroup>
+              <col style={{ width: '30%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '16%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '15%' }} />
+            </colgroup>
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="px-4 py-3.5 text-left font-semibold text-slate-600">File Name</th>
@@ -537,6 +563,157 @@ export default function YourDocumentsPage() {
             <p className="text-xs text-slate-400">
               Showing {filteredDocuments.length} of {documents.length} document{documents.length !== 1 ? 's' : ''}
             </p>
+          </div>
+        )}
+      </div>
+
+      {/* Organisational Documents Section */}
+      <div className="border-t border-slate-200 my-8" />
+
+      <div className="space-y-4">
+        <div>
+          <h2 className="font-sora text-lg font-semibold text-slate-800">
+            Documents shared by your organisation
+          </h2>
+          <p className="text-slate-500 text-sm mt-0.5">
+            These are documents your role has been given access to query in chat.
+          </p>
+        </div>
+
+        {authDocsLoading ? (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full table-fixed text-sm">
+                <colgroup>
+                  <col style={{ width: '30%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '16%' }} />
+                  <col style={{ width: '15%' }} />
+                  <col style={{ width: '15%' }} />
+                </colgroup>
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="px-4 py-3.5 text-left font-semibold text-slate-600">File Name</th>
+                    <th className="px-4 py-3.5 text-left font-semibold text-slate-600">Type</th>
+                    <th className="px-4 py-3.5 text-left font-semibold text-slate-600">Size</th>
+                    <th className="px-4 py-3.5 text-left font-semibold text-slate-600">Upload Date</th>
+                    <th className="px-4 py-3.5 text-left font-semibold text-slate-600" colSpan={2}>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: 3 }).map((_, idx) => (
+                    <tr key={idx} className="border-b border-slate-100 animate-pulse">
+                      <td className="px-4 py-4"><div className="h-4 bg-slate-200 rounded w-2/3" /></td>
+                      <td className="px-4 py-4"><div className="h-4 bg-slate-200 rounded w-1/2" /></td>
+                      <td className="px-4 py-4"><div className="h-4 bg-slate-200 rounded w-1/2" /></td>
+                      <td className="px-4 py-4"><div className="h-4 bg-slate-200 rounded w-2/3" /></td>
+                      <td className="px-4 py-4" colSpan={2}><div className="h-4 bg-slate-200 rounded w-5/6" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : authorizedDocuments.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 bg-slate-50/50 border border-dashed border-slate-200 rounded-2xl">
+            <FileText className="w-12 h-12 text-slate-200 mb-3" />
+            <p className="text-slate-400 text-sm">
+              Your role does not currently have access to any organisational documents.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full table-fixed text-sm">
+                <colgroup>
+                  <col style={{ width: '30%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '16%' }} />
+                  <col style={{ width: '15%' }} />
+                  <col style={{ width: '15%' }} />
+                </colgroup>
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="px-4 py-3.5 text-left font-semibold text-slate-600">File Name</th>
+                    <th className="px-4 py-3.5 text-left font-semibold text-slate-600">Type</th>
+                    <th className="px-4 py-3.5 text-left font-semibold text-slate-600">Size</th>
+                    <th className="px-4 py-3.5 text-left font-semibold text-slate-600">Upload Date</th>
+                    <th className="px-4 py-3.5 text-left font-semibold text-slate-600" colSpan={2}>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {authorizedDocuments.map((doc) => {
+                    const TypeIcon = FILE_TYPE_ICON[doc.file_type] ?? File
+                    const badge = FILE_TYPE_BADGE[doc.file_type]
+                    const desc = doc.description
+                    const isExpanded = expandedDocIds.has(doc.id)
+
+                    return (
+                      <tr
+                        key={doc.id}
+                        className="border-b border-slate-100 hover:bg-slate-50/60 transition-colors align-top"
+                      >
+                        {/* File Name */}
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <TypeIcon className="w-5 h-5 text-slate-400 shrink-0" />
+                            <span className="font-medium text-slate-800 truncate max-w-[280px]" title={doc.filename}>
+                              {doc.filename}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* File Type */}
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${badge.className}`}
+                          >
+                            {badge.label}
+                          </span>
+                        </td>
+
+                        {/* Size */}
+                        <td className="px-4 py-4 text-slate-500 whitespace-nowrap">
+                          {formatBytes(doc.file_size)}
+                        </td>
+
+                        {/* Upload Date */}
+                        <td className="px-4 py-4 text-slate-500 whitespace-nowrap">
+                          {formatDate(doc.uploaded_at)}
+                        </td>
+
+                        {/* Description */}
+                        <td className="px-4 py-4" colSpan={2}>
+                          {!desc ? (
+                            <span className="text-slate-400 text-sm italic">No description available</span>
+                          ) : (
+                            <div className="text-slate-500 text-sm leading-relaxed">
+                              <div
+                                onClick={() => toggleExpand(doc.id)}
+                                className={`cursor-pointer transition-all duration-150 ${isExpanded ? "whitespace-normal" : "truncate"}`}
+                                title={isExpanded ? "Click to show less" : "Click to expand description"}
+                              >
+                                {desc}
+                              </div>
+                              {isExpanded && (
+                                <button
+                                  onClick={() => toggleExpand(doc.id)}
+                                  className="text-indigo-600 hover:text-indigo-800 font-semibold focus:outline-none hover:underline mt-1 text-xs"
+                                >
+                                  show less
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

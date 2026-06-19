@@ -1,7 +1,7 @@
 from datetime import datetime
 import uuid
 from typing import Optional, TYPE_CHECKING
-from sqlalchemy import String, DateTime, Uuid, ForeignKey, Integer, func
+from sqlalchemy import String, DateTime, Uuid, ForeignKey, Integer, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
@@ -46,6 +46,7 @@ class Document(Base):
     file_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     excel_schema: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 

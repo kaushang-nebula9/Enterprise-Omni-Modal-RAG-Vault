@@ -19,6 +19,7 @@ class DocumentResponse(BaseModel):
     status: DocumentStatus
     file_path: Optional[str] = None
     file_size: Optional[int] = None
+    description: Optional[str] = None
     uploaded_at: datetime
     updated_at: datetime
 
