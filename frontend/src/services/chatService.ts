@@ -24,8 +24,11 @@ export const chatService = {
     return response.data
   },
 
-  sendQuery: async (sessionId: string, content: string): Promise<QueryResponse> => {
-    const response = await api.post<QueryResponse>(`/api/v1/chat/sessions/${sessionId}/query`, { content })
+  sendQuery: async (sessionId: string, content: string, documentId?: string): Promise<QueryResponse> => {
+    const response = await api.post<QueryResponse>(`/api/v1/chat/sessions/${sessionId}/query`, {
+      content,
+      document_id: documentId,
+    })
     return response.data
   },
 

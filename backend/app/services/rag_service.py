@@ -12,6 +12,7 @@ NOTE — Anthropic (Claude) is ACTIVE for all LLM calls.
 import logging
 import threading
 import traceback
+import uuid
 from typing import Optional
 
 import pandas as pd
@@ -228,6 +229,7 @@ def run_rag_pipeline(
     user: User,
     db: Session,
     conversation_history: str = "",
+    document_id: Optional[uuid.UUID] = None,
 ) -> dict:
     """
     Main RAG pipeline:
@@ -246,7 +248,7 @@ def run_rag_pipeline(
     query_vector = embedding_service.embed_text(query)
 
     # Fetch documents accessible via role-based access policies or uploaded by the user
-    all_authorized_docs = (
+    docs_query = (
         db.query(Document)
         .outerjoin(DocumentAccessPolicy, Document.id == DocumentAccessPolicy.document_id)
         .filter(
@@ -257,9 +259,11 @@ def run_rag_pipeline(
                 Document.uploaded_by == user.id,
             )
         )
-        .distinct()
-        .all()
     )
+    if document_id:
+        docs_query = docs_query.filter(Document.id == document_id)
+
+    all_authorized_docs = docs_query.distinct().all()
 
     excel_docs = [d for d in all_authorized_docs if d.file_type == FileType.excel]
     non_excel_exist = any(d.file_type != FileType.excel for d in all_authorized_docs)
@@ -269,7 +273,11 @@ def run_rag_pipeline(
     # ------------------------------------------------------------------
     qdrant_results: list[dict] = []
     if non_excel_exist:
-        collection_name = f"tenant_{tenant_id}"
+        if document_id and all_authorized_docs:
+            collection_name = all_authorized_docs[0].qdrant_collection
+        else:
+            collection_name = f"tenant_{tenant_id}"
+            
         try:
             # Search with role-based filter for shared docs
             search_role_ids = [role_id]
@@ -283,6 +291,7 @@ def run_rag_pipeline(
                 query_vector=query_vector,
                 role_ids=search_role_ids,
                 limit=5,
+                document_id=str(document_id) if document_id else None,
             )
         except Exception as exc:
             logger.error("Qdrant search failed: %s", exc)

@@ -110,7 +110,9 @@ def get_session(
         .options(
             joinedload(QuerySession.messages)
             .joinedload(QueryMessage.citations)
-            .joinedload(QueryCitation.document)
+            .joinedload(QueryCitation.document),
+            joinedload(QuerySession.messages)
+            .joinedload(QueryMessage.attached_document),
         )
         .filter(
             QuerySession.id == session_id,
@@ -227,6 +229,7 @@ def send_query(
         role=MessageRole.user,
         content=content,
         created_at=datetime.now(timezone.utc),
+        attached_document_id=body.document_id,
     )
     db.add(user_message)
     db.flush()
@@ -241,6 +244,7 @@ def send_query(
         user=current_user,
         db=db,
         conversation_history=conversation_history,
+        document_id=body.document_id,
     )
 
     # Store the assistant's response
@@ -365,6 +369,7 @@ def upload_private_document(
         qdrant_collection=collection_name,
         status=DocumentStatus.pending,
         file_path=file_path,
+        file_size=file.size,
     )
     db.add(document)
     db.commit()

@@ -2,6 +2,7 @@
 Qdrant vector database service for managing tenant collections and document vectors.
 """
 import logging
+from typing import Optional
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
@@ -152,6 +153,7 @@ def search_vectors(
     query_vector: list[float],
     role_ids: list[str],
     limit: int = 5,
+    document_id: Optional[str] = None,
 ) -> list[dict]:
     """
     Perform a semantic search with a role-based access filter using Hybrid Search.
@@ -164,14 +166,21 @@ def search_vectors(
     # Generate sparse vector for query
     sparse_query = generate_sparse_vector(query_text)
     
-    role_filter = Filter(
-        must=[
+    must_conditions = [
+        FieldCondition(
+            key="role_ids",
+            match=MatchAny(any=role_ids),
+        )
+    ]
+    if document_id:
+        must_conditions.append(
             FieldCondition(
-                key="role_ids",
-                match=MatchAny(any=role_ids),
+                key="document_id",
+                match=MatchValue(value=document_id),
             )
-        ]
-    )
+        )
+        
+    role_filter = Filter(must=must_conditions)
     
     results = client.query_points(
         collection_name=collection_name,

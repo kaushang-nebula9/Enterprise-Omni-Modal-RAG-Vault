@@ -1,17 +1,44 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
-import { SendHorizontal, Plus, FileText, ChevronDown, ChevronUp, X, Loader2 } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  SendHorizontal,
+  Plus,
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  X,
+  Loader2,
+  File,
+  FilePen,
+  Presentation,
+  FileSpreadsheet,
+  FileMusic,
+  Search,
+} from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { chatService } from '../../services/chatService'
+import { documentService } from '../../services/documentService'
 import type { MessageResponse } from '../../types/chat'
+import type { DocumentResponse, FileType } from '../../types/document'
 import ReactMarkdown from 'react-markdown'
 
 interface UploadedFile {
   file: File
   status: 'uploading' | 'ready'
   error?: string
+  id?: string
 }
+
+const FILE_TYPE_ICON: Record<FileType, React.FC<{ className?: string }>> = {
+  text: FileText,
+  pdf: File,
+  docx: FilePen,
+  pptx: Presentation,
+  excel: FileSpreadsheet,
+  audio: FileMusic,
+}
+
 
 const ChatPage: React.FC = () => {
   const { user } = useAuthStore()
@@ -26,6 +53,128 @@ const ChatPage: React.FC = () => {
   const [expandedCitations, setExpandedCitations] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
+  const [attachedDocument, setAttachedDocument] = useState<DocumentResponse | null>(null)
+
+  // Dropdown UI states
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [dropdownSearch, setDropdownSearch] = useState('')
+  const [activeIndex, setActiveIndex] = useState(0)
+
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const dropdownSearchInputRef = useRef<HTMLInputElement>(null)
+
+  // Fetch authorized documents
+  const { data: authorizedDocs, isLoading: isLoadingAuth } = useQuery({
+    queryKey: ['authorized-documents'],
+    queryFn: () => documentService.getAuthorizedDocuments(),
+  })
+
+  // Fetch personal documents
+  const { data: personalDocs, isLoading: isLoadingPersonal } = useQuery({
+    queryKey: ['personal-documents'],
+    queryFn: () => documentService.getPersonalDocuments(),
+  })
+
+  // Combined ready documents list
+  const allDocs = useMemo(() => {
+    const authList = authorizedDocs ?? []
+    const personalList = personalDocs ?? []
+    const docMap = new Map<string, DocumentResponse>()
+
+    authList.forEach(doc => {
+      if (doc.status === 'ready') docMap.set(doc.id, doc)
+    })
+    personalList.forEach(doc => {
+      if (doc.status === 'ready') docMap.set(doc.id, doc)
+    })
+
+    return Array.from(docMap.values())
+  }, [authorizedDocs, personalDocs])
+
+  // Filtered documents for search query
+  const filteredDocs = useMemo(() => {
+    const query = dropdownSearch.trim().toLowerCase()
+    if (!query) return allDocs
+    return allDocs.filter(doc => doc.filename.toLowerCase().includes(query))
+  }, [allDocs, dropdownSearch])
+
+  // Reset activeIndex when filtered docs change
+  useEffect(() => {
+    setActiveIndex(0)
+  }, [filteredDocs])
+
+  // Focus search box when dropdown opens
+  useEffect(() => {
+    if (isDropdownOpen) {
+      setTimeout(() => {
+        dropdownSearchInputRef.current?.focus()
+      }, 50)
+    }
+  }, [isDropdownOpen])
+
+  // Click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false)
+      }
+    }
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isDropdownOpen])
+
+  // Select document and remove the trigger slash
+  const handleSelectDocument = (doc: DocumentResponse) => {
+    setAttachedDocument(doc)
+    setUploadedFile(null) // clear any uploaded file to avoid duplicate attachments
+    setIsDropdownOpen(false)
+    setDropdownSearch('')
+
+    if (textareaRef.current) {
+      const cursor = textareaRef.current.selectionStart
+      const text = inputValue
+      const textBeforeCursor = text.substring(0, cursor)
+      const textAfterCursor = text.substring(cursor)
+
+      const match = textBeforeCursor.match(/(?:^|\s)\/(\S*)$/)
+      if (match) {
+        const slashIndex = textBeforeCursor.lastIndexOf('/')
+        const newText = text.substring(0, slashIndex) + textAfterCursor
+        setInputValue(newText)
+
+        setTimeout(() => {
+          textareaRef.current?.focus()
+          textareaRef.current?.setSelectionRange(slashIndex, slashIndex)
+        }, 50)
+      } else {
+        textareaRef.current.focus()
+      }
+    }
+  }
+
+  // Keyboard navigation for dropdown
+  const handleDropdownKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIndex((prev) => (filteredDocs.length > 0 ? (prev + 1) % filteredDocs.length : 0))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex((prev) => (filteredDocs.length > 0 ? (prev - 1 + filteredDocs.length) % filteredDocs.length : 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (filteredDocs[activeIndex]) {
+        handleSelectDocument(filteredDocs[activeIndex])
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setIsDropdownOpen(false)
+      textareaRef.current?.focus()
+    }
+  }
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -69,10 +218,18 @@ const ChatPage: React.FC = () => {
     const sid = await ensureSession()
     if (!sid) return
 
-    const attachedFile = uploadedFile?.status === 'ready' ? {
-      name: uploadedFile.file.name,
-      size: uploadedFile.file.size
-    } : undefined;
+    let attachedFile = undefined
+    if (attachedDocument) {
+      attachedFile = {
+        name: attachedDocument.filename,
+        size: attachedDocument.file_size || 0
+      }
+    } else if (uploadedFile?.status === 'ready') {
+      attachedFile = {
+        name: uploadedFile.file.name,
+        size: uploadedFile.file.size
+      }
+    }
 
     // Optimistically add user message
     const tempUserMsg: MessageResponse = {
@@ -86,14 +243,20 @@ const ChatPage: React.FC = () => {
     }
     setMessages((prev) => [...prev, tempUserMsg])
     setInputValue('')
+    
+    // Capture document IDs before resetting state
+    const docId = attachedDocument?.id || (uploadedFile?.status === 'ready' ? uploadedFile.id : undefined)
+    
     setUploadedFile(null)
+    setAttachedDocument(null)
+    
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
     setIsLoading(true)
 
     try {
-      const response = await chatService.sendQuery(sid, text)
+      const response = await chatService.sendQuery(sid, text, docId)
       const assistantMsg: MessageResponse = {
         id: response.message_id,
         session_id: sid,
@@ -110,7 +273,7 @@ const ChatPage: React.FC = () => {
     } finally {
       setIsLoading(false)
     }
-  }, [inputValue, isLoading, ensureSession, uploadedFile])
+  }, [inputValue, isLoading, ensureSession, uploadedFile, attachedDocument])
 
   const urlSessionId = searchParams.get('session')
   const autoQuery = searchParams.get('q')
@@ -123,6 +286,7 @@ const ChatPage: React.FC = () => {
         setSessionId(null)
         setMessages([])
         setUploadedFile(null)
+        setAttachedDocument(null)
         setInputValue('')
         if (textareaRef.current) textareaRef.current.style.height = 'auto'
       }
@@ -147,6 +311,7 @@ const ChatPage: React.FC = () => {
         })
         setMessages(sortedMessages)
         setUploadedFile(null) // clear any attached file from previous chat
+        setAttachedDocument(null)
 
         if (autoQuery) {
           // Small delay to let state settle
@@ -221,6 +386,8 @@ const ChatPage: React.FC = () => {
       fileInputRef.current.value = ''
     }
 
+    setAttachedDocument(null) // clear selected catalog document
+
     // Show the file pill in "uploading" state
     setUploadedFile({ file, status: 'uploading' })
 
@@ -232,8 +399,8 @@ const ChatPage: React.FC = () => {
     }
 
     try {
-      await chatService.uploadPrivateDocument(sid, file)
-      setUploadedFile({ file, status: 'ready' })
+      const response = await chatService.uploadPrivateDocument(sid, file)
+      setUploadedFile({ file, status: 'ready', id: response.id })
       setToast({ message: 'Document ready. You can now ask questions about it.', type: 'success' })
     } catch (err: any) {
       const msg = err?.response?.data?.detail || err?.message || 'Failed to upload document.'
@@ -269,10 +436,19 @@ const ChatPage: React.FC = () => {
   const isSendDisabled = !inputValue.trim() || isLoading || isFileUploading
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInputValue(e.target.value)
+    const value = e.target.value
+    setInputValue(value)
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
+    }
+
+    const selectionStart = e.target.selectionStart
+    const textBeforeCursor = value.substring(0, selectionStart)
+    const isSlashTrigger = textBeforeCursor === '/' || textBeforeCursor.endsWith(' /') || textBeforeCursor.endsWith('\n/')
+    if (isSlashTrigger) {
+      setIsDropdownOpen(true)
+      setDropdownSearch('')
     }
   }
 
@@ -425,7 +601,83 @@ const ChatPage: React.FC = () => {
 
       <div className="w-full">
         <div className="">
-          <div className={`max-w-3xl mx-auto h-full ${messages.length === 0 ? 'mb-32' : ''}`}>
+          <div className={`relative max-w-3xl mx-auto h-full ${messages.length === 0 ? 'mb-32' : ''}`}>
+
+            {/* Document Autocomplete Dropdown */}
+            {isDropdownOpen && (
+              <div
+                ref={dropdownRef}
+                className="absolute bottom-full left-0 mb-3 bg-white border border-slate-200 rounded-2xl shadow-2xl p-3 z-50 flex flex-col gap-2 transition-all h-72 w-1/2 text-slate-800"
+              >
+                {/* Search Bar */}
+                <div className="relative flex items-center flex-shrink-0">
+                  <Search className="absolute left-3 w-4 h-4 text-slate-400" />
+                  <input
+                    ref={dropdownSearchInputRef}
+                    type="text"
+                    value={dropdownSearch}
+                    onChange={(e) => setDropdownSearch(e.target.value)}
+                    onKeyDown={handleDropdownKeyDown}
+                    placeholder="Search authorized documents..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* Loading state */}
+                {(isLoadingAuth || isLoadingPersonal) ? (
+                  <div className="flex-1 flex items-center justify-center gap-2 text-slate-500 text-sm">
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                    Loading authorized documents...
+                  </div>
+                ) : filteredDocs.length === 0 ? (
+                  /* Empty state */
+                  <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
+                    No accessible documents found.
+                  </div>
+                ) : (
+                  /* Documents List */
+                  <div className="flex-1 overflow-y-auto space-y-0.5 custom-scrollbar pr-1">
+                    {filteredDocs.map((doc, idx) => {
+                      const Icon = FILE_TYPE_ICON[doc.file_type] || FileText
+                      const isActive = idx === activeIndex
+                      return (
+                        <button
+                          key={doc.id}
+                          onClick={() => handleSelectDocument(doc)}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-colors ${
+                            isActive
+                              ? "bg-indigo-600 text-white"
+                              : "text-slate-700 hover:bg-slate-100"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-white" : "text-indigo-650"}`} />
+                            <span className="truncate text-sm font-medium pr-1.5">
+                              {doc.filename}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0 text-xs">
+                            {doc.owner_type === 'private' ? (
+                              <span className={`px-2 py-0.5 rounded-md ${
+                                isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                              }`}>
+                                Personal
+                              </span>
+                            ) : (
+                              <span className={`px-2 py-0.5 rounded-md ${
+                                isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                              }`}>
+                                Org
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Input row */}
             <div className="border border-slate-300 rounded-3xl bg-slate-800 focus-within:ring-2 focus-within:ring-indigo-500 text-white mb-2">
@@ -464,6 +716,29 @@ const ChatPage: React.FC = () => {
                         <X className="w-3 h-3" />
                       </button>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Attached document preview inside input */}
+              {attachedDocument && (
+                <div className="px-3 pt-3">
+                  <div className="inline-flex items-center gap-2 px-3 py-2 ml-8 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-200 text-sm">
+                    <FileText className="w-4 h-4 text-indigo-400" />
+                    <span className="max-w-[180px] truncate font-medium">
+                      {attachedDocument.filename}
+                    </span>
+                    {attachedDocument.file_size && (
+                      <span className="text-slate-400 text-xs">
+                        ({formatFileSize(attachedDocument.file_size)})
+                      </span>
+                    )}
+                    <button
+                      onClick={() => setAttachedDocument(null)}
+                      className="hover:bg-white/10 rounded-full p-1"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
                   </div>
                 </div>
               )}
