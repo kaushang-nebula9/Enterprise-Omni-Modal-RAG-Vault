@@ -71,10 +71,10 @@ const LoginPage: React.FC = () => {
     <div className="w-full max-w-md">
       {/* Headings */}
       <div className="mb-8">
-        <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800">
+        <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
           Sign in to your account
         </h2>
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
           Enter your credentials to access the secure repository.
         </p>
       </div>
@@ -84,7 +84,7 @@ const LoginPage: React.FC = () => {
         <button
           type="button"
           onClick={handleGoogleLogin}
-          className="border border-slate-200 rounded-lg px-6 py-3 w-full flex items-center justify-center gap-3 text-slate-700 font-medium hover:bg-slate-50 transition-colors duration-200"
+          className="border border-slate-200 dark:border-slate-700 rounded-lg px-6 py-3 w-full flex items-center justify-center gap-3 text-slate-700 dark:text-slate-300 font-medium bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-200"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path
@@ -110,20 +110,20 @@ const LoginPage: React.FC = () => {
 
       {/* Divider */}
       <div className="relative flex py-5 items-center">
-        <div className="flex-grow border-t border-slate-200"></div>
-        <span className="flex-shrink mx-4 text-xs font-semibold tracking-wider text-slate-400 uppercase">
+        <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
+        <span className="flex-shrink mx-4 text-xs font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase">
           OR CONTINUE WITH
         </span>
-        <div className="flex-grow border-t border-slate-200"></div>
+        <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
       </div>
 
       {/* General error alert box */}
       {apiError && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 text-red-700 text-sm animate-fade-in">
-          <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+        <div className="mb-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded-lg p-4 flex items-start gap-3 text-red-700 dark:text-red-400 text-sm animate-fade-in">
+          <AlertTriangle className="h-5 w-5 text-red-500 dark:text-red-450 shrink-0 mt-0.5" />
           <div>
-            <h4 className="font-bold text-red-800">Authentication Failed</h4>
-            <p className="mt-1 text-red-700">{apiError}</p>
+            <h4 className="font-bold text-red-800 dark:text-red-300">Authentication Failed</h4>
+            <p className="mt-1 text-red-755 dark:text-red-400/90">{apiError}</p>
           </div>
         </div>
       )}
@@ -132,37 +132,37 @@ const LoginPage: React.FC = () => {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Email Field */}
         <div>
-          <label htmlFor="email" className="block text-sm font-semibold text-slate-700 mb-2">
+          <label htmlFor="email" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
             Email address
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <Mail className="h-5 w-5 text-slate-400" />
+              <Mail className="h-5 w-5 text-slate-400 dark:text-slate-500" />
             </div>
             <input
               id="email"
               type="email"
               placeholder="name@company.com"
               {...register('email')}
-              className={`border rounded-lg pl-11 pr-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                errors.email ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+              className={`border rounded-lg pl-11 pr-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
+                errors.email ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
               }`}
             />
           </div>
           {errors.email && (
-            <p className="mt-1.5 text-sm text-red-500">{errors.email.message}</p>
+            <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.email.message}</p>
           )}
         </div>
 
         {/* Password Field */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label htmlFor="password" className="block text-sm font-semibold text-slate-700">
+            <label htmlFor="password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
               Password
             </label>
             <Link
               to="/forgot-password"
-              className="text-sm font-semibold text-indigo-600 hover:text-indigo-500"
+              className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300"
             >
               Forgot password?
             </Link>
@@ -173,20 +173,20 @@ const LoginPage: React.FC = () => {
               type={showPassword ? 'text' : 'password'}
               placeholder="••••••••"
               {...register('password')}
-              className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                errors.password ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+              className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
+                errors.password ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
               }`}
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600"
+              className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-350"
             >
               {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
           </div>
           {errors.password && (
-            <p className="mt-1.5 text-sm text-red-500">{errors.password.message}</p>
+            <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.password.message}</p>
           )}
         </div>
 
@@ -195,7 +195,7 @@ const LoginPage: React.FC = () => {
           <button
             type="submit"
             disabled={isLoading}
-            className="bg-indigo-700 hover:bg-indigo-600 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200 flex items-center justify-center gap-2"
+            className="bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200 flex items-center justify-center gap-2"
           >
             {isLoading ? (
               <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -210,9 +210,9 @@ const LoginPage: React.FC = () => {
       </form>
 
       {/* Support Link */}
-      <div className="mt-8 text-center text-sm text-slate-500">
+      <div className="mt-8 text-center text-sm text-slate-500 dark:text-slate-400">
         Need help accessing your account?{' '}
-        <a href="#" className="font-semibold text-indigo-600 hover:text-indigo-500">
+        <a href="#" className="font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300">
           Contact IT Support
         </a>
       </div>

@@ -2,7 +2,7 @@ import React from "react";
 
 const AuthLeftPanel: React.FC = () => {
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center bg-indigo-700 p-12 text-white">
+    <div className="flex h-full w-full flex-col items-center justify-center bg-indigo-700 dark:bg-indigo-950 p-12 text-white">
       <div className="flex flex-col h-[70%] items-center">
         {/* Branding */}
         <h1 className="font-sora text-3xl  font-bold tracking-tight text-white text-center">

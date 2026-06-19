@@ -43,15 +43,15 @@ export const RolesPermissionsPage: React.FC = () => {
   const [deletingRole, setDeletingRole] = useState<RoleResponse | null>(null);
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-6xl mx-auto h-full">
+    <div className="flex flex-col gap-6 w-full max-w-6xl mx-auto h-full text-slate-800 dark:text-slate-100">
       <div className="flex justify-between items-center shrink-0">
         <div>
-          <h1 className="text-2xl font-semibold font-sora text-slate-800">Roles and Permissions</h1>
-          <p className="text-slate-500">Define roles for your organisation. Document access is configured per document during upload.</p>
+          <h1 className="text-2xl font-semibold font-sora text-slate-800 dark:text-slate-100">Roles and Permissions</h1>
+          <p className="text-slate-500 dark:text-slate-400">Define roles for your organisation. Document access is configured per document during upload.</p>
         </div>
         <button 
           onClick={() => setIsCreateOpen(true)}
-          className="flex items-center gap-2 bg-indigo-700 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+          className="flex items-center gap-2 bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white px-4 py-2 rounded-lg transition-colors font-medium"
         >
           <ShieldPlus className="w-4 h-4" />
           Create Role
@@ -59,47 +59,51 @@ export const RolesPermissionsPage: React.FC = () => {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 rounded-full border-4 border-indigo-200 border-t-indigo-700 animate-spin"></div></div>
+        <div className="flex justify-center py-12">
+          <div className="w-8 h-8 rounded-full border-4 border-indigo-200 dark:border-indigo-950 border-t-indigo-700 dark:border-t-indigo-500 animate-spin"></div>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-12">
-          {roles?.map((role: RoleResponse) => (
-            <div key={role.id} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col gap-4">
-              <div className="flex justify-between items-start">
-                <div className="flex flex-col gap-1">
-                  <span className="font-semibold text-slate-800 text-lg">{role.name}</span>
-                  {role.is_admin && (
-                    <span className="inline-block bg-indigo-100 text-indigo-700 rounded-full px-3 py-1 text-xs font-medium w-fit mt-1">Admin Role</span>
-                  )}
-                  {role.is_default && !role.is_admin && (
-                    <span className="inline-block bg-slate-100 text-slate-600 rounded-full px-3 py-1 text-xs font-medium w-fit mt-1">Default Role</span>
+          {roles
+            ?.filter((role: RoleResponse) => role.name.toLowerCase() !== 'admin' && role.name.toLowerCase() !== 'member')
+            .map((role: RoleResponse) => (
+              <div key={role.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex flex-col gap-4">
+                <div className="flex justify-between items-start">
+                  <div className="flex flex-col gap-1">
+                    <span className="font-semibold text-slate-800 dark:text-slate-100 text-lg">{role.name}</span>
+                    {role.is_admin && (
+                      <span className="inline-block bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-405 rounded-full px-3 py-1 text-xs font-medium w-fit mt-1">Admin Role</span>
+                    )}
+                    {role.is_default && !role.is_admin && (
+                      <span className="inline-block bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-full px-3 py-1 text-xs font-medium w-fit mt-1">Default Role</span>
+                    )}
+                  </div>
+                  {!role.is_default && (
+                    <div className="flex gap-2 text-slate-400 dark:text-slate-500">
+                      <button onClick={() => setEditingRole(role)} className="p-2 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
+                      <button onClick={() => setDeletingRole(role)} className="p-2 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                    </div>
                   )}
                 </div>
-                {!role.is_default && (
-                  <div className="flex gap-2 text-slate-400">
-                    <button onClick={() => setEditingRole(role)} className="p-2 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Edit2 className="w-4 h-4" /></button>
-                    <button onClick={() => setDeletingRole(role)} className="p-2 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
-                  </div>
-                )}
               </div>
-            </div>
-          ))}
+            ))}
         </div>
       )}
 
       {/* Create Modal */}
       {isCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
-              <h2 className="text-lg font-semibold font-sora">Create Role</h2>
-              <button onClick={() => setIsCreateOpen(false)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-slate-800 dark:text-slate-100">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 dark:border-slate-800">
+              <h2 className="text-lg font-semibold font-sora text-slate-800 dark:text-slate-100">Create Role</h2>
+              <button onClick={() => setIsCreateOpen(false)} className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"><X className="w-5 h-5"/></button>
             </div>
             <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate({ name: newRoleName }); }} className="p-6 flex flex-col gap-4">
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Role Name</label>
-                <input required autoFocus value={newRoleName} onChange={e=>setNewRoleName(e.target.value)} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all" />
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Role Name</label>
+                <input required autoFocus value={newRoleName} onChange={e=>setNewRoleName(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
               </div>
-              <button type="submit" disabled={createMutation.isPending} className="mt-2 w-full bg-indigo-700 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50">
+              <button type="submit" disabled={createMutation.isPending} className="mt-2 w-full bg-indigo-700 dark:bg-indigo-500 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50">
                 {createMutation.isPending ? 'Creating...' : 'Create Role'}
               </button>
             </form>
@@ -109,18 +113,18 @@ export const RolesPermissionsPage: React.FC = () => {
 
       {/* Edit Modal */}
       {editingRole && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
-              <h2 className="text-lg font-semibold font-sora">Edit Role</h2>
-              <button onClick={() => setEditingRole(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200 text-slate-800 dark:text-slate-100">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 dark:border-slate-800">
+              <h2 className="text-lg font-semibold font-sora text-slate-800 dark:text-slate-100">Edit Role</h2>
+              <button onClick={() => setEditingRole(null)} className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"><X className="w-5 h-5"/></button>
             </div>
             <form onSubmit={(e) => { e.preventDefault(); updateMutation.mutate({ id: editingRole.id, data: { name: editingRole.name } }); }} className="p-6 flex flex-col gap-4">
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700">Role Name</label>
-                <input required autoFocus value={editingRole.name} onChange={e=>setEditingRole({ ...editingRole, name: e.target.value })} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all" />
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Role Name</label>
+                <input required autoFocus value={editingRole.name} onChange={e=>setEditingRole({ ...editingRole, name: e.target.value })} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
               </div>
-              <button type="submit" disabled={updateMutation.isPending} className="mt-2 w-full bg-indigo-700 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50">
+              <button type="submit" disabled={updateMutation.isPending} className="mt-2 w-full bg-indigo-700 dark:bg-indigo-500 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50">
                 {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
               </button>
             </form>
@@ -130,13 +134,13 @@ export const RolesPermissionsPage: React.FC = () => {
 
       {/* Delete Confirmation */}
       {deletingRole && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center">
-            <h3 className="text-lg font-semibold mb-2">Delete Role</h3>
-            <p className="text-slate-500 mb-6">Are you sure you want to delete the role <span className="font-semibold text-slate-800">{deletingRole.name}</span>? This action cannot be undone.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm p-6 text-center text-slate-800 dark:text-slate-100">
+            <h3 className="text-lg font-semibold mb-2 text-slate-800 dark:text-slate-100">Delete Role</h3>
+            <p className="text-slate-500 dark:text-slate-400 mb-6">Are you sure you want to delete the role <span className="font-semibold text-slate-800 dark:text-slate-200">{deletingRole.name}</span>? This action cannot be undone.</p>
             <div className="flex gap-3 w-full">
-              <button onClick={() => setDeletingRole(null)} className="flex-1 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium transition-colors">Cancel</button>
-              <button onClick={() => deleteMutation.mutate(deletingRole.id)} disabled={deleteMutation.isPending} className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium transition-colors disabled:opacity-50">Delete</button>
+              <button onClick={() => setDeletingRole(null)} className="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium transition-colors">Cancel</button>
+              <button onClick={() => deleteMutation.mutate(deletingRole.id)} disabled={deleteMutation.isPending} className="flex-1 py-2 rounded-lg bg-red-600 dark:bg-red-500 hover:bg-red-700 dark:hover:bg-red-400 text-white font-medium transition-colors disabled:opacity-50">Delete</button>
             </div>
           </div>
         </div>
@@ -144,3 +148,4 @@ export const RolesPermissionsPage: React.FC = () => {
     </div>
   );
 };
+

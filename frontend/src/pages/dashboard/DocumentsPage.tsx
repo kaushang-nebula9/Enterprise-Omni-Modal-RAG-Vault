@@ -54,19 +54,19 @@ const FILE_TYPE_ICON: Record<FileType, React.FC<{ className?: string }>> = {
 }
 
 const FILE_TYPE_BADGE: Record<FileType, { label: string; className: string }> = {
-  pdf: { label: 'PDF', className: 'bg-red-100 text-red-700' },
-  docx: { label: 'DOCX', className: 'bg-blue-100 text-blue-700' },
-  pptx: { label: 'PPTX', className: 'bg-orange-100 text-orange-700' },
-  excel: { label: 'Excel', className: 'bg-green-100 text-green-700' },
-  audio: { label: 'Audio', className: 'bg-purple-100 text-purple-700' },
-  text: { label: 'TXT', className: 'bg-slate-100 text-slate-700' },
+  pdf: { label: 'PDF', className: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400' },
+  docx: { label: 'DOCX', className: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400' },
+  pptx: { label: 'PPTX', className: 'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400' },
+  excel: { label: 'Excel', className: 'bg-green-100 text-green-700 dark:bg-green-950/80 dark:text-green-400' },
+  audio: { label: 'Audio', className: 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400' },
+  text: { label: 'TXT', className: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400' },
 }
 
 const STATUS_BADGE: Record<DocumentStatus, { label: string; className: string; pulse?: boolean }> = {
-  pending: { label: 'Pending', className: 'bg-slate-100 text-slate-600' },
-  processing: { label: 'Processing', className: 'bg-yellow-100 text-yellow-700', pulse: true },
-  ready: { label: 'Ready', className: 'bg-emerald-100 text-emerald-700' },
-  failed: { label: 'Failed', className: 'bg-red-100 text-red-700' },
+  pending: { label: 'Pending', className: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
+  processing: { label: 'Processing', className: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400', pulse: true },
+  ready: { label: 'Ready', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-400' },
+  failed: { label: 'Failed', className: 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400' },
 }
 
 // ---------------------------------------------------------------------------
@@ -75,10 +75,10 @@ const STATUS_BADGE: Record<DocumentStatus, { label: string; className: string; p
 
 function SkeletonRow() {
   return (
-    <tr className="border-b border-slate-100">
+    <tr className="border-b border-slate-100 dark:border-slate-800">
       {Array.from({ length: 8 }).map((_, i) => (
         <td key={i} className="px-4 py-4">
-          <div className="h-4 bg-slate-200 rounded animate-pulse" style={{ width: `${60 + (i * 13) % 40}%` }} />
+          <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" style={{ width: `${60 + (i * 13) % 40}%` }} />
         </td>
       ))}
     </tr>
@@ -128,15 +128,15 @@ function UploadModal({ roles, onClose, onSuccess }: UploadModalProps) {
   const isLoading = uploadMutation.isPending
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-          <h2 className="text-lg font-semibold text-slate-800">Upload Document</h2>
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-slate-800">
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Upload Document</h2>
           <button
             onClick={onClose}
             disabled={isLoading}
-            className="text-slate-400 hover:text-slate-600 transition-colors rounded-lg p-1 hover:bg-slate-100"
+            className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors rounded-lg p-1 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             <X className="w-5 h-5" />
           </button>
@@ -145,21 +145,21 @@ function UploadModal({ roles, onClose, onSuccess }: UploadModalProps) {
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
           {/* File picker */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">File</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">File</label>
             <label
               className={`flex flex-col items-center justify-center w-full border-2 border-dashed rounded-xl p-6 cursor-pointer transition-colors ${
                 selectedFile
-                  ? 'border-indigo-400 bg-indigo-50'
-                  : 'border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/40'
+                  ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-950/40'
+                  : 'border-slate-300 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20'
               }`}
             >
-              <Upload className={`w-8 h-8 mb-2 ${selectedFile ? 'text-indigo-500' : 'text-slate-400'}`} />
+              <Upload className={`w-8 h-8 mb-2 ${selectedFile ? 'text-indigo-500 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`} />
               {selectedFile ? (
-                <span className="text-sm font-medium text-indigo-700 text-center break-all">{selectedFile.name}</span>
+                <span className="text-sm font-medium text-indigo-700 dark:text-indigo-400 text-center break-all">{selectedFile.name}</span>
               ) : (
                 <>
-                  <span className="text-sm font-medium text-slate-600">Click to select a file</span>
-                  <span className="text-xs text-slate-400 mt-1">PDF, DOCX, PPTX, XLSX, TXT, MP3, WAV, M4A</span>
+                  <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Click to select a file</span>
+                  <span className="text-xs text-slate-400 dark:text-slate-500 mt-1">PDF, DOCX, PPTX, XLSX, TXT, MP3, WAV, M4A</span>
                 </>
               )}
               <input
@@ -173,7 +173,7 @@ function UploadModal({ roles, onClose, onSuccess }: UploadModalProps) {
 
           {/* Role multi-select */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
               Access Roles <span className="text-red-500">*</span>
             </label>
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
@@ -186,18 +186,18 @@ function UploadModal({ roles, onClose, onSuccess }: UploadModalProps) {
                     onClick={() => toggleRole(role.id)}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-left ${
                       checked
-                        ? 'border-indigo-400 bg-indigo-50 text-indigo-800'
-                        : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                        ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300'
                     }`}
                   >
                     {checked ? (
-                      <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
                     ) : (
-                      <Square className="w-4 h-4 text-slate-400 shrink-0" />
+                      <Square className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" />
                     )}
                     <span className="text-sm font-medium">{role.name}</span>
                     {role.is_admin && (
-                      <span className="ml-auto text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">Admin</span>
+                      <span className="ml-auto text-xs bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-400 px-2 py-0.5 rounded-full">Admin</span>
                     )}
                   </button>
                 )
@@ -207,7 +207,7 @@ function UploadModal({ roles, onClose, onSuccess }: UploadModalProps) {
 
           {/* Error */}
           {error && (
-            <div className="flex items-start gap-2 text-red-600 bg-red-50 rounded-lg px-3 py-2.5">
+            <div className="flex items-start gap-2 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-lg px-3 py-2.5">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <span className="text-sm">{error}</span>
             </div>
@@ -217,7 +217,7 @@ function UploadModal({ roles, onClose, onSuccess }: UploadModalProps) {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full flex items-center justify-center gap-2 bg-indigo-700 hover:bg-indigo-800 text-white font-semibold rounded-xl px-4 py-3 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-800 dark:hover:bg-indigo-400 text-white font-semibold rounded-xl px-4 py-3 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {isLoading ? (
               <>
@@ -281,17 +281,17 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
   const isLoading = updateMutation.isPending
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-slate-800">
           <div>
-            <h2 className="text-lg font-semibold text-slate-800">Edit Document Access</h2>
-            <p className="text-sm text-slate-500 mt-0.5 truncate max-w-xs">{document.filename}</p>
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Edit Document Access</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-xs">{document.filename}</p>
           </div>
           <button
             onClick={onClose}
             disabled={isLoading}
-            className="text-slate-400 hover:text-slate-600 transition-colors rounded-lg p-1 hover:bg-slate-100"
+            className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-350 transition-colors rounded-lg p-1 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             <X className="w-5 h-5" />
           </button>
@@ -308,18 +308,18 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
                   onClick={() => toggleRole(role.id)}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-left ${
                     checked
-                      ? 'border-indigo-400 bg-indigo-50 text-indigo-800'
-                      : 'border-slate-200 hover:border-slate-300 text-slate-700'
+                      ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   {checked ? (
-                    <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-450 shrink-0" />
                   ) : (
-                    <Square className="w-4 h-4 text-slate-400 shrink-0" />
+                    <Square className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" />
                   )}
                   <span className="text-sm font-medium">{role.name}</span>
                   {role.is_admin && (
-                    <span className="ml-auto text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">Admin</span>
+                    <span className="ml-auto text-xs bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-400 px-2 py-0.5 rounded-full">Admin</span>
                   )}
                 </button>
               )
@@ -327,7 +327,7 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
           </div>
 
           {error && (
-            <div className="flex items-start gap-2 text-red-600 bg-red-50 rounded-lg px-3 py-2.5">
+            <div className="flex items-start gap-2 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-lg px-3 py-2.5">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <span className="text-sm">{error}</span>
             </div>
@@ -336,7 +336,7 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full flex items-center justify-center gap-2 bg-indigo-700 hover:bg-indigo-800 text-white font-semibold rounded-xl px-4 py-3 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-800 dark:hover:bg-indigo-600 text-white font-semibold rounded-xl px-4 py-3 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {isLoading ? (
               <>
@@ -373,15 +373,15 @@ function DeleteModal({ document, onClose, onSuccess }: DeleteModalProps) {
   })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
-        <div className="px-6 py-5 border-b border-slate-100">
-          <h2 className="text-lg font-semibold text-slate-800">Delete Document</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
+        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800">
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Delete Document</h2>
         </div>
         <div className="px-6 py-5">
-          <p className="text-sm text-slate-600 leading-relaxed">
+          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
             Are you sure you want to delete{' '}
-            <span className="font-semibold text-slate-800">{document.filename}</span>? This will
+            <span className="font-semibold text-slate-800 dark:text-slate-200">{document.filename}</span>? This will
             permanently remove the document and all its embeddings. This action cannot be undone.
           </p>
         </div>
@@ -389,7 +389,7 @@ function DeleteModal({ document, onClose, onSuccess }: DeleteModalProps) {
           <button
             onClick={onClose}
             disabled={deleteMutation.isPending}
-            className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 font-medium rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-60"
+            className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-60"
           >
             Cancel
           </button>
@@ -428,13 +428,13 @@ function RoleChips({ roles }: { roles: RoleResponse[] }) {
       {visible.map((role) => (
         <span
           key={role.id}
-          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700"
+          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
         >
           {role.name}
         </span>
       ))}
       {overflow > 0 && (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-600">
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400">
           +{overflow} more
         </span>
       )}
@@ -518,7 +518,7 @@ export default function DocumentsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-slate-800 dark:text-slate-100 animate-in fade-in duration-300">
       {/* Success toast */}
       {successMessage && (
         <div className="fixed top-6 right-6 z-50 flex items-center gap-3 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium animate-fade-in">
@@ -532,13 +532,13 @@ export default function DocumentsPage() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Documents</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Manage your organisation's knowledge base</p>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Documents</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Manage your organisation's knowledge base</p>
         </div>
         <button
           id="new-document-btn"
           onClick={() => setModal({ type: 'upload' })}
-          className="flex items-center gap-2 bg-indigo-700 hover:bg-indigo-800 text-white font-semibold rounded-xl px-4 py-2.5 transition-colors shadow-sm"
+          className="flex items-center gap-2 bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-800 dark:hover:bg-indigo-600 text-white font-semibold rounded-xl px-4 py-2.5 transition-colors shadow-sm"
         >
           <Upload className="w-4 h-4" />
           New Document
@@ -549,18 +549,18 @@ export default function DocumentsPage() {
       <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
         {/* Search */}
         <div className="relative w-full flex-1 min-w-[200px]">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
           <input
             id="document-search"
             type="text"
             placeholder="Search documents by name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white transition-all"
+            className="w-full pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 focus:bg-white dark:focus:bg-slate-900 transition-all"
           />
         </div>
 
-        <div className="hidden lg:block w-px h-8 bg-slate-200 mx-1 shrink-0"></div>
+        <div className="hidden lg:block w-px h-8 bg-slate-200 dark:bg-slate-800 mx-1 shrink-0"></div>
 
         {/* Filters */}
         <div className="flex flex-wrap items-center justify-end gap-3 w-full lg:w-auto shrink-0">
@@ -572,7 +572,7 @@ export default function DocumentsPage() {
                 setFilterType(e.target.value)
                 e.target.blur()
               }}
-              className="peer appearance-none w-32 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer hover:bg-slate-100 transition-colors"
+              className="peer appearance-none w-32 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-555 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <option value="all">All Types</option>
               <option value="pdf">PDF</option>
@@ -582,7 +582,7 @@ export default function DocumentsPage() {
               <option value="docx">DOCX</option>
               <option value="excel">Excel</option>
             </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
           </div>
 
           {/* Status */}
@@ -593,7 +593,7 @@ export default function DocumentsPage() {
                 setFilterStatus(e.target.value)
                 e.target.blur()
               }}
-              className="peer appearance-none w-36 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer hover:bg-slate-100 transition-colors"
+              className="peer appearance-none w-36 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-555 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
@@ -601,24 +601,24 @@ export default function DocumentsPage() {
               <option value="ready">Ready</option>
               <option value="failed">Failed</option>
             </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
           </div>
 
           {/* Date Range */}
-          <div className="flex items-center bg-white border border-slate-200 rounded-xl px-2 hover:bg-slate-100 transition-colors focus-within:ring-2 focus-within:ring-indigo-400 focus-within:bg-white overflow-hidden">
+          <div className="flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-2 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus-within:ring-2 focus-within:ring-indigo-400 dark:focus-within:ring-indigo-500 focus-within:bg-white dark:focus-within:bg-slate-900 overflow-hidden">
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="bg-transparent text-sm text-slate-700 font-medium py-2 focus:outline-none cursor-pointer w-[115px]"
+              className="bg-transparent text-sm text-slate-700 dark:text-slate-300 font-medium py-2 focus:outline-none cursor-pointer w-[115px]"
               title="Start Date"
             />
-            <span className="text-slate-300 font-medium px-1">-</span>
+            <span className="text-slate-300 dark:text-slate-600 font-medium px-1">-</span>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="bg-transparent text-sm text-slate-700 font-medium py-2 focus:outline-none cursor-pointer w-[115px]"
+              className="bg-transparent text-sm text-slate-700 dark:text-slate-300 font-medium py-2 focus:outline-none cursor-pointer w-[115px]"
               title="End Date"
             />
           </div>
@@ -626,34 +626,34 @@ export default function DocumentsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-4 py-3.5 text-left font-semibold text-slate-600">File Name</th>
-                <th className="px-4 py-3.5 text-left font-semibold text-slate-600">Type</th>
-                <th className="px-4 py-3.5 text-left font-semibold text-slate-600">Size</th>
-                <th className="px-4 py-3.5 text-left font-semibold text-slate-600">Upload Date</th>
-                <th className="px-4 py-3.5 text-left font-semibold text-slate-600">Status</th>
-                <th className="px-4 py-3.5 text-left font-semibold text-slate-600">Roles</th>
-                <th className="px-4 py-3.5 text-right font-semibold text-slate-600">Actions</th>
+              <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
+                <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">File Name</th>
+                <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Type</th>
+                <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Size</th>
+                <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Upload Date</th>
+                <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Status</th>
+                <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Roles</th>
+                <th className="px-4 py-3.5 text-right font-semibold text-slate-600 dark:text-slate-400">Actions</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {docsLoading ? (
                 Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
               ) : filteredDocuments.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-16 text-center text-slate-400">
+                  <td colSpan={8} className="px-4 py-16 text-center text-slate-400 dark:text-slate-500">
                     <div className="flex flex-col items-center gap-3">
-                      <FileText className="w-12 h-12 text-slate-200" />
+                      <FileText className="w-12 h-12 text-slate-200 dark:text-slate-800" />
                       <div>
-                        <p className="font-medium text-slate-500">
+                        <p className="font-medium text-slate-500 dark:text-slate-400">
                           {search ? 'No documents match your search' : 'No documents yet'}
                         </p>
                         {!search && (
-                          <p className="text-sm mt-1">Upload your first document to get started</p>
+                          <p className="text-sm mt-1 text-slate-400 dark:text-slate-500">Upload your first document to get started</p>
                         )}
                       </div>
                     </div>
@@ -668,13 +668,13 @@ export default function DocumentsPage() {
                   return (
                     <tr
                       key={doc.id}
-                      className="border-b border-slate-100 hover:bg-slate-50/60 transition-colors"
+                      className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
                     >
                       {/* File Name */}
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <TypeIcon className="w-5 h-5 text-slate-400 shrink-0" />
-                          <span className="font-medium text-slate-800 truncate max-w-[200px]" title={doc.filename}>
+                          <TypeIcon className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0" />
+                          <span className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[200px]" title={doc.filename}>
                             {doc.filename}
                           </span>
                         </div>
@@ -690,12 +690,12 @@ export default function DocumentsPage() {
                       </td>
 
                       {/* Size */}
-                      <td className="px-4 py-3.5 text-slate-500 whitespace-nowrap">
+                      <td className="px-4 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">
                         {formatBytes(doc.file_size)}
                       </td>
 
                       {/* Date */}
-                      <td className="px-4 py-3.5 text-slate-500 whitespace-nowrap">
+                      <td className="px-4 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">
                         {formatDate(doc.uploaded_at)}
                       </td>
 
@@ -721,21 +721,21 @@ export default function DocumentsPage() {
                           <button
                             title="Download"
                             onClick={() => handleDownload(doc)}
-                            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                            className="p-2 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors"
                           >
                             <Download className="w-4 h-4" />
                           </button>
                           <button
                             title="Edit roles"
                             onClick={() => setModal({ type: 'edit', document: doc })}
-                            className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                            className="p-2 text-slate-400 dark:text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors"
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
                           <button
                             title="Delete"
                             onClick={() => setModal({ type: 'delete', document: doc })}
-                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -751,8 +751,8 @@ export default function DocumentsPage() {
 
         {/* Footer count */}
         {!docsLoading && filteredDocuments.length > 0 && (
-          <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/60">
-            <p className="text-xs text-slate-400">
+          <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950">
+            <p className="text-xs text-slate-400 dark:text-slate-500">
               Showing {filteredDocuments.length} of {documents.length} document{documents.length !== 1 ? 's' : ''}
             </p>
           </div>

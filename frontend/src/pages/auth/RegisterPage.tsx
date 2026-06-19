@@ -206,23 +206,23 @@ const RegisterPage: React.FC = () => {
             <div
               className={`flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-bold transition-all duration-200 ${
                 step > 1
-                  ? 'border-indigo-700 bg-white text-indigo-700'
+                  ? 'border-indigo-700 dark:border-indigo-500 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400'
                   : step === 1
-                  ? 'border-indigo-700 bg-indigo-700 text-white ring-4 ring-indigo-100'
-                  : 'border-slate-200 bg-white text-slate-400'
+                  ? 'border-indigo-700 dark:border-indigo-500 bg-indigo-700 dark:bg-indigo-500 text-white ring-4 ring-indigo-100 dark:ring-indigo-950/50'
+                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-400 dark:text-slate-500'
               }`}
             >
               {step > 1 ? '✓' : '1'}
             </div>
-            <span className={`mt-2 text-xs font-semibold ${step >= 1 ? 'text-indigo-700' : 'text-slate-400'}`}>
+            <span className={`mt-2 text-xs font-semibold ${step >= 1 ? 'text-indigo-700 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`}>
               Organisation
             </span>
           </div>
 
           {/* Line 1 */}
-          <div className="absolute left-[16.6%] right-[50%] top-5 h-0.5 -translate-y-1/2 bg-slate-200 z-0">
+          <div className="absolute left-[16.6%] right-[50%] top-5 h-0.5 -translate-y-1/2 bg-slate-200 dark:bg-slate-800 z-0">
             <div
-              className="h-full bg-indigo-700 transition-all duration-300"
+              className="h-full bg-indigo-700 dark:bg-indigo-500 transition-all duration-300"
               style={{ width: step > 1 ? '100%' : '0%' }}
             ></div>
           </div>
@@ -232,23 +232,23 @@ const RegisterPage: React.FC = () => {
             <div
               className={`flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-bold transition-all duration-200 ${
                 step > 2
-                  ? 'border-indigo-700 bg-white text-indigo-700'
+                  ? 'border-indigo-700 dark:border-indigo-500 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400'
                   : step === 2
-                  ? 'border-indigo-700 bg-indigo-700 text-white ring-4 ring-indigo-100'
-                  : 'border-slate-200 bg-white text-slate-400'
+                  ? 'border-indigo-700 dark:border-indigo-500 bg-indigo-700 dark:bg-indigo-500 text-white ring-4 ring-indigo-100 dark:ring-indigo-950/50'
+                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-400 dark:text-slate-500'
               }`}
             >
               {step > 2 ? '✓' : '2'}
             </div>
-            <span className={`mt-2 text-xs font-semibold ${step >= 2 ? 'text-indigo-700' : 'text-slate-400'}`}>
+            <span className={`mt-2 text-xs font-semibold ${step >= 2 ? 'text-indigo-700 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`}>
               Your Details
             </span>
           </div>
 
           {/* Line 2 */}
-          <div className="absolute left-[50%] right-[16.6%] top-5 h-0.5 -translate-y-1/2 bg-slate-200 z-0">
+          <div className="absolute left-[50%] right-[16.6%] top-5 h-0.5 -translate-y-1/2 bg-slate-200 dark:bg-slate-800 z-0">
             <div
-              className="h-full bg-indigo-700 transition-all duration-300"
+              className="h-full bg-indigo-700 dark:bg-indigo-500 transition-all duration-300"
               style={{ width: step > 2 ? '100%' : '0%' }}
             ></div>
           </div>
@@ -258,13 +258,13 @@ const RegisterPage: React.FC = () => {
             <div
               className={`flex h-10 w-10 items-center justify-center rounded-full border-2 text-sm font-bold transition-all duration-200 ${
                 step === 3
-                  ? 'border-indigo-700 bg-indigo-700 text-white ring-4 ring-indigo-100'
-                  : 'border-slate-200 bg-white text-slate-400'
+                  ? 'border-indigo-700 dark:border-indigo-500 bg-indigo-700 dark:bg-indigo-500 text-white ring-4 ring-indigo-100 dark:ring-indigo-950/50'
+                  : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-400 dark:text-slate-500'
               }`}
             >
               3
             </div>
-            <span className={`mt-2 text-xs font-semibold ${step === 3 ? 'text-indigo-700' : 'text-slate-400'}`}>
+            <span className={`mt-2 text-xs font-semibold ${step === 3 ? 'text-indigo-700 dark:text-indigo-400' : 'text-slate-400 dark:text-slate-500'}`}>
               Verify Email
             </span>
           </div>
@@ -273,11 +273,11 @@ const RegisterPage: React.FC = () => {
 
       {/* General error alert box */}
       {apiError && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 text-red-700 text-sm animate-fade-in">
-          <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+        <div className="mb-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded-lg p-4 flex items-start gap-3 text-red-700 dark:text-red-400 text-sm animate-fade-in">
+          <AlertTriangle className="h-5 w-5 text-red-500 dark:text-red-450 shrink-0 mt-0.5" />
           <div>
-            <h4 className="font-bold text-red-800">Registration Error</h4>
-            <p className="mt-1 text-red-700">{apiError}</p>
+            <h4 className="font-bold text-red-800 dark:text-red-300">Registration Error</h4>
+            <p className="mt-1 text-red-700 dark:text-red-400/90">{apiError}</p>
           </div>
         </div>
       )}
@@ -286,17 +286,17 @@ const RegisterPage: React.FC = () => {
       {step === 1 && (
         <div className="animate-fade-in">
           <div className="mb-8">
-            <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800">
+            <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
               Tell us about your organisation
             </h2>
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               Set up the workspace identity for your secure documents.
             </p>
           </div>
 
           <div className="space-y-6">
             <div>
-              <label htmlFor="org_name" className="block text-sm font-semibold text-slate-700 mb-2">
+              <label htmlFor="org_name" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                 Organisation Name
               </label>
               <input
@@ -304,17 +304,17 @@ const RegisterPage: React.FC = () => {
                 type="text"
                 placeholder="Acme Corporation"
                 {...register('org_name')}
-                className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                  errors.org_name ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+                className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
+                  errors.org_name ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
                 }`}
               />
               {errors.org_name && (
-                <p className="mt-1.5 text-sm text-red-500">{errors.org_name.message}</p>
+                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.org_name.message}</p>
               )}
             </div>
 
             <div>
-              <label htmlFor="org_website" className="block text-sm font-semibold text-slate-700 mb-2">
+              <label htmlFor="org_website" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                 Organisation Website
               </label>
               <input
@@ -322,19 +322,19 @@ const RegisterPage: React.FC = () => {
                 type="text"
                 placeholder="https://acme.com"
                 {...register('org_website')}
-                className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                  errors.org_website ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+                className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
+                  errors.org_website ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
                 }`}
               />
               {errors.org_website && (
-                <p className="mt-1.5 text-sm text-red-500">{errors.org_website.message}</p>
+                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.org_website.message}</p>
               )}
             </div>
 
             <button
               type="button"
               onClick={handleNextStep}
-              className="bg-indigo-700 hover:bg-indigo-600 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200"
+              className="bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200"
             >
               Next
             </button>
@@ -346,16 +346,16 @@ const RegisterPage: React.FC = () => {
       {step === 2 && (
         <form onSubmit={handleSubmit(onSignupSubmit)} className="space-y-6 animate-fade-in">
           <div className="mb-6">
-            <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800">
+            <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
               Create your admin account
             </h2>
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               You will be configured as the tenant administrator.
             </p>
           </div>
 
           <div>
-            <label htmlFor="full_name" className="block text-sm font-semibold text-slate-700 mb-2">
+            <label htmlFor="full_name" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
               Full Name
             </label>
             <input
@@ -363,17 +363,17 @@ const RegisterPage: React.FC = () => {
               type="text"
               placeholder="John Doe"
               {...register('full_name')}
-              className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                errors.full_name ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+              className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
+                errors.full_name ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
               }`}
             />
             {errors.full_name && (
-              <p className="mt-1.5 text-sm text-red-500">{errors.full_name.message}</p>
+              <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.full_name.message}</p>
             )}
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-semibold text-slate-700 mb-2">
+            <label htmlFor="email" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
               Work Email
             </label>
             <input
@@ -381,17 +381,17 @@ const RegisterPage: React.FC = () => {
               type="email"
               placeholder="john@acme.com"
               {...register('email')}
-              className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                errors.email ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+              className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
+                errors.email ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
               }`}
             />
             {errors.email && (
-              <p className="mt-1.5 text-sm text-red-500">{errors.email.message}</p>
+              <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.email.message}</p>
             )}
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-semibold text-slate-700 mb-2">
+            <label htmlFor="password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
               Password
             </label>
             <div className="relative">
@@ -400,25 +400,25 @@ const RegisterPage: React.FC = () => {
                 type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 {...register('password')}
-                className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                  errors.password ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+                className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
+                  errors.password ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
                 }`}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600"
+                className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-350"
               >
                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
             {errors.password && (
-              <p className="mt-1.5 text-sm text-red-500">{errors.password.message}</p>
+              <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.password.message}</p>
             )}
           </div>
 
           <div>
-            <label htmlFor="confirm_password" className="block text-sm font-semibold text-slate-700 mb-2">
+            <label htmlFor="confirm_password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
               Confirm Password
             </label>
             <div className="relative">
@@ -427,20 +427,20 @@ const RegisterPage: React.FC = () => {
                 type={showConfirmPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 {...register('confirm_password')}
-                className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                  errors.confirm_password ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+                className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-405 focus:border-transparent ${
+                  errors.confirm_password ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
                 }`}
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600"
+                className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-350"
               >
                 {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
             {errors.confirm_password && (
-              <p className="mt-1.5 text-sm text-red-500">{errors.confirm_password.message}</p>
+              <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.confirm_password.message}</p>
             )}
           </div>
 
@@ -448,14 +448,14 @@ const RegisterPage: React.FC = () => {
             <button
               type="button"
               onClick={handleBackStep}
-              className="border border-slate-200 rounded-lg px-6 py-3 w-1/3 text-slate-700 font-semibold hover:bg-slate-50 transition-colors duration-200 flex items-center justify-center gap-1.5"
+              className="border border-slate-200 dark:border-slate-700 rounded-lg px-6 py-3 w-1/3 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-200 flex items-center justify-center gap-1.5"
             >
               <ArrowLeft className="h-4 w-4" /> Back
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className="bg-indigo-700 hover:bg-indigo-600 text-white font-semibold rounded-lg px-6 py-3 w-2/3 transition-colors duration-200 flex items-center justify-center gap-2"
+              className="bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 w-2/3 transition-colors duration-200 flex items-center justify-center gap-2"
             >
               {isLoading ? (
                 <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -474,11 +474,11 @@ const RegisterPage: React.FC = () => {
       {step === 3 && (
         <form onSubmit={handleVerifyOtp} className="space-y-6 animate-fade-in">
           <div className="mb-6">
-            <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800">
+            <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
               Check your email
             </h2>
-            <p className="mt-2 text-sm text-slate-500">
-              We sent a 6-digit code to <span className="font-semibold text-slate-800">{getValues('email')}</span>. Enter it below to verify your account.
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              We sent a 6-digit code to <span className="font-semibold text-slate-800 dark:text-slate-200">{getValues('email')}</span>. Enter it below to verify your account.
             </p>
           </div>
 
@@ -496,7 +496,7 @@ const RegisterPage: React.FC = () => {
                 onChange={(e) => handleOtpChange(e.target.value, index)}
                 onKeyDown={(e) => handleOtpKeyDown(e, index)}
                 onPaste={handleOtpPaste}
-                className="w-12 h-12 text-center text-xl font-bold border-2 border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-12 h-12 text-center text-xl font-bold border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 rounded-lg focus:border-indigo-500 dark:focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:focus:ring-indigo-400"
               />
             ))}
           </div>
@@ -504,7 +504,7 @@ const RegisterPage: React.FC = () => {
           <button
             type="submit"
             disabled={isLoading}
-            className="bg-indigo-700 hover:bg-indigo-600 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200 flex items-center justify-center gap-2"
+            className="bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200 flex items-center justify-center gap-2"
           >
             {isLoading ? (
               <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -519,14 +519,14 @@ const RegisterPage: React.FC = () => {
           {/* Resend Link with Cooldown */}
           <div className="text-center">
             {cooldown > 0 ? (
-              <p className="text-sm text-slate-500">
-                Resend code in <span className="font-semibold text-slate-700">{cooldown}s</span>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Resend code in <span className="font-semibold text-slate-700 dark:text-slate-300">{cooldown}s</span>
               </p>
             ) : (
               <button
                 type="button"
                 onClick={handleResendOtp}
-                className="text-sm font-semibold text-indigo-600 hover:text-indigo-500"
+                className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300"
               >
                 Resend code
               </button>
@@ -536,9 +536,9 @@ const RegisterPage: React.FC = () => {
       )}
 
       {/* Redirect back to Login */}
-      <div className="mt-8 text-center text-sm text-slate-500">
+      <div className="mt-8 text-center text-sm text-slate-500 dark:text-slate-400">
         Already have an account?{' '}
-        <Link to="/login" className="font-semibold text-indigo-600 hover:text-indigo-500">
+        <Link to="/login" className="font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300">
           Sign in
         </Link>
       </div>

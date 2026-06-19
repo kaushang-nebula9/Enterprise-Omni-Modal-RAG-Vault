@@ -63,46 +63,50 @@ export const OrganisationSettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col gap-8 w-full max-w-4xl mx-auto h-full pb-12">
+    <div className="flex flex-col gap-8 w-full max-w-4xl mx-auto h-full pb-12 text-slate-800 dark:text-slate-100">
       <div className="shrink-0">
-        <h1 className="text-2xl font-semibold font-sora text-slate-800">Organisation Settings</h1>
+        <h1 className="text-2xl font-semibold font-sora text-slate-800 dark:text-slate-100">Organisation Settings</h1>
       </div>
 
       <div className="flex flex-col gap-6">
-        <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-800 mb-4 font-sora">General</h2>
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-4 font-sora">General</h2>
           <form onSubmit={handleUpdate} className="flex flex-col gap-4 max-w-md">
             {updateStatus && (
-              <div className={`p-3 rounded-lg text-sm ${updateStatus.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+              <div className={`p-3 rounded-lg text-sm border ${
+                updateStatus.type === 'success' 
+                  ? 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-900/50' 
+                  : 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/50'
+              }`}>
                 {updateStatus.msg}
               </div>
             )}
             <div className="space-y-1">
-              <label className="text-sm font-medium text-slate-700">Organisation Name</label>
-              <input required value={orgName} onChange={e=>setOrgName(e.target.value)} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all" />
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Organisation Name</label>
+              <input required value={orgName} onChange={e=>setOrgName(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium text-slate-700">Website</label>
-              <input type="url" value={orgWebsite} onChange={e=>setOrgWebsite(e.target.value)} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all" />
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Website</label>
+              <input type="url" value={orgWebsite} onChange={e=>setOrgWebsite(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
             </div>
-            <button type="submit" disabled={updateMutation.isPending} className="mt-2 w-fit px-6 bg-indigo-700 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50">
+            <button type="submit" disabled={updateMutation.isPending} className="mt-2 w-fit px-6 bg-indigo-700 dark:bg-indigo-500 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50">
               {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
             </button>
           </form>
         </section>
 
-        <hr className="border-slate-200 my-2" />
+        <hr className="border-slate-200 dark:border-slate-800 my-2" />
 
-        <section className="border border-red-200 rounded-xl p-6 bg-red-50">
-          <h2 className="text-lg font-semibold text-red-600 mb-2 font-sora">Danger Zone</h2>
+        <section className="border border-red-200 dark:border-red-950/60 rounded-xl p-6 bg-red-50 dark:bg-red-950/10">
+          <h2 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2 font-sora">Danger Zone</h2>
           <div className="flex flex-col md:flex-row gap-6 md:items-center justify-between">
             <div>
-              <p className="font-semibold text-slate-800">Delete Organisation</p>
-              <p className="text-sm text-slate-600 max-w-lg mt-1">This will permanently delete your organisation, all members, documents, and data. This action cannot be undone.</p>
+              <p className="font-semibold text-slate-800 dark:text-slate-100">Delete Organisation</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400 max-w-lg mt-1">This will permanently delete your organisation, all members, documents, and data. This action cannot be undone.</p>
             </div>
             <button 
               onClick={() => setIsDeleteModalOpen(true)}
-              className="w-fit shrink-0 px-4 py-2 bg-white border border-red-500 text-red-600 rounded-lg font-medium hover:bg-red-50 hover:text-red-700 transition-colors"
+              className="w-fit shrink-0 px-4 py-2 bg-white dark:bg-slate-900 border border-red-500 text-red-600 dark:text-red-400 rounded-lg font-medium hover:bg-red-50 dark:hover:bg-red-950/20 hover:text-red-700 dark:hover:text-red-300 transition-colors"
             >
               Delete Organisation
             </button>
@@ -111,25 +115,25 @@ export const OrganisationSettingsPage: React.FC = () => {
       </div>
 
       {isDeleteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 text-center">
-            <h3 className="text-xl font-semibold mb-2 text-red-600 font-sora">Are you absolutely sure?</h3>
-            <p className="text-slate-600 mb-6 text-sm">
-              This action cannot be undone. Type your organisation name <span className="font-semibold">({orgName || 'the current name'})</span> to confirm deletion.
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md p-6 text-center text-slate-800 dark:text-slate-100">
+            <h3 className="text-xl font-semibold mb-2 text-red-600 dark:text-red-400 font-sora">Are you absolutely sure?</h3>
+            <p className="text-slate-600 dark:text-slate-400 mb-6 text-sm">
+              This action cannot be undone. Type your organisation name <span className="font-semibold text-slate-800 dark:text-slate-200">({orgName || 'the current name'})</span> to confirm deletion.
             </p>
             <input 
               type="text" 
               placeholder="Organisation Name" 
               value={deleteConfirmName} 
               onChange={e=>setDeleteConfirmName(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-100 focus:border-red-500 outline-none transition-all mb-6 text-center" 
+              className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/50 focus:border-red-500 dark:focus:border-red-400 outline-none transition-all mb-6 text-center text-slate-800 dark:text-slate-100" 
             />
             <div className="flex gap-3 w-full">
-              <button onClick={() => { setIsDeleteModalOpen(false); setDeleteConfirmName(''); }} className="flex-1 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium transition-colors">Cancel</button>
+              <button onClick={() => { setIsDeleteModalOpen(false); setDeleteConfirmName(''); }} className="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium transition-colors">Cancel</button>
               <button 
                 disabled={deleteConfirmName !== orgName || deleteMutation.isPending}
                 onClick={handleDelete} 
-                className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-2 rounded-lg bg-red-600 dark:bg-red-500 hover:bg-red-700 dark:hover:bg-red-400 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
               </button>
@@ -140,3 +144,4 @@ export const OrganisationSettingsPage: React.FC = () => {
     </div>
   );
 };
+

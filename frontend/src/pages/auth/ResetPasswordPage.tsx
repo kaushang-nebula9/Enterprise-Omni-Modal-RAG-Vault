@@ -69,17 +69,17 @@ const ResetPasswordPage: React.FC = () => {
     return (
       <div className="w-full max-w-md animate-fade-in text-center">
         <div className="flex justify-center mb-6">
-          <CheckCircle2 className="h-16 w-16 text-emerald-500" />
+          <CheckCircle2 className="h-16 w-16 text-emerald-500 dark:text-emerald-450" />
         </div>
-        <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800 mb-4">
+        <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100 mb-4">
           Password Reset Complete
         </h2>
-        <p className="text-sm text-slate-500 mb-8 font-sans">
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 font-sans">
           Your password has been reset successfully. You can now log in using your new credentials.
         </p>
         <Link
           to="/login"
-          className="bg-indigo-700 hover:bg-indigo-600 text-white font-semibold rounded-lg px-6 py-3 w-full block transition-colors duration-200"
+          className="bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 w-full block transition-colors duration-200"
         >
           Back to login
         </Link>
@@ -91,26 +91,26 @@ const ResetPasswordPage: React.FC = () => {
     <div className="w-full max-w-md animate-fade-in">
       <Link
         to="/login"
-        className="inline-flex items-center text-sm font-semibold text-indigo-600 hover:text-indigo-500 mb-8"
+        className="inline-flex items-center text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 mb-8"
       >
         <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to login
       </Link>
 
       <div className="mb-8">
-        <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800">
+        <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
           Reset password
         </h2>
-        <p className="mt-2 text-sm text-slate-500 font-sans">
+        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 font-sans">
           Enter your verification code and choose a new password.
         </p>
       </div>
 
       {apiError && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 text-red-700 text-sm">
-          <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+        <div className="mb-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded-lg p-4 flex items-start gap-3 text-red-700 dark:text-red-450 text-sm">
+          <AlertTriangle className="h-5 w-5 text-red-500 dark:text-red-450 shrink-0 mt-0.5" />
           <div>
-            <h4 className="font-bold text-red-800">Reset Failed</h4>
-            <p className="mt-1 text-red-700">{apiError}</p>
+            <h4 className="font-bold text-red-800 dark:text-red-300">Reset Failed</h4>
+            <p className="mt-1 text-red-700 dark:text-red-400/90">{apiError}</p>
           </div>
         </div>
       )}
@@ -118,7 +118,7 @@ const ResetPasswordPage: React.FC = () => {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Email */}
         <div>
-          <label htmlFor="email" className="block text-sm font-semibold text-slate-700 mb-2">
+          <label htmlFor="email" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
             Work Email
           </label>
           <input
@@ -126,18 +126,18 @@ const ResetPasswordPage: React.FC = () => {
             type="email"
             placeholder="john@acme.com"
             {...register('email')}
-            className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-              errors.email ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+            className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
+              errors.email ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
             }`}
           />
           {errors.email && (
-            <p className="mt-1.5 text-sm text-red-500">{errors.email.message}</p>
+            <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.email.message}</p>
           )}
         </div>
 
         {/* OTP Code */}
         <div>
-          <label htmlFor="otp" className="block text-sm font-semibold text-slate-700 mb-2">
+          <label htmlFor="otp" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
             6-digit Code
           </label>
           <input
@@ -146,18 +146,18 @@ const ResetPasswordPage: React.FC = () => {
             placeholder="123456"
             maxLength={6}
             {...register('otp')}
-            className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent tracking-widest font-mono text-center text-lg ${
-              errors.otp ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+            className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent tracking-widest font-mono text-center text-lg ${
+              errors.otp ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
             }`}
           />
           {errors.otp && (
-            <p className="mt-1.5 text-sm text-red-500">{errors.otp.message}</p>
+            <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.otp.message}</p>
           )}
         </div>
 
         {/* New Password */}
         <div>
-          <label htmlFor="new_password" className="block text-sm font-semibold text-slate-700 mb-2">
+          <label htmlFor="new_password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
             Choose a Password
           </label>
           <div className="relative">
@@ -166,26 +166,26 @@ const ResetPasswordPage: React.FC = () => {
               type={showPassword ? 'text' : 'password'}
               placeholder="••••••••"
               {...register('new_password')}
-              className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                errors.new_password ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+              className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
+                errors.new_password ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
               }`}
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600"
+              className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-350"
             >
               {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
           </div>
           {errors.new_password && (
-            <p className="mt-1.5 text-sm text-red-500">{errors.new_password.message}</p>
+            <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.new_password.message}</p>
           )}
         </div>
 
         {/* Confirm Password */}
         <div>
-          <label htmlFor="confirm_password" className="block text-sm font-semibold text-slate-700 mb-2">
+          <label htmlFor="confirm_password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
             Confirm Password
           </label>
           <div className="relative">
@@ -194,27 +194,27 @@ const ResetPasswordPage: React.FC = () => {
               type={showConfirmPassword ? 'text' : 'password'}
               placeholder="••••••••"
               {...register('confirm_password')}
-              className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                errors.confirm_password ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+              className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-405 focus:border-transparent ${
+                errors.confirm_password ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
               }`}
             />
             <button
               type="button"
               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-              className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600"
+              className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-350"
             >
               {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
           </div>
           {errors.confirm_password && (
-            <p className="mt-1.5 text-sm text-red-500">{errors.confirm_password.message}</p>
+            <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.confirm_password.message}</p>
           )}
         </div>
 
         <button
           type="submit"
           disabled={isLoading}
-          className="bg-indigo-700 hover:bg-indigo-600 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200 flex items-center justify-center gap-2"
+          className="bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200 flex items-center justify-center gap-2"
         >
           {isLoading ? (
             <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

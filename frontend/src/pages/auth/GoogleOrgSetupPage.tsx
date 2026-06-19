@@ -133,16 +133,16 @@ const GoogleOrgSetupPage: React.FC = () => {
   if (!setupToken) {
     return (
       <div className="w-full max-w-md animate-fade-in">
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 text-red-700 text-sm">
-          <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+        <div className="mb-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded-lg p-4 flex items-start gap-3 text-red-700 dark:text-red-400 text-sm">
+          <AlertTriangle className="h-5 w-5 text-red-500 dark:text-red-455 shrink-0 mt-0.5" />
           <div>
-            <h4 className="font-bold text-red-800">Invalid setup link</h4>
-            <p className="mt-1 text-red-700">Please try signing in with Google again.</p>
+            <h4 className="font-bold text-red-800 dark:text-red-300">Invalid setup link</h4>
+            <p className="mt-1 text-red-700 dark:text-red-400/90">Please try signing in with Google again.</p>
           </div>
         </div>
         <Link
           to="/login"
-          className="inline-flex justify-center w-full bg-indigo-700 hover:bg-indigo-600 text-white font-semibold rounded-lg px-6 py-3 transition-colors duration-200"
+          className="inline-flex justify-center w-full bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 transition-colors duration-200"
         >
           Back to Login
         </Link>
@@ -156,21 +156,21 @@ const GoogleOrgSetupPage: React.FC = () => {
         <>
           {/* Headings */}
           <div className="mb-8">
-            <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800">
+            <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
               Almost there!
             </h2>
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               Tell us about your organisation to complete your account setup.
             </p>
           </div>
 
           {/* API error alert box */}
           {apiError && (
-            <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 text-red-700 text-sm animate-fade-in">
-              <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+            <div className="mb-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded-lg p-4 flex items-start gap-3 text-red-700 dark:text-red-450 text-sm animate-fade-in">
+              <AlertTriangle className="h-5 w-5 text-red-500 dark:text-red-455 shrink-0 mt-0.5" />
               <div>
-                <h4 className="font-bold text-red-800">Setup Failed</h4>
-                <p className="mt-1 text-red-700">{apiError}</p>
+                <h4 className="font-bold text-red-800 dark:text-red-300">Setup Failed</h4>
+                <p className="mt-1 text-red-700 dark:text-red-400/90">{apiError}</p>
               </div>
             </div>
           )}
@@ -179,7 +179,7 @@ const GoogleOrgSetupPage: React.FC = () => {
           <form onSubmit={handleSubmitStep1(onStep1Submit)} className="space-y-6">
             {/* Organisation Name Field */}
             <div>
-              <label htmlFor="org_name" className="block text-sm font-semibold text-slate-700 mb-2">
+              <label htmlFor="org_name" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                 Organisation Name
               </label>
               <input
@@ -187,18 +187,18 @@ const GoogleOrgSetupPage: React.FC = () => {
                 type="text"
                 placeholder="Acme Corporation"
                 {...registerStep1('org_name')}
-                className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                  errorsStep1.org_name ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+                className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
+                  errorsStep1.org_name ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-455' : 'border-slate-200 dark:border-slate-700'
                 }`}
               />
               {errorsStep1.org_name && (
-                <p className="mt-1.5 text-sm text-red-500">{errorsStep1.org_name.message}</p>
+                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errorsStep1.org_name.message}</p>
               )}
             </div>
 
             {/* Organisation Website Field */}
             <div>
-              <label htmlFor="org_website" className="block text-sm font-semibold text-slate-700 mb-2">
+              <label htmlFor="org_website" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                 Organisation Website
               </label>
               <input
@@ -206,12 +206,12 @@ const GoogleOrgSetupPage: React.FC = () => {
                 type="text"
                 placeholder="https://acme.com"
                 {...registerStep1('org_website')}
-                className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                  errorsStep1.org_website ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+                className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
+                  errorsStep1.org_website ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-455' : 'border-slate-200 dark:border-slate-700'
                 }`}
               />
               {errorsStep1.org_website && (
-                <p className="mt-1.5 text-sm text-red-500">{errorsStep1.org_website.message}</p>
+                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errorsStep1.org_website.message}</p>
               )}
             </div>
 
@@ -220,7 +220,7 @@ const GoogleOrgSetupPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="bg-indigo-700 hover:bg-indigo-600 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200 flex items-center justify-center gap-2"
+                className="bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200 flex items-center justify-center gap-2"
               >
                 {isLoading ? (
                   <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -238,21 +238,21 @@ const GoogleOrgSetupPage: React.FC = () => {
         <>
           {/* Step 2: Set Optional Password */}
           <div className="mb-8 animate-fade-in">
-            <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800">
+            <h2 className="font-sora text-3xl font-bold tracking-tight text-slate-800 dark:text-slate-100">
               Set a password
             </h2>
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               Optional: Set a password to log in without Google in the future. You can skip this step if you prefer.
             </p>
           </div>
 
           {/* API error alert box */}
           {apiError && (
-            <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 text-red-700 text-sm animate-fade-in">
-              <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+            <div className="mb-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded-lg p-4 flex items-start gap-3 text-red-700 dark:text-red-450 text-sm animate-fade-in">
+              <AlertTriangle className="h-5 w-5 text-red-500 dark:text-red-455 shrink-0 mt-0.5" />
               <div>
-                <h4 className="font-bold text-red-800">Error setting password</h4>
-                <p className="mt-1 text-red-700">{apiError}</p>
+                <h4 className="font-bold text-red-800 dark:text-red-300">Error setting password</h4>
+                <p className="mt-1 text-red-700 dark:text-red-400/90">{apiError}</p>
               </div>
             </div>
           )}
@@ -261,7 +261,7 @@ const GoogleOrgSetupPage: React.FC = () => {
           <form onSubmit={handleSubmitStep2(onStep2Submit)} className="space-y-6 animate-fade-in">
             {/* New Password Field */}
             <div>
-              <label htmlFor="new_password" className="block text-sm font-semibold text-slate-700 mb-2">
+              <label htmlFor="new_password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                 New Password
               </label>
               <div className="relative">
@@ -270,26 +270,26 @@ const GoogleOrgSetupPage: React.FC = () => {
                   type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
                   {...registerStep2('new_password')}
-                  className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                    errorsStep2.new_password ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+                  className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
+                    errorsStep2.new_password ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-455' : 'border-slate-200 dark:border-slate-700'
                   }`}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600"
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-350"
                 >
                   {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
               {errorsStep2.new_password && (
-                <p className="mt-1.5 text-sm text-red-500">{errorsStep2.new_password.message}</p>
+                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errorsStep2.new_password.message}</p>
               )}
             </div>
 
             {/* Confirm Password Field */}
             <div>
-              <label htmlFor="confirm_password" className="block text-sm font-semibold text-slate-700 mb-2">
+              <label htmlFor="confirm_password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                 Confirm Password
               </label>
               <div className="relative">
@@ -298,20 +298,20 @@ const GoogleOrgSetupPage: React.FC = () => {
                   type={showConfirmPassword ? 'text' : 'password'}
                   placeholder="••••••••"
                   {...registerStep2('confirm_password')}
-                  className={`border rounded-lg px-4 py-3 w-full text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                    errorsStep2.confirm_password ? 'border-red-500 focus:ring-red-500' : 'border-slate-200'
+                  className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-405 focus:border-transparent ${
+                    errorsStep2.confirm_password ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-455' : 'border-slate-200 dark:border-slate-700'
                   }`}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600"
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 dark:text-slate-550 hover:text-slate-600 dark:hover:text-slate-350"
                 >
                   {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
               {errorsStep2.confirm_password && (
-                <p className="mt-1.5 text-sm text-red-500">{errorsStep2.confirm_password.message}</p>
+                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errorsStep2.confirm_password.message}</p>
               )}
             </div>
 
@@ -320,14 +320,14 @@ const GoogleOrgSetupPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleSkipPassword}
-                className="border border-slate-200 rounded-lg px-6 py-3 w-1/3 text-slate-700 font-semibold hover:bg-slate-50 transition-colors duration-200 text-center"
+                className="border border-slate-200 dark:border-slate-700 rounded-lg px-6 py-3 w-1/3 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-200 text-center"
               >
                 Skip
               </button>
               <button
                 type="submit"
                 disabled={isLoading}
-                className="bg-indigo-700 hover:bg-indigo-600 text-white font-semibold rounded-lg px-6 py-3 w-2/3 transition-colors duration-200 flex items-center justify-center gap-2"
+                className="bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 w-2/3 transition-colors duration-200 flex items-center justify-center gap-2"
               >
                 {isLoading ? (
                   <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
