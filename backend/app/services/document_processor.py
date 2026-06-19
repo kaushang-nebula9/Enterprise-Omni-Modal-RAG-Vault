@@ -515,9 +515,13 @@ def process_document(document_id: str, db: Session) -> None:
                 chunks = chunk_text(page["text"])
                 for chunk in chunks:
                     vector = embedding_service.embed_text(chunk)
+                    sparse_vector = qdrant_service.generate_sparse_vector(chunk)
+                    print("#################")
+                    print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
                     points.append({
                         "id": str(uuid.uuid4()),
-                        "vector": vector,
+                        "dense_vector": vector,
+                        "sparse_vector": sparse_vector,
                         "payload": {
                             "document_id": doc_id,
                             "tenant_id": tenant_id,
@@ -542,9 +546,13 @@ def process_document(document_id: str, db: Session) -> None:
             chunks = chunk_text(full_text)
             for chunk in chunks:
                 vector = embedding_service.embed_text(chunk)
+                sparse_vector = qdrant_service.generate_sparse_vector(chunk)
+                print("#################")
+                print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
                 points.append({
                     "id": str(uuid.uuid4()),
-                    "vector": vector,
+                    "dense_vector": vector,
+                    "sparse_vector": sparse_vector,
                     "payload": {
                         "document_id": doc_id,
                         "tenant_id": tenant_id,
@@ -566,9 +574,13 @@ def process_document(document_id: str, db: Session) -> None:
             chunks = chunk_text(full_text)
             for chunk in chunks:
                 vector = embedding_service.embed_text(chunk)
+                sparse_vector = qdrant_service.generate_sparse_vector(chunk)
+                print("#################")
+                print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
                 points.append({
                     "id": str(uuid.uuid4()),
-                    "vector": vector,
+                    "dense_vector": vector,
+                    "sparse_vector": sparse_vector,
                     "payload": {
                         "document_id": doc_id,
                         "tenant_id": tenant_id,
@@ -585,9 +597,13 @@ def process_document(document_id: str, db: Session) -> None:
             slides = embedding_service.process_pptx_slides(abs_file_path)
             for slide in slides:
                 vector = slide["vector"]
+                sparse_vector = qdrant_service.generate_sparse_vector(slide["text"])
+                print("#################")
+                print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
                 points.append({
                     "id": str(uuid.uuid4()),
-                    "vector": vector,
+                    "dense_vector": vector,
+                    "sparse_vector": sparse_vector,
                     "payload": {
                         "document_id": doc_id,
                         "tenant_id": tenant_id,
@@ -606,9 +622,13 @@ def process_document(document_id: str, db: Session) -> None:
             chunks = chunk_text(transcription)
             for chunk in chunks:
                 vector = embedding_service.embed_text(chunk)
+                sparse_vector = qdrant_service.generate_sparse_vector(chunk)
+                print("#################")
+                print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
                 points.append({
                     "id": str(uuid.uuid4()),
-                    "vector": vector,
+                    "dense_vector": vector,
+                    "sparse_vector": sparse_vector,
                     "payload": {
                         "document_id": doc_id,
                         "tenant_id": tenant_id,

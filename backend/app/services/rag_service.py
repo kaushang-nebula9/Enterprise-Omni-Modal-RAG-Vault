@@ -279,6 +279,7 @@ def run_rag_pipeline(
 
             qdrant_results = search_vectors(
                 collection_name=collection_name,
+                query_text=query,
                 query_vector=query_vector,
                 role_ids=search_role_ids,
                 limit=5,

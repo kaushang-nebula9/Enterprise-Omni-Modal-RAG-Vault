@@ -13,13 +13,36 @@ from qdrant_client.models import (
     MatchAny,
     FilterSelector,
     SetPayload,
+    SparseVectorParams,
+    Modifier,
+    Prefetch,
+    FusionQuery,
+    Fusion,
 )
 from app.core.config import settings
+from fastembed import SparseTextEmbedding
 
 logger = logging.getLogger(__name__)
 
 VECTOR_SIZE = 1024  # BAAI/bge-large-en-v1.5 output dimension (sentence-transformers, active)
 # VECTOR_SIZE = 3072  # gemini-embedding-2-preview output dimension
+
+_sparse_model = None
+
+def get_sparse_model() -> SparseTextEmbedding:
+    global _sparse_model
+    if _sparse_model is None:
+        _sparse_model = SparseTextEmbedding("Qdrant/bm25")
+    return _sparse_model
+
+def generate_sparse_vector(text: str) -> dict:
+    model = get_sparse_model()
+    embeddings = list(model.embed([text]))
+    embedding = embeddings[0]
+    return {
+        "indices": embedding.indices.tolist(),
+        "values": embedding.values.tolist()
+    }
 
 
 def _get_client() -> QdrantClient:
@@ -44,10 +67,17 @@ def get_or_create_tenant_collection(tenant_id: str) -> str:
     if collection_name not in existing:
         client.create_collection(
             collection_name=collection_name,
-            vectors_config=VectorParams(
-                size=VECTOR_SIZE,
-                distance=Distance.COSINE,
-            ),
+            vectors_config={
+                "dense": VectorParams(
+                    size=VECTOR_SIZE,
+                    distance=Distance.COSINE,
+                )
+            },
+            sparse_vectors_config={
+                "sparse": SparseVectorParams(
+                    modifier=Modifier.IDF
+                )
+            }
         )
         
         # Create indexes for fields we use in Filters
@@ -75,14 +105,18 @@ def upsert_vectors(collection_name: str, points: list[dict]) -> None:
 
     Each point dict must contain:
       - id: UUID string
-      - vector: list[float]
+      - dense_vector: list[float]
+      - sparse_vector: dict with 'indices' and 'values'
       - payload: dict
     """
     client = _get_client()
     qdrant_points = [
         PointStruct(
             id=p["id"],
-            vector=p["vector"],
+            vector={
+                "dense": p["dense_vector"],
+                "sparse": p["sparse_vector"]
+            },
             payload=p["payload"],
         )
         for p in points
@@ -114,28 +148,38 @@ def delete_document_vectors(collection_name: str, document_id: str) -> None:
 
 def search_vectors(
     collection_name: str,
+    query_text: str,
     query_vector: list[float],
     role_ids: list[str],
     limit: int = 5,
 ) -> list[dict]:
     """
-    Perform a semantic search with a role-based access filter.
+    Perform a semantic search with a role-based access filter using Hybrid Search.
 
     Only returns results where the payload role_ids contains at least one
     of the user's role_ids (MatchAny).
     """
     client = _get_client()
+    
+    # Generate sparse vector for query
+    sparse_query = generate_sparse_vector(query_text)
+    
+    role_filter = Filter(
+        must=[
+            FieldCondition(
+                key="role_ids",
+                match=MatchAny(any=role_ids),
+            )
+        ]
+    )
+    
     results = client.query_points(
         collection_name=collection_name,
-        query=query_vector,
-        query_filter=Filter(
-            must=[
-                FieldCondition(
-                    key="role_ids",
-                    match=MatchAny(any=role_ids),
-                )
-            ]
-        ),
+        prefetch=[
+            Prefetch(query=query_vector, using="dense", filter=role_filter, limit=20),
+            Prefetch(query=sparse_query, using="sparse", filter=role_filter, limit=20)
+        ],
+        query=FusionQuery(fusion=Fusion.RRF),
         limit=limit,
         with_payload=True,
     ).points
