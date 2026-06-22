@@ -44,16 +44,121 @@ const ChatPage: React.FC = () => {
   const { user } = useAuthStore()
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
+  
+  const activeSessionIdRef = useRef<string | null>(null)
+  const mirrorRef = useRef<HTMLDivElement>(null)
 
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<MessageResponse[]>([])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expandedCitations, setExpandedCitations] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   const [attachedDocument, setAttachedDocument] = useState<DocumentResponse | null>(null)
+
+  const renderHighlightedText = (text: string) => {
+    let filenameToHighlight = ""
+    if (attachedDocument) {
+      filenameToHighlight = attachedDocument.filename
+    } else if (uploadedFile?.status === 'ready') {
+      filenameToHighlight = uploadedFile.file.name
+    }
+
+    if (!filenameToHighlight || !text.includes(filenameToHighlight)) {
+      return text
+    }
+
+    // Split by filename to highlight it
+    const index = text.indexOf(filenameToHighlight)
+    const before = text.substring(0, index)
+    const filename = text.substring(index, index + filenameToHighlight.length)
+    const after = text.substring(index + filenameToHighlight.length)
+
+    return (
+      <>
+        {before}
+        <span
+          onClick={() => textareaRef.current?.focus()}
+          className="font-semibold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-200 px-2 rounded-full border border-indigo-200 dark:border-indigo-800/50 transition-colors duration-150 hover:bg-indigo-200 dark:hover:bg-indigo-800/80 inline-flex items-center gap-1 align-middle pointer-events-auto cursor-pointer select-none "
+        >
+          <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+          <span className='text-sm'>{filename}</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              handleDetach()
+            }}
+            className="hover:bg-indigo-300 dark:hover:bg-indigo-700/80 rounded-full p-0.5 transition-colors flex items-center justify-center"
+            title="Detach file"
+          >
+            <X className="w-3 h-3 text-indigo-800 dark:text-indigo-200" />
+          </button>
+        </span>
+        {after}
+      </>
+    )
+  }
+
+  const handleDetach = () => {
+    let filenameToRemove = ""
+    if (attachedDocument) {
+      filenameToRemove = attachedDocument.filename
+    } else if (uploadedFile?.status === 'ready') {
+      filenameToRemove = uploadedFile.file.name
+    }
+
+    if (filenameToRemove) {
+      const index = inputValue.indexOf(filenameToRemove)
+      if (index !== -1) {
+        const before = inputValue.substring(0, index)
+        const after = inputValue.substring(index + filenameToRemove.length)
+        let newText = before + after
+        if (before.endsWith(' ') && after.startsWith(' ')) {
+          newText = before.slice(0, -1) + after
+        }
+        setInputValue(newText)
+      }
+    }
+
+    setAttachedDocument(null)
+    setUploadedFile(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+
+    setTimeout(() => {
+      textareaRef.current?.focus()
+    }, 50)
+  }
+
+  const renderMessageContentWithHighlights = (msg: MessageResponse) => {
+    const text = msg.content
+    const fileName = msg.attached_file?.name
+
+    if (!fileName || !text.includes(fileName)) {
+      return text
+    }
+
+    const index = text.indexOf(fileName)
+    const before = text.substring(0, index)
+    const filenameText = text.substring(index, index + fileName.length)
+    const after = text.substring(index + fileName.length)
+
+    return (
+      <>
+        {before}
+        <span className="font-semibold text-sm mb-1 bg-white/10 px-2 rounded-full transition-colors duration-150 hover:bg-white/20 hover:cursor-pointer inline-flex items-center gap-1 align-middle">
+          <FileText className="w-3.5 h-3.5 text-indigo-200" />
+          {filenameText}
+        </span>
+        {after}
+      </>
+    )
+  }
 
   // Dropdown UI states
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
@@ -127,7 +232,7 @@ const ChatPage: React.FC = () => {
     }
   }, [isDropdownOpen])
 
-  // Select document and remove the trigger slash
+  // Select document and remove the trigger slash, inserting document filename instead of slash
   const handleSelectDocument = (doc: DocumentResponse) => {
     setAttachedDocument(doc)
     setUploadedFile(null) // clear any uploaded file to avoid duplicate attachments
@@ -143,12 +248,13 @@ const ChatPage: React.FC = () => {
       const match = textBeforeCursor.match(/(?:^|\s)\/(\S*)$/)
       if (match) {
         const slashIndex = textBeforeCursor.lastIndexOf('/')
-        const newText = text.substring(0, slashIndex) + textAfterCursor
+        const newText = text.substring(0, slashIndex) + " " + doc.filename + " " + textAfterCursor
         setInputValue(newText)
 
         setTimeout(() => {
           textareaRef.current?.focus()
-          textareaRef.current?.setSelectionRange(slashIndex, slashIndex)
+          const newCursorPos = slashIndex + doc.filename.length + 2
+          textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos)
         }, 50)
       } else {
         textareaRef.current.focus()
@@ -183,7 +289,7 @@ const ChatPage: React.FC = () => {
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isLoading])
+  }, [messages, isLoading, isStreaming])
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -192,11 +298,24 @@ const ChatPage: React.FC = () => {
     return () => clearTimeout(timer)
   }, [toast])
 
+  // Auto-resize textarea and sync scroll with mirrorRef
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      const scrollHeight = textareaRef.current.scrollHeight
+      textareaRef.current.style.height = `${scrollHeight}px`
+      if (mirrorRef.current) {
+        mirrorRef.current.scrollTop = textareaRef.current.scrollTop
+      }
+    }
+  }, [inputValue])
+
   // Returns the current sessionId, creating one lazily if needed
   const ensureSession = useCallback(async (): Promise<string | null> => {
     if (sessionId) return sessionId
     try {
       const newSession = await chatService.createSession()
+      activeSessionIdRef.current = newSession.id
       setSessionId(newSession.id)
       setSearchParams({ session: newSession.id }, { replace: true })
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
@@ -206,11 +325,11 @@ const ChatPage: React.FC = () => {
       setError(msg)
       return null
     }
-  }, [sessionId])
+  }, [sessionId, setSearchParams, queryClient])
 
   const handleSend = useCallback(async (content?: string) => {
     const text = (content ?? inputValue).trim()
-    if (!text || isLoading) return
+    if (!text || isLoading || isStreaming) return
 
     setError(null)
 
@@ -241,7 +360,18 @@ const ChatPage: React.FC = () => {
       citations: [],
       attached_file: attachedFile
     }
-    setMessages((prev) => [...prev, tempUserMsg])
+
+    const tempAssistantId = `temp-assistant-${Date.now()}`
+    const tempAssistantMsg: MessageResponse = {
+      id: tempAssistantId,
+      session_id: sid,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+      citations: [],
+    }
+
+    setMessages((prev) => [...prev, tempUserMsg, tempAssistantMsg])
     setInputValue('')
     
     // Capture document IDs before resetting state
@@ -254,26 +384,48 @@ const ChatPage: React.FC = () => {
       textareaRef.current.style.height = 'auto'
     }
     setIsLoading(true)
+    setIsStreaming(true)
 
-    try {
-      const response = await chatService.sendQuery(sid, text, docId)
-      const assistantMsg: MessageResponse = {
-        id: response.message_id,
-        session_id: sid,
-        role: 'assistant',
-        content: response.answer,
-        created_at: new Date().toISOString(),
-        citations: response.citations,
-      }
-      setMessages((prev) => [...prev, assistantMsg])
-      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Failed to get a response.'
-      setError(msg)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [inputValue, isLoading, ensureSession, uploadedFile, attachedDocument])
+    chatService.sendQuery(
+      sid,
+      text,
+      (token) => {
+        setIsLoading(false)
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === tempAssistantId
+              ? { ...msg, content: msg.content + token }
+              : msg
+          )
+        )
+      },
+      (citations, messageId) => {
+        setIsStreaming(false)
+        setIsLoading(false)
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === tempAssistantId
+              ? { ...msg, id: messageId, citations }
+              : msg
+          )
+        )
+        queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
+      },
+      (err) => {
+        setIsStreaming(false)
+        setIsLoading(false)
+        setError(err)
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === tempAssistantId && msg.content === ''
+              ? { ...msg, content: 'Error: Failed to get response.' }
+              : msg
+          )
+        )
+      },
+      docId
+    )
+  }, [inputValue, isLoading, isStreaming, ensureSession, uploadedFile, attachedDocument, queryClient])
 
   const urlSessionId = searchParams.get('session')
   const autoQuery = searchParams.get('q')
@@ -283,6 +435,7 @@ const ChatPage: React.FC = () => {
     // If URL has no session, clear current session (New Chat scenario)
     if (!urlSessionId) {
       if (sessionId !== null) {
+        activeSessionIdRef.current = null
         setSessionId(null)
         setMessages([])
         setUploadedFile(null)
@@ -293,13 +446,14 @@ const ChatPage: React.FC = () => {
       return
     }
 
-    // If URL session matches the currently loaded session, do nothing
-    if (urlSessionId === sessionId) return
+    // If URL session matches the currently loaded session or the active transitioning session, do nothing
+    if (urlSessionId === sessionId || urlSessionId === activeSessionIdRef.current) return
 
     // Otherwise, load the new session from the backend
     const loadSession = async () => {
       try {
         const session = await chatService.getSession(urlSessionId)
+        activeSessionIdRef.current = session.id
         setSessionId(session.id)
         // Sort chronologically, fallback to role for identical timestamps
         const sortedMessages = [...session.messages].sort((a, b) => {
@@ -332,7 +486,7 @@ const ChatPage: React.FC = () => {
   // Direct send that takes sessionId as parameter (for use before state updates)
   const handleSendDirect = async (sid: string, content: string) => {
     const text = content.trim()
-    if (!text) return
+    if (!text || isLoading || isStreaming) return
 
     const tempUserMsg: MessageResponse = {
       id: `temp-${Date.now()}`,
@@ -342,27 +496,59 @@ const ChatPage: React.FC = () => {
       created_at: new Date().toISOString(),
       citations: [],
     }
-    setMessages((prev) => [...prev, tempUserMsg])
-    setIsLoading(true)
 
-    try {
-      const response = await chatService.sendQuery(sid, text)
-      const assistantMsg: MessageResponse = {
-        id: response.message_id,
-        session_id: sid,
-        role: 'assistant',
-        content: response.answer,
-        created_at: new Date().toISOString(),
-        citations: response.citations,
-      }
-      setMessages((prev) => [...prev, assistantMsg])
-      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || 'Failed to get a response.'
-      setError(msg)
-    } finally {
-      setIsLoading(false)
+    const tempAssistantId = `temp-assistant-${Date.now()}`
+    const tempAssistantMsg: MessageResponse = {
+      id: tempAssistantId,
+      session_id: sid,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+      citations: [],
     }
+
+    setMessages((prev) => [...prev, tempUserMsg, tempAssistantMsg])
+    setIsLoading(true)
+    setIsStreaming(true)
+
+    chatService.sendQuery(
+      sid,
+      text,
+      (token) => {
+        setIsLoading(false)
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === tempAssistantId
+              ? { ...msg, content: msg.content + token }
+              : msg
+          )
+        )
+      },
+      (citations, messageId) => {
+        setIsStreaming(false)
+        setIsLoading(false)
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === tempAssistantId
+              ? { ...msg, id: messageId, citations }
+              : msg
+          )
+        )
+        queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
+      },
+      (err) => {
+        setIsStreaming(false)
+        setIsLoading(false)
+        setError(err)
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === tempAssistantId && msg.content === ''
+              ? { ...msg, content: 'Error: Failed to get response.' }
+              : msg
+          )
+        )
+      }
+    )
   }
 
   const toggleCitations = (messageId: string) => {
@@ -402,6 +588,18 @@ const ChatPage: React.FC = () => {
       const response = await chatService.uploadPrivateDocument(sid, file)
       setUploadedFile({ file, status: 'ready', id: response.id })
       setToast({ message: 'Document ready. You can now ask questions about it.', type: 'success' })
+
+      // Auto-insert file name to input text area so it is highlighted inline
+      const text = inputValue
+      const space = text && !text.endsWith(' ') ? ' ' : ''
+      const newText = text + space + file.name + ' '
+      setInputValue(newText)
+      setTimeout(() => {
+        textareaRef.current?.focus()
+        if (textareaRef.current) {
+          textareaRef.current.setSelectionRange(newText.length, newText.length)
+        }
+      }, 50)
     } catch (err: any) {
       const msg = err?.response?.data?.detail || err?.message || 'Failed to upload document.'
       setUploadedFile({ file, status: 'ready', error: msg })
@@ -433,14 +631,27 @@ const ChatPage: React.FC = () => {
   const isAdmin = user?.role?.is_admin ?? false
   const isFileUploading = uploadedFile?.status === 'uploading'
   // Send is disabled while the AI is replying OR a document is still being processed
-  const isSendDisabled = !inputValue.trim() || isLoading || isFileUploading
+  const isSendDisabled = !inputValue.trim() || isLoading || isStreaming || isFileUploading
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
     setInputValue(value)
+
+    // Clear attachment if filename is deleted/modified in input box
+    if (attachedDocument && !value.includes(attachedDocument.filename)) {
+      setAttachedDocument(null)
+    }
+    if (uploadedFile?.status === 'ready' && !value.includes(uploadedFile.file.name)) {
+      setUploadedFile(null)
+    }
+
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`
+      const scrollHeight = textareaRef.current.scrollHeight
+      textareaRef.current.style.height = `${scrollHeight}px`
+      if (mirrorRef.current) {
+        mirrorRef.current.scrollTop = textareaRef.current.scrollTop
+      }
     }
 
     const selectionStart = e.target.selectionStart
@@ -497,14 +708,14 @@ const ChatPage: React.FC = () => {
                 {msg.role === 'user' ? (
                   <div className="ml-auto max-w-2xl flex flex-col items-end gap-2">
                     {msg.attached_file && (
-                      <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-sm shadow-sm">
+                      <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-sm shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-150">
                         <FileText className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
-                        <span className="max-w-[180px] truncate font-medium">{msg.attached_file.name}</span>
+                        <span className="max-w-[180px] truncate font-bold">{msg.attached_file.name}</span>
                         <span className="text-slate-400 dark:text-slate-500">{formatFileSize(msg.attached_file.size)}</span>
                       </div>
                     )}
                     <div className="bg-indigo-700 dark:bg-indigo-600 text-white rounded-2xl rounded-br-md px-4 py-3">
-                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      <p className="whitespace-pre-wrap">{renderMessageContentWithHighlights(msg)}</p>
                       <p className="text-indigo-300 dark:text-indigo-200 text-xs mt-1 text-right">{formatTime(msg.created_at)}</p>
                     </div>
                   </div>
@@ -683,7 +894,7 @@ const ChatPage: React.FC = () => {
             <div className="border border-slate-200 dark:border-slate-700 rounded-3xl bg-white dark:bg-slate-900 focus-within:ring-2 focus-within:ring-indigo-500 text-slate-800 dark:text-slate-100 mb-2">
 
               {/* File preview inside input */}
-              {uploadedFile && (
+              {uploadedFile && (uploadedFile.status === 'uploading' || uploadedFile.error) && (
                 <div className="px-3 pt-3">
                   <div
                     className={`inline-flex items-center gap-2 px-3 py-2 ml-8 rounded-xl border text-sm ${
@@ -720,38 +931,15 @@ const ChatPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Attached document preview inside input */}
-              {attachedDocument && (
-                <div className="px-3 pt-3">
-                  <div className="inline-flex items-center gap-2 px-3 py-2 ml-8 rounded-xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 text-sm">
-                    <FileText className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
-                    <span className="max-w-[180px] truncate font-medium">
-                      {attachedDocument.filename}
-                    </span>
-                    {attachedDocument.file_size && (
-                      <span className="text-slate-500 dark:text-slate-400 text-xs">
-                        ({formatFileSize(attachedDocument.file_size)})
-                      </span>
-                    )}
-                    <button
-                      onClick={() => setAttachedDocument(null)}
-                      className="hover:bg-black/5 dark:hover:bg-white/10 rounded-full p-1"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {/* Input area */}
               <div className="relative">
                 {!isAdmin && (
                   <>
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      disabled={isFileUploading}
+                      disabled={isFileUploading || isLoading || isStreaming}
                       type="button"
-                      className="absolute left-2 bottom-2.5 z-10 flex items-center justify-center w-10 h-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
+                      className="absolute left-2 bottom-2.5 z-20 flex items-center justify-center w-10 h-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
                     >
                       <Plus className="w-5 h-5" strokeWidth={2.5} />
                     </button>
@@ -765,18 +953,39 @@ const ChatPage: React.FC = () => {
                   </>
                 )}
 
+                {/* Mirror Div for inline highlighted tags */}
+                <div
+                  ref={mirrorRef}
+                  className={`absolute inset-0 pointer-events-none whitespace-pre-wrap break-words py-3 pt-4 border-0 overflow-y-auto custom-scrollbar select-none text-slate-800 dark:text-slate-100 z-10 ${
+                    !isAdmin ? "pl-12 pr-14" : "pl-4 pr-14"
+                  }`}
+                  style={{
+                    fontFamily: 'inherit',
+                    fontSize: 'inherit',
+                    lineHeight: 'inherit',
+                    maxHeight: '200px',
+                  }}
+                >
+                  {renderHighlightedText(inputValue)}
+                </div>
+
                 <textarea
                   ref={textareaRef}
                   value={inputValue}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
+                  onScroll={(e) => {
+                    if (mirrorRef.current) {
+                      mirrorRef.current.scrollTop = e.currentTarget.scrollTop
+                    }
+                  }}
                   placeholder={
                     isFileUploading
                       ? "Please wait while the document is processed..."
                       : "Ask about your documents..."
                   }
                   rows={1}
-                  className={`w-full text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-transparent py-3 pt-4 resize-none focus:outline-none border-0 placeholder:pl-1 custom-scrollbar ${
+                  className={`w-full text-transparent caret-slate-800 dark:caret-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-transparent py-3 pt-4 resize-none focus:outline-none border-0 placeholder:pl-1 custom-scrollbar relative z-0 ${
                     !isAdmin ? "pl-12 pr-14" : "pl-4 pr-14"
                   }`}
                   style={{ maxHeight: "200px" }}
@@ -786,7 +995,7 @@ const ChatPage: React.FC = () => {
                   onClick={() => handleSend()}
                   disabled={isSendDisabled}
                   type="button"
-                  className="absolute right-2 bottom-2 flex items-center justify-center w-10 h-10 rounded-full bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white disabled:opacity-50"
+                  className="absolute right-2 bottom-2 z-20 flex items-center justify-center w-10 h-10 rounded-full bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white disabled:opacity-50"
                 >
                   <SendHorizontal className="w-4 h-4" />
                 </button>

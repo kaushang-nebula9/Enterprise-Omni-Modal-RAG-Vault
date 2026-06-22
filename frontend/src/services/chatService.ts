@@ -1,5 +1,5 @@
 import api from './api'
-import type { SessionResponse, SessionDetailResponse, QueryResponse } from '../types/chat'
+import type { SessionResponse, SessionDetailResponse, QueryResponse, CitationResponse } from '../types/chat'
 import type { DocumentResponse } from '../types/document'
 import type { MessageResponse as ApiMessageResponse } from '../types/auth'
 
@@ -24,12 +24,94 @@ export const chatService = {
     return response.data
   },
 
-  sendQuery: async (sessionId: string, content: string, documentId?: string): Promise<QueryResponse> => {
-    const response = await api.post<QueryResponse>(`/api/v1/chat/sessions/${sessionId}/query`, {
-      content,
-      document_id: documentId,
+  sendQuery: (
+    sessionId: string,
+    content: string,
+    onToken: (token: string) => void,
+    onDone: (citations: CitationResponse[], messageId: string) => void,
+    onError: (error: string) => void,
+    documentId?: string
+  ): void => {
+    const baseURL = api.defaults.baseURL || 'http://localhost:8000'
+    const url = `${baseURL}/api/v1/chat/sessions/${sessionId}/query`
+
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content,
+        document_id: documentId,
+      }),
+      credentials: 'include',
     })
-    return response.data
+      .then(async (response) => {
+        if (!response.ok) {
+          const text = await response.text()
+          throw new Error(text || 'Failed to send query')
+        }
+
+        const reader = response.body?.getReader()
+        if (!reader) {
+          throw new Error('Response body is not readable')
+        }
+
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        while (true) {
+          const { value, done } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            const trimmedLine = line.trim()
+            if (!trimmedLine) continue
+
+            if (trimmedLine.startsWith('data:')) {
+              const dataStr = trimmedLine.slice(5).trim()
+              try {
+                const parsed = JSON.parse(dataStr)
+                if (parsed.type === 'token') {
+                  onToken(parsed.content)
+                } else if (parsed.type === 'done') {
+                  onDone(parsed.citations, parsed.message_id)
+                } else if (parsed.type === 'error') {
+                  onError(parsed.content)
+                }
+              } catch (e) {
+                console.error('Failed to parse SSE event data', e, trimmedLine)
+              }
+            }
+          }
+        }
+
+        if (buffer.trim()) {
+          const trimmedLine = buffer.trim()
+          if (trimmedLine.startsWith('data:')) {
+            const dataStr = trimmedLine.slice(5).trim()
+            try {
+              const parsed = JSON.parse(dataStr)
+              if (parsed.type === 'token') {
+                onToken(parsed.content)
+              } else if (parsed.type === 'done') {
+                onDone(parsed.citations, parsed.message_id)
+              } else if (parsed.type === 'error') {
+                onError(parsed.content)
+              }
+            } catch (e) {
+              console.error('Failed to parse final SSE event data', e, trimmedLine)
+            }
+          }
+        }
+      })
+      .catch((error) => {
+        onError(error.message || String(error))
+      })
   },
 
   uploadPrivateDocument: async (sessionId: string, file: File): Promise<DocumentResponse> => {
