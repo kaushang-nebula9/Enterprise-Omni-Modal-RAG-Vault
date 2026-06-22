@@ -1,6 +1,6 @@
 """
-Embedding service using Google Gemini for text embeddings, audio transcription,
-and slide image description.
+Embedding service using sentence-transformers for text embeddings, 
+audio transcription, and slide image description.
 """
 import time
 import logging
@@ -26,9 +26,7 @@ def _get_client() -> genai.Client:
 # ---------------------------------------------------------------------------
 
 # -- Sentence Transformers (ACTIVE) -----------------------------------------
-# Temporary replacement for Gemini embeddings to avoid API rate limits.
 # Model: BAAI/bge-large-en-v1.5  |  Output dimension: 1024
-# To switch back to Gemini: comment this block and uncomment the Gemini block below.
 
 from sentence_transformers import SentenceTransformer as _SentenceTransformer
 
@@ -59,28 +57,7 @@ def embed_text(text: str) -> list[float]:
         raise RuntimeError(f"Failed to generate embedding: {exc}") from exc
 
 
-# -- Gemini Embedding (COMMENTED OUT — restore when rate limits are lifted) --
-#
-# def embed_text(text: str) -> list[float]:
-#     """
-#     Generate a text embedding using the gemini-embedding-2-preview model.
-#
-#     Adds a 0.5-second delay after the API call to avoid rate limiting.
-#     Raises an exception with a clear message if the call fails.
-#     """
-#     client = _get_client()
-#     try:
-#         result = client.models.embed_content(
-#             model="gemini-embedding-2-preview",
-#             contents=text,
-#         )
-#         time.sleep(0.5)
-#         return result.embeddings[0].values
-#     except Exception as exc:
-#         raise RuntimeError(f"Failed to generate embedding: {exc}") from exc
-
 # ---------------------------------------------------------------------------
-
 
 def transcribe_audio(file_path: str) -> str:
     """
@@ -123,7 +100,7 @@ def process_pptx_slides(file_path: str) -> list[dict]:
     from pptx import Presentation
     from pptx.enum.shapes import MSO_SHAPE_TYPE
     
-    client = _get_client()
+
     try:
         prs = Presentation(file_path)
     except Exception as exc:

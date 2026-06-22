@@ -5,25 +5,18 @@ Handles:
   - Excel query execution in a RestrictedPython sandbox
   - Full RAG pipeline: embed query → Qdrant search → Excel pipeline → LLM answer
 
-NOTE — Anthropic (Claude) is ACTIVE for all LLM calls.
-       Gemini 2.5 Flash code is commented out below each active block.
-       To restore Gemini: uncomment the Gemini blocks and comment the Anthropic blocks.
 """
 import logging
 import threading
-import traceback
 import uuid
-from typing import Optional
+from typing import Optional, AsyncGenerator
 
 import pandas as pd
 from RestrictedPython import compile_restricted, safe_globals
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
-from google import genai
-from google.genai import types as genai_types
-
-from anthropic import Anthropic
+from anthropic import Anthropic, AsyncAnthropic
 
 from app.core.config import settings
 from app.models.document import Document
@@ -37,24 +30,11 @@ from app.services.storage_service import get_absolute_path
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Gemini client (kept for future restoration — currently unused)
-# ---------------------------------------------------------------------------
-
-_gemini_client: genai.Client | None = None
-
-
-def _get_gemini_client() -> genai.Client:
-    global _gemini_client
-    if _gemini_client is None:
-        _gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
-    return _gemini_client
-
-
-# ---------------------------------------------------------------------------
 # Anthropic client (ACTIVE)
 # ---------------------------------------------------------------------------
 
 _anthropic_client: Anthropic | None = None
+_async_anthropic_client: AsyncAnthropic | None = None
 
 
 def _get_anthropic_client() -> Anthropic:
@@ -63,6 +43,14 @@ def _get_anthropic_client() -> Anthropic:
     if _anthropic_client is None:
         _anthropic_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
     return _anthropic_client
+
+
+def _get_async_anthropic_client() -> AsyncAnthropic:
+    """Lazily initialise and return the AsyncAnthropic client."""
+    global _async_anthropic_client
+    if _async_anthropic_client is None:
+        _async_anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    return _async_anthropic_client
 
 
 # ---------------------------------------------------------------------------
@@ -100,10 +88,8 @@ def execute_excel_query(
     """
     try:
         # Load the dataframe
-        print("### 1\n")
         df = pd.read_excel(file_path, engine="openpyxl")
 
-        print("###  2\n")
         # Build the prompt
         prompt = _EXCEL_CODE_PROMPT.format(
             columns=schema.get("columns", []),
@@ -114,10 +100,7 @@ def execute_excel_query(
             query=query,
         )
 
-        print("###  3 prompt: ", prompt, "\n")
-
         # -- Anthropic LLM call (ACTIVE) ------------------------------------------
-        # To switch back to Gemini: comment this block, uncomment the Gemini block below.
         client = _get_anthropic_client()
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
@@ -129,38 +112,23 @@ def execute_excel_query(
         )
         code = (message.content[0].text or "").strip()
 
-        # -- Gemini LLM call for Excel code gen (COMMENTED OUT) --------------
-        # gemini_client = _get_gemini_client()
-        # response = gemini_client.models.generate_content(
-        #     model="gemini-2.5-flash",
-        #     contents=prompt,
-        # )
-        # code = (response.text or "").strip()
-
-        print("###  4 response: ", code, "\n")
-
-        print("###  5\n")
         # Strip markdown fences if present
         if code.startswith("```"):
             code = code.split("\n", 1)[-1]
             if code.endswith("```"):
                 code = code[: -len("```")].strip()
 
-        print("###  6 code: ", code, "\n")
         if not code:
             logger.warning("Anthropic returned empty code for Excel query")
             return None
 
-        print("###  7\n")
         # Compile with RestrictedPython
         compiled = compile_restricted(code, filename="<excel_query>", mode="exec")
 
-        print("###  8\n")
         # Build restricted globals — only allow df and safe builtins
         from RestrictedPython.Guards import guarded_iter_unpack_sequence
         from RestrictedPython.Eval import default_guarded_getitem, default_guarded_getiter
 
-        print("###  9\n")
         restricted_globals = dict(safe_globals)
         restricted_globals["_getattr_"] = getattr
         restricted_globals["_getitem_"] = default_guarded_getitem
@@ -173,12 +141,10 @@ def execute_excel_query(
         restricted_globals["pd"] = pd
         
         restricted_locals: dict = {"df": df}
-        print("###  10\n")
 
         # Execution with a 10-second timeout (threading approach for Windows)
         result_container: dict = {"result": None, "error": None}
 
-        print("###  11\n")
         def _execute():
             try:
                 exec(compiled, restricted_globals, restricted_locals)  # noqa: S102
@@ -186,24 +152,19 @@ def execute_excel_query(
             except Exception as exc:
                 result_container["error"] = str(exc)
 
-        print("###  12\n")
         thread = threading.Thread(target=_execute, daemon=True)
         thread.start()
         thread.join(timeout=10)
 
-        print("###  13\n")
         if thread.is_alive():
             logger.warning("Excel query execution timed out (10s)")
             return None
 
-        print("###  14\n")
         if result_container["error"]:
-            print("###  15: ", result_container["error"])
             logger.debug("Excel query execution error: %s", result_container["error"])
             return None
 
         result = result_container["result"]
-        print("###  15 result: ", result, "\n")
         if result is None:
             return None
 
@@ -224,27 +185,27 @@ If the answer cannot be found in the context, say "I could not find relevant inf
 Do not make up information. Be concise and accurate."""
 
 
-def run_rag_pipeline(
+async def run_rag_pipeline(
     query: str,
     user: User,
     db: Session,
     conversation_history: str = "",
     document_id: Optional[uuid.UUID] = None,
-) -> dict:
+) -> AsyncGenerator[dict, None]:
     """
-    Main RAG pipeline:
+    Main RAG pipeline with streaming output:
       1. Embed the user query
       2. Fetch authorised documents
       3. Qdrant semantic search (non-Excel)
       4. Excel code-gen pipeline
-      5. Build context → Anthropic (Claude) → return answer + citations
+      5. Build context
+      6. Use Gemini to stream response
+      7. Yield tokens and final citations
     """
     tenant_id = str(user.tenant_id)
     role_id = str(user.role_id)
 
-    # ------------------------------------------------------------------
     # 1. Embed the query
-    # ------------------------------------------------------------------
     query_vector = embedding_service.embed_text(query)
 
     # Fetch documents accessible via role-based access policies or uploaded by the user
@@ -260,6 +221,7 @@ def run_rag_pipeline(
             )
         )
     )
+
     if document_id:
         docs_query = docs_query.filter(Document.id == document_id)
 
@@ -268,9 +230,7 @@ def run_rag_pipeline(
     excel_docs = [d for d in all_authorized_docs if d.file_type == FileType.excel]
     non_excel_exist = any(d.file_type != FileType.excel for d in all_authorized_docs)
 
-    # ------------------------------------------------------------------
     # 3. Qdrant semantic search (non-Excel)
-    # ------------------------------------------------------------------
     qdrant_results: list[dict] = []
     if non_excel_exist:
         if document_id and all_authorized_docs:
@@ -281,8 +241,6 @@ def run_rag_pipeline(
         try:
             # Search with role-based filter for shared docs
             search_role_ids = [role_id]
-            # Also include user_id so private docs (which store user_id
-            # as a role_id surrogate) are found
             search_role_ids.append(str(user.id))
 
             qdrant_results = search_vectors(
@@ -309,9 +267,7 @@ def run_rag_pipeline(
             valid_qdrant_results.append(hit)
     qdrant_results = valid_qdrant_results
 
-    # ------------------------------------------------------------------
     # 4. Excel pipeline
-    # ------------------------------------------------------------------
     excel_results: list[dict] = []
     for doc in excel_docs:
         if not doc.excel_schema:
@@ -319,20 +275,16 @@ def run_rag_pipeline(
         try:
             abs_path = get_absolute_path(doc.file_path)
             result = execute_excel_query(abs_path, doc.excel_schema, query)
-            print("###  16 \n")
             if result is not None:
                 excel_results.append({
                     "filename": doc.filename,
                     "document_id": str(doc.id),
                     "result": result,
                 })
-            print("###  17 \n")
         except Exception as exc:
             logger.warning("Excel query failed for %s: %s", doc.filename, exc)
 
-    # ------------------------------------------------------------------
     # 5. Build context block
-    # ------------------------------------------------------------------
     context_parts: list[str] = []
 
     if qdrant_results:
@@ -366,11 +318,7 @@ def run_rag_pipeline(
 
     context_block = "\n".join(context_parts) if context_parts else "No relevant context found."
 
-    print("############################### Context block: ", context_block)
-
-    # ------------------------------------------------------------------
-    # 6. Call LLM for the final answer
-    # ------------------------------------------------------------------
+    # 6. Call LLM for the final answer (using Anthropic Claude Streaming)
     final_prompt = f"""Context:
 {context_block}
 
@@ -381,13 +329,10 @@ User Question: {query}
 
 Answer:"""
 
-    print("############################### Final prompt: ", final_prompt)
-
-    # -- Anthropic LLM call (ACTIVE) ----------------------------------------------
-    # To switch back to Gemini: comment this block, uncomment the Gemini block below.
+    full_answer_list = []
     try:
-        anthropic_client = _get_anthropic_client()
-        message = anthropic_client.messages.create(
+        client = _get_async_anthropic_client()
+        async with client.messages.stream(
             model="claude-haiku-4-5-20251001",
             max_tokens=8192,
             temperature=0,
@@ -395,32 +340,23 @@ Answer:"""
             messages=[
                 {"role": "user", "content": final_prompt}
             ]
-        )
-        answer = (message.content[0].text or "").strip()
-        if not answer:
-            answer = "I could not generate an answer. Please try rephrasing your question."
+        ) as stream:
+            async for event in stream:
+                if event.type == "text":
+                    full_answer_list.append(event.text)
+                    yield {"type": "token", "content": event.text}
     except Exception as exc:
-        logger.error("Anthropic answer generation failed: %s", exc)
-        answer = "I encountered an error while generating an answer. Please try again."
+        logger.error("Anthropic streaming answer generation failed: %s", exc)
+        error_msg = "I encountered an error while generating an answer. Please try again."
+        full_answer_list.append(error_msg)
+        yield {"type": "token", "content": error_msg}
 
-    # -- Gemini answer generation (COMMENTED OUT) ----------------------------
-    # try:
-    #     gemini_client = _get_gemini_client()
-    #     full_gemini_prompt = f"{_SYSTEM_PROMPT}\n\n{final_prompt}"
-    #     response = gemini_client.models.generate_content(
-    #         model="gemini-2.5-flash",
-    #         contents=full_gemini_prompt,
-    #     )
-    #     answer = (response.text or "").strip()
-    #     if not answer:
-    #         answer = "I could not generate an answer. Please try rephrasing your question."
-    # except Exception as exc:
-    #     logger.error("Gemini answer generation failed: %s", exc)
-    #     answer = "I encountered an error while generating an answer. Please try again."
+    full_answer = "".join(full_answer_list).strip()
+    if not full_answer:
+        full_answer = "I could not generate an answer. Please try rephrasing your question."
+        yield {"type": "token", "content": full_answer}
 
-    # ------------------------------------------------------------------
     # 7. Build citations list
-    # ------------------------------------------------------------------
     citations: list[dict] = []
     for hit in qdrant_results:
         payload = hit.get("payload", {})
@@ -434,7 +370,8 @@ Answer:"""
             "chunk_index": payload.get("chunk_index", 0),
         })
 
-    return {
-        "answer": answer,
+    yield {
+        "type": "done",
+        "answer": full_answer,
         "citations": citations,
     }

@@ -3,9 +3,11 @@ Chat API routes — session management, RAG query, and private document upload.
 """
 import uuid
 import logging
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import get_db
@@ -166,22 +168,21 @@ def delete_session(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/sessions/{session_id}/query", response_model=QueryResponse)
-def send_query(
+@router.post("/sessions/{session_id}/query")
+async def send_query(
     session_id: uuid.UUID,
     body: QueryRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Send a user query to the RAG pipeline and store the conversation.
+    Send a user query to the RAG pipeline and stream the response.
 
     1. Verify session ownership
     2. Fetch recent conversation history
-    3. Store user message
-    4. Run RAG pipeline
-    5. Store assistant message + citations
-    6. Return answer with citations
+    3. Store user message and commit (before streaming starts)
+    4. Stream response from RAG pipeline
+    5. After streaming completes, store assistant message + citations and commit
     """
     # Verify session belongs to this user
     session = (
@@ -232,73 +233,96 @@ def send_query(
         attached_document_id=body.document_id,
     )
     db.add(user_message)
-    db.flush()
 
     # If first message, update session title
     if is_first_message:
         session.title = content[:50]
 
-    # Run the RAG pipeline
-    rag_result = run_rag_pipeline(
-        query=content,
-        user=current_user,
-        db=db,
-        conversation_history=conversation_history,
-        document_id=body.document_id,
-    )
-
-    # Store the assistant's response
-    assistant_message = QueryMessage(
-        session_id=session_id,
-        role=MessageRole.assistant,
-        content=rag_result["answer"],
-        created_at=datetime.now(timezone.utc),
-    )
-    db.add(assistant_message)
-    db.flush()
-
-    # Store citations linked to the assistant message
-    citation_models = []
-    for cit in rag_result["citations"]:
-        citation = QueryCitation(
-            message_id=assistant_message.id,
-            document_id=cit["document_id"],
-            qdrant_vector_id=str(cit.get("chunk_index", "")),
-            chunk_text=cit["chunk_text"],
-            page_number=cit.get("page_number"),
-            chunk_index=cit.get("chunk_index", 0),
-        )
-        db.add(citation)
-        citation_models.append(citation)
-
-    # Update session timestamp
-    session.updated_at = datetime.now(timezone.utc)
+    # Commit before streaming starts so the user message is saved immediately
     db.commit()
 
-    # Refresh to get generated IDs
-    db.refresh(assistant_message)
-    for c in citation_models:
-        db.refresh(c)
-
-    # Build citation responses
-    citation_responses = []
-    for cit_model, cit_data in zip(citation_models, rag_result["citations"]):
-        citation_responses.append(
-            CitationResponse(
-                id=cit_model.id,
-                document_id=cit_data["document_id"],
-                filename=cit_data["filename"],
-                chunk_text=cit_data["chunk_text"],
-                page_number=cit_data.get("page_number"),
-                chunk_index=cit_data.get("chunk_index", 0),
+    async def event_generator():
+        try:
+            generator = run_rag_pipeline(
+                query=content,
+                user=current_user,
+                db=db,
+                conversation_history=conversation_history,
+                document_id=body.document_id,
             )
-        )
 
-    return QueryResponse(
-        answer=rag_result["answer"],
-        citations=citation_responses,
-        message_id=str(assistant_message.id),
+            full_answer = ""
+            citations = []
+
+            async for event in generator:
+                if event["type"] == "token":
+                    # Stream format: data: {"type": "token", "content": "..."}\n\n
+                    yield f"data: {json.dumps({'type': 'token', 'content': event['content']})}\n\n"
+                elif event["type"] == "done":
+                    full_answer = event["answer"]
+                    citations = event["citations"]
+
+            # Store the assistant's response in the database after streaming completes
+            assistant_message = QueryMessage(
+                session_id=session_id,
+                role=MessageRole.assistant,
+                content=full_answer,
+                created_at=datetime.now(timezone.utc),
+            )
+            db.add(assistant_message)
+            db.flush()
+
+            # Store citations linked to the assistant message
+            citation_models = []
+            for cit in citations:
+                citation = QueryCitation(
+                    message_id=assistant_message.id,
+                    document_id=cit["document_id"],
+                    qdrant_vector_id=str(cit.get("chunk_index", "")),
+                    chunk_text=cit["chunk_text"],
+                    page_number=cit.get("page_number"),
+                    chunk_index=cit.get("chunk_index", 0),
+                )
+                db.add(citation)
+                citation_models.append(citation)
+
+            # Update session timestamp
+            session.updated_at = datetime.now(timezone.utc)
+            db.commit()
+
+            # Refresh to get generated IDs
+            db.refresh(assistant_message)
+            for c in citation_models:
+                db.refresh(c)
+
+            # Build citation responses for the done event
+            citation_responses = []
+            for cit_model, cit_data in zip(citation_models, citations):
+                citation_responses.append({
+                    "id": str(cit_model.id),
+                    "document_id": str(cit_data["document_id"]),
+                    "filename": cit_data["filename"],
+                    "chunk_text": cit_data["chunk_text"],
+                    "page_number": cit_data.get("page_number"),
+                    "chunk_index": cit_data.get("chunk_index", 0),
+                })
+
+            # Final event: data: {"type": "done", "citations": [...], "message_id": "..."}\n\n
+            yield f"data: {json.dumps({'type': 'done', 'citations': citation_responses, 'message_id': str(assistant_message.id)})}\n\n"
+
+        except Exception as exc:
+            logger.error("Error in event_generator: %s", exc)
+            yield f"data: {json.dumps({'type': 'error', 'content': 'An error occurred during streaming.'})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
     )
+
 
 
 # ---------------------------------------------------------------------------
