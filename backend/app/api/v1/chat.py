@@ -4,6 +4,7 @@ Chat API routes — session management, RAG query, and private document upload.
 import uuid
 import logging
 import json
+import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
@@ -33,7 +34,9 @@ from app.schemas.chat import (
     CitationResponse,
     QueryRequest,
     QueryResponse,
+    TranscriptionResponse,
 )
+from app.services.embedding_service import transcribe_audio
 from app.schemas.document import DocumentResponse
 from app.services.rag_service import run_rag_pipeline
 from app.services.storage_service import save_file
@@ -403,3 +406,53 @@ def upload_private_document(
 
     db.refresh(document)
     return document
+
+
+@router.post("/transcribe", response_model=TranscriptionResponse)
+def transcribe_voice_query(
+    audio: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Accepts a short audio recording, transcribes it using Gemini 2.5 Flash,
+    and returns the transcribed text.
+    """
+    content_type = audio.content_type or ""
+    if "webm" in content_type:
+        ext = "webm"
+    elif "wav" in content_type:
+        ext = "wav"
+    elif "mpeg" in content_type or "mp3" in content_type:
+        ext = "mp3"
+    elif "mp4" in content_type or "m4a" in content_type:
+        ext = "m4a"
+    else:
+        # Fallback to filename extension
+        filename = audio.filename or ""
+        if "." in filename:
+            ext = filename.rsplit(".", 1)[-1].lower()
+        else:
+            ext = "webm"
+
+    tmp_dir = "/tmp"
+    os.makedirs(tmp_dir, exist_ok=True)
+    temp_file_path = os.path.join(tmp_dir, f"{uuid.uuid4()}_voice_query.{ext}")
+
+    try:
+        with open(temp_file_path, "wb") as f:
+            f.write(audio.file.read())
+
+        transcribed_text = transcribe_audio(temp_file_path)
+        return TranscriptionResponse(text=transcribed_text)
+    except Exception as exc:
+        logger.error(f"Failed to transcribe audio query: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not transcribe audio. Please try again.",
+        )
+    finally:
+        if os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except Exception as delete_exc:
+                logger.warning(f"Failed to delete temp file {temp_file_path}: {delete_exc}")

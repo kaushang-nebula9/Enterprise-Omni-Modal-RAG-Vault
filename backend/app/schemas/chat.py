@@ -97,3 +97,7 @@ class QueryResponse(BaseModel):
     answer: str
     citations: list[CitationResponse]
     message_id: str
+
+
+class TranscriptionResponse(BaseModel):
+    text: str

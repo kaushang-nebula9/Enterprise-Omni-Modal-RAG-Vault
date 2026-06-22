@@ -74,7 +74,13 @@ def transcribe_audio(file_path: str) -> str:
 
         # Determine MIME type from extension
         ext = file_path.rsplit(".", 1)[-1].lower()
-        mime_map = {"mp3": "audio/mpeg", "wav": "audio/wav", "m4a": "audio/mp4"}
+        mime_map = {
+            "mp3": "audio/mpeg",
+            "wav": "audio/wav",
+            "m4a": "audio/mp4",
+            "webm": "audio/webm",
+            "ogg": "audio/ogg",
+        }
         mime_type = mime_map.get(ext, "audio/mpeg")
 
         response = client.models.generate_content(

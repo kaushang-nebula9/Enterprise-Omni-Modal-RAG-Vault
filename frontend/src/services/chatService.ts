@@ -1,5 +1,5 @@
 import api from './api'
-import type { SessionResponse, SessionDetailResponse, QueryResponse, CitationResponse } from '../types/chat'
+import type { SessionResponse, SessionDetailResponse, CitationResponse } from '../types/chat'
 import type { DocumentResponse } from '../types/document'
 import type { MessageResponse as ApiMessageResponse } from '../types/auth'
 
@@ -119,6 +119,18 @@ export const chatService = {
     formData.append('file', file)
     const response = await api.post<DocumentResponse>(
       `/api/v1/chat/sessions/${sessionId}/upload`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    )
+    return response.data
+  },
+
+  transcribeVoiceQuery: async (audioBlob: Blob): Promise<{ text: string }> => {
+    const formData = new FormData()
+    const ext = audioBlob.type.split('/')[1]?.split(';')[0] || 'webm'
+    formData.append('audio', audioBlob, `voice_query.${ext}`)
+    const response = await api.post<{ text: string }>(
+      '/api/v1/chat/transcribe',
       formData,
       { headers: { 'Content-Type': 'multipart/form-data' } }
     )

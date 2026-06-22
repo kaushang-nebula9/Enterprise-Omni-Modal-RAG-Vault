@@ -15,6 +15,7 @@ import {
   FileSpreadsheet,
   FileMusic,
   Search,
+  Mic,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { chatService } from '../../services/chatService'
@@ -58,6 +59,11 @@ const ChatPage: React.FC = () => {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   const [attachedDocument, setAttachedDocument] = useState<DocumentResponse | null>(null)
+  
+  const [isRecording, setIsRecording] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const [audioLevels, setAudioLevels] = useState<number[]>([0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+  const [recordingSeconds, setRecordingSeconds] = useState(0)
 
   const renderHighlightedText = (text: string) => {
     let filenameToHighlight = ""
@@ -285,6 +291,17 @@ const ChatPage: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const isCancelledRef = useRef(false)
+  const audioChunksRef = useRef<Blob[]>([])
+  const recordingTimeoutRef = useRef<number | null>(null)
+  const timerIntervalRef = useRef<number | null>(null)
+
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const animationFrameRef = useRef<number | null>(null)
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -614,6 +631,148 @@ const ChatPage: React.FC = () => {
     }
   }
 
+  const startRecording = async () => {
+    try {
+      setError(null)
+      isCancelledRef.current = false
+      audioChunksRef.current = []
+      setRecordingSeconds(0)
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+
+      const mediaRecorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = mediaRecorder
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      mediaRecorder.onstop = async () => {
+        if (isCancelledRef.current) {
+          return
+        }
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' })
+        setIsTranscribing(true)
+        try {
+          const result = await chatService.transcribeVoiceQuery(audioBlob)
+          if (result && result.text) {
+            setInputValue((prev) => (prev ? (prev.endsWith(' ') ? prev : prev + ' ') + result.text : result.text))
+          }
+        } catch (err: any) {
+          console.error(err)
+          setToast({ message: "Could not transcribe audio. Please try again.", type: "error" })
+        } finally {
+          setIsTranscribing(false)
+        }
+      }
+
+      // Web Audio API setup for waveform visualizer
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+      if (AudioContextClass) {
+        const audioContext = new AudioContextClass()
+        audioContextRef.current = audioContext
+        const source = audioContext.createMediaStreamSource(stream)
+        const analyser = audioContext.createAnalyser()
+        analyser.fftSize = 64
+        source.connect(analyser)
+        analyserRef.current = analyser
+
+        const bufferLength = analyser.frequencyBinCount
+        const dataArray = new Uint8Array(bufferLength)
+
+        const updateWaveform = () => {
+          if (!analyserRef.current) return
+          analyserRef.current.getByteFrequencyData(dataArray)
+          const numBars = 10
+          const levels: number[] = []
+          for (let i = 0; i < numBars; i++) {
+            const val = dataArray[i * 2 + 1] || 0
+            levels.push(val / 255)
+          }
+          setAudioLevels(levels)
+          animationFrameRef.current = requestAnimationFrame(updateWaveform)
+        }
+        animationFrameRef.current = requestAnimationFrame(updateWaveform)
+      }
+
+      mediaRecorder.start()
+      setIsRecording(true)
+
+      // Auto stop at 2 minutes (120,000ms)
+      recordingTimeoutRef.current = window.setTimeout(() => {
+        stopRecording()
+      }, 120000)
+
+      // Timer interval
+      timerIntervalRef.current = window.setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1)
+      }, 1000)
+
+    } catch (err: any) {
+      console.error(err)
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setError("Microphone access denied. Please allow microphone access to use voice input.")
+      } else {
+        setError("Could not start recording. Please try again.")
+      }
+    }
+  }
+
+  const stopRecording = useCallback(() => {
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current)
+      recordingTimeoutRef.current = null
+    }
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current)
+      timerIntervalRef.current = null
+    }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+    }
+
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+    analyserRef.current = null
+
+    setIsRecording(false)
+  }, [])
+
+  const cancelRecording = useCallback(() => {
+    isCancelledRef.current = true
+    stopRecording()
+  }, [stopRecording])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current)
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current)
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current)
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop())
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close()
+      }
+    }
+  }, [])
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -628,10 +787,16 @@ const ChatPage: React.FC = () => {
     })
   }
 
+  const formatTimer = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+
   const isAdmin = user?.role?.is_admin ?? false
   const isFileUploading = uploadedFile?.status === 'uploading'
-  // Send is disabled while the AI is replying OR a document is still being processed
-  const isSendDisabled = !inputValue.trim() || isLoading || isStreaming || isFileUploading
+  // Send is disabled while the AI is replying OR a document is still being processed OR recording/transcribing is active
+  const isSendDisabled = !inputValue.trim() || isLoading || isStreaming || isFileUploading || isRecording || isTranscribing
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
@@ -953,44 +1118,113 @@ const ChatPage: React.FC = () => {
                   </>
                 )}
 
-                {/* Mirror Div for inline highlighted tags */}
-                <div
-                  ref={mirrorRef}
-                  className={`absolute inset-0 pointer-events-none whitespace-pre-wrap break-words py-3 pt-4 border-0 overflow-y-auto custom-scrollbar select-none text-slate-800 dark:text-slate-100 z-10 ${
-                    !isAdmin ? "pl-12 pr-14" : "pl-4 pr-14"
+                {isRecording ? (
+                  <div
+                    className={`flex items-center gap-4 py-3.5 h-[52px] w-full ${
+                      !isAdmin ? "pl-12" : "pl-4"
+                    } pr-24 text-slate-800 dark:text-slate-100 z-10`}
+                  >
+                    {/* Soundwave animation */}
+                    <div className="flex items-center gap-1 h-8">
+                      {audioLevels.map((level, idx) => {
+                        const height = 8 + (level * 24);
+                        return (
+                          <div
+                            key={idx}
+                            className="w-0.5 bg-indigo-600 dark:bg-indigo-500 rounded-full transition-all duration-100"
+                            style={{ height: `${height}px` }}
+                          />
+                        );
+                      })}
+                    </div>
+                    {/* Timer */}
+                    <span className="text-slate-500 dark:text-slate-400 text-sm font-medium">
+                      {formatTimer(recordingSeconds)}
+                    </span>
+                    {/* Status */}
+                    <span className="text-slate-400 dark:text-slate-500 text-sm select-none">
+                      Recording voice query...
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    {/* Mirror Div for inline highlighted tags */}
+                    <div
+                      ref={mirrorRef}
+                      className={`absolute inset-0 pointer-events-none whitespace-pre-wrap break-words py-3 pt-4 border-0 overflow-y-auto custom-scrollbar select-none text-slate-800 dark:text-slate-100 z-10 ${
+                        !isAdmin ? "pl-12 pr-24" : "pl-4 pr-24"
+                      }`}
+                      style={{
+                        fontFamily: 'inherit',
+                        fontSize: 'inherit',
+                        lineHeight: 'inherit',
+                        maxHeight: '200px',
+                      }}
+                    >
+                      {renderHighlightedText(inputValue)}
+                    </div>
+
+                    <textarea
+                      ref={textareaRef}
+                      value={inputValue}
+                      onChange={handleInputChange}
+                      onKeyDown={handleKeyDown}
+                      onScroll={(e) => {
+                        if (mirrorRef.current) {
+                          mirrorRef.current.scrollTop = e.currentTarget.scrollTop
+                        }
+                      }}
+                      disabled={isFileUploading || isLoading || isStreaming || isTranscribing}
+                      placeholder={
+                        isFileUploading
+                          ? "Please wait while the document is processed..."
+                          : "Ask about your documents..."
+                      }
+                      rows={1}
+                      className={`w-full text-transparent caret-slate-800 dark:caret-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-transparent py-3 pt-4 resize-none focus:outline-none border-0 placeholder:pl-1 custom-scrollbar relative z-0 ${
+                        !isAdmin ? "pl-12 pr-24" : "pl-4 pr-24"
+                      }`}
+                      style={{ maxHeight: "200px" }}
+                    />
+                  </>
+                )}
+
+                {/* Cancel Button */}
+                {isRecording && (
+                  <button
+                    onClick={cancelRecording}
+                    type="button"
+                    className="absolute right-[104px] bottom-2 z-20 flex items-center justify-center w-10 h-10 rounded-full text-slate-400 hover:text-red-500 hover:bg-slate-100 dark:text-slate-500 dark:hover:text-red-400 dark:hover:bg-slate-800 transition-all duration-200"
+                    title="Cancel recording"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                )}
+
+                {/* Mic Button */}
+                <button
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={isTranscribing}
+                  type="button"
+                  className={`absolute right-14 bottom-2 z-20 flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 ${
+                    isRecording
+                      ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
+                      : isTranscribing
+                      ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
+                      : "text-slate-400 hover:text-indigo-600 dark:text-slate-500 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                   }`}
-                  style={{
-                    fontFamily: 'inherit',
-                    fontSize: 'inherit',
-                    lineHeight: 'inherit',
-                    maxHeight: '200px',
-                  }}
+                  title={isRecording ? "Stop recording" : isTranscribing ? "Transcribing..." : "Record voice query"}
                 >
-                  {renderHighlightedText(inputValue)}
-                </div>
+                  {isTranscribing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : isRecording ? (
+                    <div className="w-3.5 h-3.5 bg-white rounded-sm" />
+                  ) : (
+                    <Mic className="w-5 h-5" />
+                  )}
+                </button>
 
-                <textarea
-                  ref={textareaRef}
-                  value={inputValue}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  onScroll={(e) => {
-                    if (mirrorRef.current) {
-                      mirrorRef.current.scrollTop = e.currentTarget.scrollTop
-                    }
-                  }}
-                  placeholder={
-                    isFileUploading
-                      ? "Please wait while the document is processed..."
-                      : "Ask about your documents..."
-                  }
-                  rows={1}
-                  className={`w-full text-transparent caret-slate-800 dark:caret-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-transparent py-3 pt-4 resize-none focus:outline-none border-0 placeholder:pl-1 custom-scrollbar relative z-0 ${
-                    !isAdmin ? "pl-12 pr-14" : "pl-4 pr-14"
-                  }`}
-                  style={{ maxHeight: "200px" }}
-                />
-
+                {/* Send Button */}
                 <button
                   onClick={() => handleSend()}
                   disabled={isSendDisabled}

@@ -67,7 +67,8 @@ export const TeamManagementPage: React.FC = () => {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => adminService.updateMember(id, data),
-    onSuccess: (data, variables) => {
+    onSuccess: (_data, variables) => {
+      void _data;
       setEditingUserId(null);
       setDeactivatingUserId(null);
       if (variables.data.role_id) {
