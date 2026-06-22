@@ -25,6 +25,11 @@ from app.services import embedding_service, qdrant_service
 
 logger = logging.getLogger(__name__)
 
+# Namespace UUID for deterministic point-ID generation via uuid5.
+# This ensures that retried Celery tasks produce the same point IDs
+# and Qdrant upsert remains idempotent per chunk.
+NAMESPACE_DOC = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+
 CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 200
 
@@ -486,7 +491,7 @@ def process_document(document_id: str, db: Session) -> None:
                     print("#################")
                     print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
                     points.append({
-                        "id": str(uuid.uuid4()),
+                        "id": str(uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")),
                         "dense_vector": vector,
                         "sparse_vector": sparse_vector,
                         "payload": {
@@ -518,7 +523,7 @@ def process_document(document_id: str, db: Session) -> None:
                 print("#################")
                 print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
                 points.append({
-                    "id": str(uuid.uuid4()),
+                    "id": str(uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")),
                     "dense_vector": vector,
                     "sparse_vector": sparse_vector,
                     "payload": {
@@ -547,7 +552,7 @@ def process_document(document_id: str, db: Session) -> None:
                 print("#################")
                 print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
                 points.append({
-                    "id": str(uuid.uuid4()),
+                    "id": str(uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")),
                     "dense_vector": vector,
                     "sparse_vector": sparse_vector,
                     "payload": {
@@ -572,7 +577,7 @@ def process_document(document_id: str, db: Session) -> None:
                 print("#################")
                 print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
                 points.append({
-                    "id": str(uuid.uuid4()),
+                    "id": str(uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")),
                     "dense_vector": vector,
                     "sparse_vector": sparse_vector,
                     "payload": {
@@ -598,7 +603,7 @@ def process_document(document_id: str, db: Session) -> None:
                 print("#################")
                 print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
                 points.append({
-                    "id": str(uuid.uuid4()),
+                    "id": str(uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")),
                     "dense_vector": vector,
                     "sparse_vector": sparse_vector,
                     "payload": {
@@ -674,15 +679,3 @@ def process_document(document_id: str, db: Session) -> None:
         except Exception:
             db.rollback()
 
-
-def process_document_bg(document_id: str):
-    """
-    Wrapper for process_document to be used with FastAPI BackgroundTasks.
-    It provisions its own DB session so that the processing isn't tied to the request lifecycle.
-    """
-    from app.db.session import SessionLocal
-    db = SessionLocal()
-    try:
-        process_document(document_id, db)
-    finally:
-        db.close()

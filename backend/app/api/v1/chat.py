@@ -15,7 +15,6 @@ from app.db.session import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.models.document import Document
-from app.models.document_access_policy import DocumentAccessPolicy
 from app.models.query_session import QuerySession
 from app.models.query_message import QueryMessage
 from app.models.query_citation import QueryCitation
@@ -30,10 +29,7 @@ from app.schemas.chat import (
     SessionResponse,
     CreateSessionResponse,
     SessionDetailResponse,
-    MessageResponse,
-    CitationResponse,
     QueryRequest,
-    QueryResponse,
     TranscriptionResponse,
 )
 from app.services.embedding_service import transcribe_audio

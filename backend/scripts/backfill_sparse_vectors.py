@@ -26,7 +26,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.enums import DocumentStatus, FileType
 from app.core.config import settings
 from app.services import qdrant_service
-from app.services.document_processor import process_document
+from app.tasks.document_tasks import process_document_task
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("backfill")
@@ -73,16 +73,16 @@ def run_backfill():
             
             for doc in docs:
                 print("#################")
-                print(f"Reprocessing document: {doc.filename} (tenant: {tenant_id})\n")
+                print(f"Queued document for reprocessing: {doc.filename} (tenant: {tenant_id})\n")
                 
                 try:
-                    process_document(str(doc.id), db)
+                    process_document_task.delay(str(doc.id))
                     total_count += 1
                 except Exception as e:
-                    logger.error(f"Failed to reprocess document {doc.filename} ({doc.id}): {e}", exc_info=True)
+                    logger.error(f"Failed to queue document {doc.filename} ({doc.id}): {e}", exc_info=True)
                     
         print("#################")
-        print(f"Backfill complete. Reprocessed {total_count} documents across {tenant_count} tenants.\n")
+        print(f"Backfill complete. Queued {total_count} documents for reprocessing across {tenant_count} tenants.\n")
         
     finally:
         db.close()
