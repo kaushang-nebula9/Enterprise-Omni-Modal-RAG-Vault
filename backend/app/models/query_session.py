@@ -1,6 +1,6 @@
 from datetime import datetime
 import uuid
-from sqlalchemy import String, DateTime, Uuid, ForeignKey, func
+from sqlalchemy import String, DateTime, Uuid, ForeignKey, Boolean, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.query_message import QueryMessage
@@ -27,6 +27,7 @@ class QuerySession(Base):
         nullable=False
     )
     title: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 

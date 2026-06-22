@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
@@ -11,10 +11,17 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
-  Trash2
+  Trash2,
+  Pin,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { chatService } from '../../services/chatService';
+import {
+  useSessionsStore,
+  selectPinnedSessions,
+  selectUnpinnedSessions,
+} from '../../store/sessionsStore';
+import type { SessionResponse } from '../../types/chat';
 
 interface SidebarProps {
   isExpanded: boolean;
@@ -39,37 +46,78 @@ const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const { data: sessions, isLoading } = useQuery({
+  // ─── Sessions store ────────────────────────────────────────────────────────
+  const { sessions, setSessions, setLoading, updateSession, removeSession } = useSessionsStore();
+
+  const pinnedSessions  = selectPinnedSessions(sessions);
+  const unpinnedSessions = selectUnpinnedSessions(sessions);
+
+  // ─── React Query fetch (seeds the Zustand store) ──────────────────────────
+  const { data: fetchedSessions, isLoading } = useQuery({
     queryKey: ['chat-sessions'],
     queryFn: chatService.getSessions,
     enabled: !user?.role.is_admin,
   });
 
+  // Seed / sync the Zustand store whenever React Query fetches fresh data
+  useEffect(() => {
+    if (fetchedSessions) {
+      setSessions(fetchedSessions);
+    }
+  }, [fetchedSessions, setSessions]);
+
+  useEffect(() => {
+    setLoading(isLoading);
+  }, [isLoading, setLoading]);
+
+  // ─── Delete ───────────────────────────────────────────────────────────────
   const queryClient = useQueryClient();
   const [sessionToDelete, setSessionToDelete] = useState<{ id: string; title: string } | null>(null);
 
   const deleteMutation = useMutation({
     mutationFn: (sessionId: string) => chatService.deleteSession(sessionId),
     onSuccess: (_, deletedId) => {
+      removeSession(deletedId);
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
       setSessionToDelete(null);
-      // If the user was viewing the deleted session, clear it from the URL
       if (location.search.includes(`session=${deletedId}`)) {
         navigate('/dashboard/chat');
       }
     },
   });
 
-  const renderLink = (link: { name: string, icon: React.ElementType, path: string }) => {
-    // Exact match for the New Chat so it doesn't stay highlighted when viewing an old session
-    // Actually, we want it to be highlighted if we are on /dashboard/chat and NO session is in URL.
+  // ─── Pin ──────────────────────────────────────────────────────────────────
+  const pinMutation = useMutation({
+    mutationFn: (sessionId: string) => chatService.togglePin(sessionId),
+    onMutate: (sessionId) => {
+      // Optimistic update — flip the flag immediately
+      const session = sessions.find((s) => s.id === sessionId);
+      if (session) {
+        updateSession({ ...session, is_pinned: !session.is_pinned });
+      }
+      return { session };
+    },
+    onSuccess: (updated) => {
+      // Reconcile with authoritative server state
+      updateSession(updated);
+    },
+    onError: (_err, _sessionId, context) => {
+      // Roll back optimistic update
+      if (context?.session) {
+        updateSession(context.session);
+      }
+    },
+  });
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+  const renderLink = (link: { name: string; icon: React.ElementType; path: string }) => {
     const isChat = link.path === '/dashboard/chat';
-    const isActive = isChat 
+    const isActive = isChat
       ? location.pathname === link.path && !location.search.includes('session=')
       : location.pathname === link.path;
-      
+
     const Icon = link.icon;
-    
+
     return (
       <NavLink
         key={link.path}
@@ -89,8 +137,75 @@ const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {
     );
   };
 
+  const renderSessionItem = (session: SessionResponse) => {
+    const isActive = location.search.includes(`session=${session.id}`);
+
+    return (
+      <div
+        key={session.id}
+        onClick={() => navigate(`/dashboard/chat?session=${session.id}`)}
+        className={`group relative flex items-center justify-between rounded-lg transition-colors cursor-pointer overflow-hidden ${
+          isActive
+            ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 font-medium'
+            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+        } ${isExpanded ? 'px-3 py-2' : 'justify-center p-2.5'}`}
+        title={session.title}
+      >
+        <div className="flex items-center min-w-0 flex-1">
+          {!isExpanded && <MessageSquare className="w-4 h-4 shrink-0" />}
+          {isExpanded && (
+            <span className="text-sm truncate w-full">{session.title}</span>
+          )}
+        </div>
+
+        {isExpanded && (
+          <div
+            className={`absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 pl-8 pr-2 py-1 bg-gradient-to-l rounded-r-lg transition-all duration-200 opacity-0 group-hover:opacity-100 ${
+              isActive
+                ? 'from-indigo-50 dark:from-indigo-950 from-[60%] to-transparent'
+                : 'from-white dark:from-slate-900 group-hover:from-slate-100 dark:group-hover:from-slate-800 from-[60%] to-transparent'
+            }`}
+          >
+            {/* Pin button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                pinMutation.mutate(session.id);
+              }}
+              className={`p-1 rounded transition-all hover:bg-slate-200 dark:hover:bg-slate-700 ${
+                session.is_pinned
+                  ? 'text-indigo-500 dark:text-indigo-400'
+                  : 'text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-indigo-400'
+              }`}
+              title={session.is_pinned ? 'Unpin chat' : 'Pin chat'}
+              disabled={pinMutation.isPending}
+            >
+              <Pin
+                className="w-3.5 h-3.5"
+                style={session.is_pinned ? { fill: 'currentColor' } : undefined}
+              />
+            </button>
+
+            {/* Delete button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setSessionToDelete({ id: session.id, title: session.title });
+              }}
+              className="text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 transition-opacity p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0"
+              title="Delete chat"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div 
+    <div
       className={`flex flex-col bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 h-screen shrink-0 ${
         isExpanded ? 'w-72' : 'w-16'
       }`}
@@ -113,55 +228,47 @@ const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {
             </nav>
 
             <div className="mt-6 flex-1 flex flex-col overflow-hidden">
-              {isExpanded && (
-                <h3 className="text-sm font-bold text-slate-400 dark:text-slate-500 tracking-wider mb-3 px-3 shrink-0 select-none">
-                  Chat History
-                </h3>
-              )}
               {!isExpanded && <div className="border-t border-slate-200 dark:border-slate-800 my-4 shrink-0" />}
-              
+
               <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar pr-1">
-                {isLoading ? (
+                {isLoading && sessions.length === 0 ? (
                   isExpanded ? (
                     <div className="px-3 text-slate-400 dark:text-slate-500 text-sm animate-pulse">Loading...</div>
                   ) : null
-                ) : sessions && sessions.length > 0 ? (
-                  sessions.map((session) => (
-                    <div
-                      key={session.id}
-                      onClick={() => navigate(`/dashboard/chat?session=${session.id}`)}
-                      className={`group flex items-center justify-between rounded-lg transition-colors cursor-pointer overflow-hidden ${
-                        location.search.includes(`session=${session.id}`) 
-                          ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 font-medium' 
-                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
-                      } ${isExpanded ? 'px-3 py-2' : 'justify-center p-2.5'}`}
-                      title={session.title}
-                    >
-                      <div className="flex items-center min-w-0 flex-1">
-                        {!isExpanded && <MessageSquare className="w-4 h-4 shrink-0" />}
-                        {isExpanded && (
-                          <span className="text-sm truncate">{session.title}</span>
-                        )}
-                      </div>
-                      
-                      {isExpanded && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSessionToDelete({ id: session.id, title: session.title });
-                          }}
-                          className="text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity p-1 -mr-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 shrink-0"
-                          title="Delete chat"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  ))
-                ) : (
+                ) : sessions.length === 0 ? (
                   isExpanded ? (
                     <div className="px-3 text-slate-400 dark:text-slate-500 text-sm italic">No recent chats</div>
                   ) : null
+                ) : (
+                  <>
+                    {/* ── Pinned section ── */}
+                    {pinnedSessions.length > 0 && isExpanded && (
+                      <div className="mb-4">
+                        <p className="px-3 pb-1 text-sm font-semibold text-slate-500 dark:text-slate-400 select-none">
+                          Pinned
+                        </p>
+                        <div className="space-y-1">
+                          {pinnedSessions.map(renderSessionItem)}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Chat History section ── */}
+                    {isExpanded && (
+                      <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-3 px-3 select-none">
+                        Chat History
+                      </h3>
+                    )}
+
+                    {unpinnedSessions.length > 0 && isExpanded && (
+                      <div className="space-y-1">
+                        {unpinnedSessions.map(renderSessionItem)}
+                      </div>
+                    )}
+
+                    {/* When collapsed, render all sessions flat (no grouping headers) */}
+                    {!isExpanded && [...pinnedSessions, ...unpinnedSessions].map(renderSessionItem)}
+                  </>
                 )}
               </div>
             </div>

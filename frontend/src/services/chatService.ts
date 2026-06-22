@@ -24,6 +24,12 @@ export const chatService = {
     return response.data
   },
 
+  togglePin: async (sessionId: string): Promise<SessionResponse> => {
+    const response = await api.patch<SessionResponse>(`/api/v1/chat/sessions/${sessionId}/pin`)
+    return response.data
+  },
+
+
   sendQuery: (
     sessionId: string,
     content: string,

@@ -12,6 +12,7 @@ class SessionResponse(BaseModel):
     user_id: UUID
     tenant_id: UUID
     title: Optional[str] = None
+    is_pinned: bool = False
     created_at: datetime
     updated_at: datetime
 

@@ -3,6 +3,7 @@ export interface SessionResponse {
   user_id: string
   tenant_id: string
   title: string
+  is_pinned: boolean
   created_at: string
   updated_at: string
 }

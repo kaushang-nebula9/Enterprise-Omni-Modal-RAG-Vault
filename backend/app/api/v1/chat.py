@@ -86,14 +86,41 @@ def list_sessions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List all sessions for the current user, newest first."""
+    """List all sessions for the current user, pinned first then newest first."""
     sessions = (
         db.query(QuerySession)
         .filter(QuerySession.user_id == current_user.id)
-        .order_by(QuerySession.updated_at.desc())
+        .order_by(QuerySession.is_pinned.desc(), QuerySession.updated_at.desc())
         .all()
     )
     return sessions
+
+
+@router.patch("/sessions/{session_id}/pin", response_model=SessionResponse)
+def toggle_pin_session(
+    session_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Toggle the is_pinned flag for a session owned by the current user."""
+    session = (
+        db.query(QuerySession)
+        .filter(
+            QuerySession.id == session_id,
+            QuerySession.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found",
+        )
+
+    session.is_pinned = not session.is_pinned
+    db.commit()
+    db.refresh(session)
+    return session
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
