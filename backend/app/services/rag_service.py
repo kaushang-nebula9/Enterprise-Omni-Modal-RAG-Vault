@@ -55,6 +55,24 @@ def _get_async_anthropic_client() -> AsyncAnthropic:
 
 
 # ---------------------------------------------------------------------------
+# CrossEncoder model (ACTIVE)
+# ---------------------------------------------------------------------------
+
+from sentence_transformers import CrossEncoder
+
+_cross_encoder: CrossEncoder | None = None
+
+
+def _get_cross_encoder() -> CrossEncoder:
+    """Lazily load and cache the CrossEncoder model."""
+    global _cross_encoder
+    if _cross_encoder is None:
+        logger.info("Loading CrossEncoder model: cross-encoder/ms-marco-MiniLM-L-6-v2")
+        _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    return _cross_encoder
+
+
+# ---------------------------------------------------------------------------
 # Excel query execution
 # ---------------------------------------------------------------------------
 
@@ -260,7 +278,7 @@ async def run_rag_pipeline(
                     query_text=query,
                     query_vector=query_vector,
                     role_ids=search_role_ids,
-                    limit=5,
+                    limit=15,
                     document_id=str(document_id) if document_id else None,
                 )
             except Exception as exc:
@@ -318,6 +336,26 @@ async def run_rag_pipeline(
         if payload.get("document_id") in doc_id_to_filename:
             valid_qdrant_results.append(hit)
     qdrant_results = valid_qdrant_results
+
+    # Re-rank candidates using the CrossEncoder
+    if qdrant_results:
+        try:
+            model = _get_cross_encoder()
+            pairs = [(query, hit.get("payload", {}).get("chunk_text") or "") for hit in qdrant_results]
+            scores = await asyncio.to_thread(model.predict, pairs)
+            
+            # Associate scores with candidates and sort descending
+            for hit, score in zip(qdrant_results, scores):
+                hit["cross_encoder_score"] = float(score)
+            
+            qdrant_results.sort(key=lambda x: x.get("cross_encoder_score", -999999.0), reverse=True)
+        except Exception as exc:
+            logger.error("CrossEncoder re-ranking failed: %s", exc)
+            # Fall back to original RRF-ranked order (which is already the order in qdrant_results)
+            pass
+
+    # Truncate to top 5 candidates
+    qdrant_results = qdrant_results[:5]
 
 
     # 5. Build context block
