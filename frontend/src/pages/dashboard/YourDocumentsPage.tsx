@@ -668,6 +668,11 @@ export default function YourDocumentsPage() {
                                 Auto-access via {doc.inherited_from_role_name}
                               </span>
                             )}
+                            {doc.granted_via === 'department' && doc.department_name && (
+                              <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 whitespace-nowrap">
+                                Shared with {doc.department_name} department
+                              </span>
+                            )}
                           </div>
                         </td>
 

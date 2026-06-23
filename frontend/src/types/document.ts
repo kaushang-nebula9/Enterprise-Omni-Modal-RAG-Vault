@@ -22,6 +22,7 @@ export interface DocumentResponse {
   updated_at: string
   access_policies: RoleResponse[]
   description: string | null
-  granted_via?: 'direct' | 'inherited' | null
+  granted_via?: 'direct' | 'inherited' | 'department' | null
   inherited_from_role_name?: string | null
+  department_name?: string | null
 }

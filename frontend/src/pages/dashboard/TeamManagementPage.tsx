@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminService } from '../../services/adminService';
 import { roleService } from '../../services/roleService';
+import { departmentService } from '../../services/departmentService';
 import { useAuthStore } from '../../store/authStore';
 import {
   UserPlus,
@@ -13,7 +14,9 @@ import {
   Users,
   Pencil,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  Building2,
+  Plus
 } from 'lucide-react';
 import api from '../../services/api'; // For invite
 import type { UserResponse, RoleResponse } from '../../types/auth';
@@ -38,6 +41,8 @@ export const TeamManagementPage: React.FC = () => {
   
   // Modals state for actions
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [modalRoleId, setModalRoleId] = useState('');
+  const [modalDeptId, setModalDeptId] = useState('');
   const [deactivatingUserId, setDeactivatingUserId] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
@@ -86,6 +91,79 @@ export const TeamManagementPage: React.FC = () => {
     onSuccess: () => {
       setDeletingUserId(null);
       handleSuccess('Member removed successfully');
+    }
+  });
+
+  const updateRoleDeptMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { name: string; parent_role_id?: string | null; department_id?: string | null } }) =>
+      roleService.updateRole(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
+      queryClient.invalidateQueries({ queryKey: ['members'] });
+    }
+  });
+
+  const targetMember = useMemo(() => {
+    return members?.find((m: UserResponse) => m.id === editingUserId);
+  }, [members, editingUserId]);
+
+  useEffect(() => {
+    if (targetMember) {
+      setModalRoleId(targetMember.role_id);
+      setModalDeptId(targetMember.role?.department_id || '');
+    }
+  }, [targetMember]);
+
+  // Department State & Queries
+  const { data: departments = [], isLoading: loadingDepartments } = useQuery({
+    queryKey: ['departments'],
+    queryFn: departmentService.getDepartments,
+  });
+
+  const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
+  const [deptModalType, setDeptModalType] = useState<'create' | 'edit'>('create');
+  const [editingDeptId, setEditingDeptId] = useState<string | null>(null);
+  const [deptNameInput, setDeptNameInput] = useState('');
+  const [deletingDeptId, setDeletingDeptId] = useState<string | null>(null);
+
+  const createDeptMutation = useMutation({
+    mutationFn: departmentService.createDepartment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['departments'] });
+      setIsDeptModalOpen(false);
+      setDeptNameInput('');
+      handleSuccess('Department created successfully');
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.detail || 'Failed to create department');
+    }
+  });
+
+  const updateDeptMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { name: string } }) => departmentService.updateDepartment(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['departments'] });
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
+      setIsDeptModalOpen(false);
+      setDeptNameInput('');
+      setEditingDeptId(null);
+      handleSuccess('Department updated successfully');
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.detail || 'Failed to update department');
+    }
+  });
+
+  const deleteDeptMutation = useMutation({
+    mutationFn: departmentService.deleteDepartment,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['departments'] });
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
+      setDeletingDeptId(null);
+      handleSuccess('Department deleted successfully');
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.detail || 'Failed to delete department');
     }
   });
 
@@ -262,6 +340,7 @@ export const TeamManagementPage: React.FC = () => {
               <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
                 <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Member</th>
                 <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Role</th>
+                <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Department</th>
                 <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Status</th>
                 <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Joined</th>
                 <th className="px-4 py-3.5 text-right font-semibold text-slate-600 dark:text-slate-400">Actions</th>
@@ -271,7 +350,7 @@ export const TeamManagementPage: React.FC = () => {
               {loadingMembers ? (
                 Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i} className="border-b border-slate-100 dark:border-slate-800">
-                    {Array.from({ length: 5 }).map((_, j) => (
+                    {Array.from({ length: 6 }).map((_, j) => (
                       <td key={j} className="px-4 py-4">
                         <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" style={{ width: `${60 + (j * 13) % 40}%` }} />
                       </td>
@@ -280,7 +359,7 @@ export const TeamManagementPage: React.FC = () => {
                 ))
               ) : filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-16 text-center text-slate-400 dark:text-slate-500">
+                  <td colSpan={6} className="px-4 py-16 text-center text-slate-400 dark:text-slate-500">
                     <div className="flex flex-col items-center gap-3">
                       <Users className="w-12 h-12 text-slate-200 dark:text-slate-800" />
                       <div>
@@ -321,6 +400,19 @@ export const TeamManagementPage: React.FC = () => {
                       <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400">
                         {m.role.name}
                       </span>
+                    </td>
+
+                    {/* Department */}
+                    <td className="px-4 py-3.5">
+                      {m.role.department_name ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                          {m.role.department_name}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400 dark:text-slate-550 px-2.5 py-1">
+                          None
+                        </span>
+                      )}
                     </td>
 
                     {/* Status */}
@@ -550,31 +642,226 @@ export const TeamManagementPage: React.FC = () => {
         );
       })()}
 
+      {/* Departments Section */}
+        <div className="flex items-center justify-between border-slate-200 dark:border-slate-800 dark:bg-slate-950/20">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              Departments
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Manage departments in your organisation</p>
+          </div>
+          <button
+            onClick={() => {
+              setDeptModalType('create');
+              setDeptNameInput('');
+              setIsDeptModalOpen(true);
+            }}
+            className="flex items-center gap-2 bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-800 dark:hover:bg-indigo-600 text-white font-semibold rounded-xl px-4 py-2.5 transition-colors shadow-sm"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New Department
+          </button>
+        </div>
+        
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden mt-8">
+
+        {loadingDepartments ? (
+          <div className="flex justify-center py-12">
+            <div className="w-8 h-8 rounded-full border-4 border-indigo-200 dark:border-indigo-950 border-t-indigo-700 dark:border-t-indigo-500 animate-spin"></div>
+          </div>
+        ) : departments.length === 0 ? (
+          <div className="text-center text-slate-400 dark:text-slate-500 py-16">
+            <div className="flex flex-col items-center gap-3">
+              <Building2 className="w-12 h-12 text-slate-200 dark:text-slate-800" />
+              <p className="font-medium text-slate-500 dark:text-slate-400">No departments created yet</p>
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
+                  <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Department Name</th>
+                  <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Number of Employees</th>
+                  <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Created At</th>
+                  <th className="px-4 py-3.5 text-right font-semibold text-slate-600 dark:text-slate-400">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {departments.map((dept) => {
+                  const employeeCount = members.filter((m: UserResponse) => m.role?.department_id === dept.id).length;
+                  return (
+                    <tr
+                      key={dept.id}
+                      className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                    >
+                      {/* Name */}
+                      <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">
+                        {dept.name}
+                      </td>
+
+                      {/* Number of Employees */}
+                      <td className="px-4 py-3.5 text-slate-500 dark:text-slate-400">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400">
+                          {employeeCount} {employeeCount === 1 ? 'employee' : 'employees'}
+                        </span>
+                      </td>
+
+                      {/* Created At */}
+                      <td className="px-4 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                        {formatDate(dept.created_at)}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => {
+                              setDeptModalType('edit');
+                              setEditingDeptId(dept.id);
+                              setDeptNameInput(dept.name);
+                              setIsDeptModalOpen(true);
+                            }}
+                            title="Edit Department"
+                            className="p-2 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeletingDeptId(dept.id)}
+                            title="Delete Department"
+                            className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!loadingDepartments && departments.length > 0 && (
+          <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950">
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              Showing {departments.length} of {departments.length} department{departments.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Create/Edit Department Modal */}
+      {isDeptModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-slate-800">
+              <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+                {deptModalType === 'create' ? 'Create Department' : 'Edit Department'}
+              </h2>
+              <button
+                onClick={() => setIsDeptModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-350 transition-colors rounded-lg p-1 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (deptModalType === 'create') {
+                  createDeptMutation.mutate({ name: deptNameInput });
+                } else if (editingDeptId) {
+                  updateDeptMutation.mutate({ id: editingDeptId, data: { name: deptNameInput } });
+                }
+              }}
+              className="p-6 flex flex-col gap-4"
+            >
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Department Name</label>
+                <input
+                  required
+                  autoFocus
+                  value={deptNameInput}
+                  onChange={(e) => setDeptNameInput(e.target.value)}
+                  className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={createDeptMutation.isPending || updateDeptMutation.isPending}
+                className="mt-2 w-full bg-indigo-700 dark:bg-indigo-500 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50"
+              >
+                {createDeptMutation.isPending || updateDeptMutation.isPending ? 'Saving...' : 'Save'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Department Modal */}
+      {deletingDeptId && (() => {
+        const dept = departments.find((d) => d.id === deletingDeptId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-sm p-6 text-center text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
+              <h3 className="text-lg font-semibold mb-2 text-slate-800 dark:text-slate-100">Delete Department</h3>
+              <p className="text-slate-500 dark:text-slate-400 mb-6 leading-relaxed text-sm">
+                Are you sure you want to delete the department{' '}
+                <span className="font-semibold text-slate-800 dark:text-slate-200">{dept?.name}</span>? Roles
+                assigned to this department will remain but will be unassociated from it. This action cannot be undone.
+              </p>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => setDeletingDeptId(null)}
+                  className="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => deleteDeptMutation.mutate(deletingDeptId)}
+                  disabled={deleteDeptMutation.isPending}
+                  className="flex-1 py-2 rounded-lg bg-red-600 dark:bg-red-500 hover:bg-red-700 dark:hover:bg-red-400 text-white font-medium transition-colors disabled:opacity-50"
+                >
+                  {deleteDeptMutation.isPending ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Change Role Modal */}
-      {editingUserId && (() => {
-        const target = members?.find((m: UserResponse) => m.id === editingUserId);
+      {editingUserId && targetMember && (() => {
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
               <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-slate-800">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Change Role</h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-xs">{target?.full_name}</p>
+                  <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Change Role & Department</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-xs">{targetMember.full_name}</p>
                 </div>
                 <button
                   onClick={() => setEditingUserId(null)}
-                  className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-350 transition-colors rounded-lg p-1 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="text-slate-400 hover:text-slate-655 dark:text-slate-350 transition-colors rounded-lg p-1 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <div className="px-6 py-5 space-y-5">
+                {/* Role Select */}
                 <div className="space-y-1">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Select Role</label>
                   <div className="relative">
                     <select
-                      defaultValue={target?.role_id}
-                      id="roleSelect"
+                      value={modalRoleId}
+                      onChange={(e) => {
+                        const newRoleId = e.target.value;
+                        setModalRoleId(newRoleId);
+                        const r = roles.find((role: RoleResponse) => role.id === newRoleId);
+                        setModalDeptId(r?.department_id || '');
+                      }}
                       className="peer appearance-none w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                     >
                       {roles?.map((r: RoleResponse) => (
@@ -584,6 +871,25 @@ export const TeamManagementPage: React.FC = () => {
                     <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
                   </div>
                 </div>
+
+                {/* Department Select */}
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Select Department</label>
+                  <div className="relative">
+                    <select
+                      value={modalDeptId}
+                      onChange={(e) => setModalDeptId(e.target.value)}
+                      className="peer appearance-none w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <option value="">None (Unassigned)</option>
+                      {departments?.map((d) => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+                  </div>
+                </div>
+
                 <div className="flex gap-3 pt-2">
                   <button
                     onClick={() => setEditingUserId(null)}
@@ -592,14 +898,40 @@ export const TeamManagementPage: React.FC = () => {
                     Cancel
                   </button>
                   <button
-                    onClick={() => {
-                      const el = document.getElementById('roleSelect') as HTMLSelectElement;
-                      if (el) updateMutation.mutate({ id: editingUserId, data: { role_id: el.value } });
+                    onClick={async () => {
+                      const isPending = updateMutation.isPending || updateRoleDeptMutation.isPending;
+                      if (isPending) return;
+
+                      try {
+                        // 1. If role changed, update user's role
+                        if (modalRoleId !== targetMember.role_id) {
+                          await updateMutation.mutateAsync({ id: targetMember.id, data: { role_id: modalRoleId } });
+                        }
+
+                        // 2. Update the role's department
+                        const roleToUpdate = roles.find((r: RoleResponse) => r.id === modalRoleId);
+                        const newDeptId = modalDeptId || null;
+                        if (roleToUpdate && roleToUpdate.department_id !== newDeptId) {
+                          await updateRoleDeptMutation.mutateAsync({
+                            id: modalRoleId,
+                            data: {
+                              name: roleToUpdate.name,
+                              parent_role_id: roleToUpdate.parent_role_id,
+                              department_id: newDeptId,
+                            },
+                          });
+                        }
+
+                        setEditingUserId(null);
+                        handleSuccess('Member role and department updated successfully');
+                      } catch (err: any) {
+                        alert(err?.response?.data?.detail || 'Failed to update member role or department');
+                      }
                     }}
-                    disabled={updateMutation.isPending}
+                    disabled={updateMutation.isPending || updateRoleDeptMutation.isPending}
                     className="flex-1 flex items-center justify-center bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-800 dark:hover:bg-indigo-600 text-white font-semibold rounded-xl px-4 py-2.5 transition-colors disabled:opacity-70"
                   >
-                    {updateMutation.isPending ? (
+                    {updateMutation.isPending || updateRoleDeptMutation.isPending ? (
                       <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />

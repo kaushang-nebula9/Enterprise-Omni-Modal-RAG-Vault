@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { documentService } from '../../services/documentService'
 import { roleService } from '../../services/roleService'
+import { departmentService, type DepartmentResponse } from '../../services/departmentService'
 import type { DocumentResponse, FileType, DocumentStatus } from '../../types/document'
 import type { RoleResponse } from '../../types/auth'
 
@@ -142,19 +143,22 @@ function InheritancePreview({ ancestors }: { ancestors: RoleResponse[] }) {
 
 interface UploadModalProps {
   roles: RoleResponse[]
+  departments: DepartmentResponse[]
   onClose: () => void
   onSuccess: () => void
 }
 
-function UploadModal({ roles, onClose, onSuccess }: UploadModalProps) {
+function UploadModal({ roles, departments, onClose, onSuccess }: UploadModalProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([])
+  const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([])
+  const [tab, setTab] = useState<'roles' | 'departments'>('roles')
   const [error, setError] = useState<string | null>(null)
   const previewAncestors = usePreviewAncestors(selectedRoleIds)
 
   const uploadMutation = useMutation({
-    mutationFn: ({ file, roleIds }: { file: File; roleIds: string[] }) =>
-      documentService.uploadDocument(file, roleIds),
+    mutationFn: ({ file, roleIds, departmentIds }: { file: File; roleIds: string[]; departmentIds: string[] }) =>
+      documentService.uploadDocument(file, roleIds, departmentIds),
     onSuccess: () => {
       onSuccess()
     },
@@ -169,19 +173,31 @@ function UploadModal({ roles, onClose, onSuccess }: UploadModalProps) {
     )
   }
 
+  function toggleDept(id: string) {
+    setSelectedDeptIds((prev) =>
+      prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]
+    )
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     if (!selectedFile) return setError('Please select a file.')
-    if (selectedRoleIds.length === 0) return setError('Please select at least one role.')
-    uploadMutation.mutate({ file: selectedFile, roleIds: selectedRoleIds })
+    if (selectedRoleIds.length === 0 && selectedDeptIds.length === 0) {
+      return setError('Please select at least one role or department.')
+    }
+    uploadMutation.mutate({
+      file: selectedFile,
+      roleIds: selectedRoleIds,
+      departmentIds: selectedDeptIds,
+    })
   }
 
   const isLoading = uploadMutation.isPending
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-slate-800">
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Upload Document</h2>
@@ -223,38 +239,96 @@ function UploadModal({ roles, onClose, onSuccess }: UploadModalProps) {
             </label>
           </div>
 
-          {/* Role multi-select */}
+          {/* Access selector */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-              Access Roles <span className="text-red-500">*</span>
+              Access Assignment <span className="text-red-500">*</span>
             </label>
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-              {roles.map((role) => {
-                const checked = selectedRoleIds.includes(role.id)
-                return (
-                  <button
-                    key={role.id}
-                    type="button"
-                    onClick={() => toggleRole(role.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-left ${
-                      checked
-                        ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300'
-                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    {checked ? (
-                      <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                    ) : (
-                      <Square className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" />
-                    )}
-                    <span className="text-sm font-medium">{role.name}</span>
-                    {role.is_admin && (
-                      <span className="ml-auto text-xs bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-400 px-2 py-0.5 rounded-full">Admin</span>
-                    )}
-                  </button>
-                )
-              })}
+            
+            {/* Tabs */}
+            <div className="flex border-b border-slate-100 dark:border-slate-800 mb-3">
+              <button
+                type="button"
+                onClick={() => setTab('roles')}
+                className={`flex-1 py-2 text-sm font-semibold text-center border-b-2 transition-all ${
+                  tab === 'roles'
+                    ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 font-bold'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+                }`}
+              >
+                Roles ({selectedRoleIds.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab('departments')}
+                className={`flex-1 py-2 text-sm font-semibold text-center border-b-2 transition-all ${
+                  tab === 'departments'
+                    ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400 font-bold'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'
+                }`}
+              >
+                Departments ({selectedDeptIds.length})
+              </button>
             </div>
+
+            {tab === 'roles' ? (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {roles.map((role) => {
+                  const checked = selectedRoleIds.includes(role.id)
+                  return (
+                    <button
+                      key={role.id}
+                      type="button"
+                      onClick={() => toggleRole(role.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-left ${
+                        checked
+                          ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300'
+                          : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      {checked ? (
+                        <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" />
+                      )}
+                      <span className="text-sm font-medium">{role.name}</span>
+                      {role.is_admin && (
+                        <span className="ml-auto text-xs bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-400 px-2 py-0.5 rounded-full">Admin</span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {departments.length === 0 ? (
+                  <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-4">No departments created yet.</p>
+                ) : (
+                  departments.map((dept) => {
+                    const checked = selectedDeptIds.includes(dept.id)
+                    return (
+                      <button
+                        key={dept.id}
+                        type="button"
+                        onClick={() => toggleDept(dept.id)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-left ${
+                          checked
+                            ? 'border-emerald-400 bg-emerald-50 dark:border-emerald-500 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300'
+                            : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {checked ? (
+                          <CheckSquare className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" />
+                        )}
+                        <span className="text-sm font-medium">{dept.name}</span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            )}
           </div>
 
           {/* Inheritance preview */}
@@ -312,12 +386,30 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
   const [error, setError] = useState<string | null>(null)
   const previewAncestors = usePreviewAncestors(selectedRoleIds, document.id)
 
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: departmentService.getDepartments,
+  })
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>('')
+
   const updateMutation = useMutation({
     mutationFn: (roleIds: string[]) =>
       documentService.updateDocumentAccess(document.id, roleIds),
     onSuccess: () => onSuccess(),
     onError: (err: any) => {
       setError(err?.response?.data?.detail || 'Failed to update access.')
+    },
+  })
+
+  const assignDeptMutation = useMutation({
+    mutationFn: (deptId: string) =>
+      documentService.assignDepartment(document.id, deptId),
+    onSuccess: () => {
+      onSuccess()
+      setSelectedDepartmentId('')
+    },
+    onError: (err: any) => {
+      setError(err?.response?.data?.detail || 'Failed to assign department.')
     },
   })
 
@@ -334,7 +426,7 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
     updateMutation.mutate(selectedRoleIds)
   }
 
-  const isLoading = updateMutation.isPending
+  const isLoading = updateMutation.isPending || assignDeptMutation.isPending
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
@@ -354,7 +446,7 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
-          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+          <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
             {roles.map((role) => {
               const checked = selectedRoleIds.includes(role.id)
               return (
@@ -362,7 +454,7 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
                   key={role.id}
                   type="button"
                   onClick={() => toggleRole(role.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-left ${
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border transition-all text-left ${
                     checked
                       ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300'
                       : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300'
@@ -385,6 +477,40 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
           {/* Inheritance preview */}
           <InheritancePreview ancestors={previewAncestors} />
 
+          {/* Department direct assignment */}
+          <div className="space-y-2 border-t border-slate-100 dark:border-slate-800 pt-4">
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Assign to Department directly</label>
+            <div className="flex gap-2">
+              <select
+                value={selectedDepartmentId}
+                onChange={(e) => setSelectedDepartmentId(e.target.value)}
+                className="flex-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-700 dark:text-slate-300 outline-none"
+              >
+                <option value="">-- Select Department --</option>
+                {departments.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedDepartmentId) {
+                    assignDeptMutation.mutate(selectedDepartmentId)
+                  }
+                }}
+                disabled={!selectedDepartmentId || assignDeptMutation.isPending}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg px-3 py-2 text-sm transition-colors disabled:opacity-50"
+              >
+                {assignDeptMutation.isPending ? 'Assigning...' : 'Assign'}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+              Assigning a department gives access to all roles grouped in that department.
+            </p>
+          </div>
+
           {error && (
             <div className="flex items-start gap-2 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-lg px-3 py-2.5">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -397,7 +523,7 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
             disabled={isLoading}
             className="w-full flex items-center justify-center gap-2 bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-800 dark:hover:bg-indigo-600 text-white font-semibold rounded-xl px-4 py-3 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            {isLoading ? (
+            {updateMutation.isPending ? (
               <>
                 <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -530,6 +656,11 @@ export default function DocumentsPage() {
   const { data: roles = [] } = useQuery({
     queryKey: ['roles'],
     queryFn: roleService.getRoles,
+  })
+
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: departmentService.getDepartments,
   })
 
   const filteredDocuments = useMemo(() => {
@@ -822,6 +953,7 @@ export default function DocumentsPage() {
       {modal.type === 'upload' && (
         <UploadModal
           roles={roles}
+          departments={departments}
           onClose={() => setModal({ type: 'none' })}
           onSuccess={() => handleSuccess('Document uploaded and processed successfully')}
         />

@@ -50,6 +50,8 @@ class RoleResponse(BaseModel):
     is_default: bool
     tenant_id: UUID
     parent_role_id: UUID | None = None
+    department_id: UUID | None = None
+    department_name: str | None = None
     created_at: datetime
 
     model_config = {

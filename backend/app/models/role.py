@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from app.models.tenant import Tenant
     from app.models.user import User
+    from app.models.department import Department
 
 class Role(Base):
     __tablename__ = "roles"
@@ -26,6 +27,11 @@ class Role(Base):
         ForeignKey("roles.id", ondelete="SET NULL"),
         nullable=True
     )
+    department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid,
+        ForeignKey("departments.id", ondelete="SET NULL"),
+        nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 
@@ -34,9 +40,9 @@ class Role(Base):
         nullable=False
     )
 
-    # Unique Constraint on (tenant_id, name)
+    # Unique Constraint on (tenant_id, name, parent_role_id, department_id)
     __table_args__ = (
-        UniqueConstraint("tenant_id", "name", name="uq_tenant_id_name"),
+        UniqueConstraint("tenant_id", "name", "parent_role_id", "department_id", name="uq_tenant_role_dept"),
     )
 
     # Relationships
@@ -53,4 +59,13 @@ class Role(Base):
         back_populates="parent_role",
         foreign_keys=[parent_role_id],
     )
+    department: Mapped[Optional["Department"]] = relationship(
+        "Department",
+        back_populates="roles",
+        foreign_keys=[department_id],
+    )
+
+    @property
+    def department_name(self) -> Optional[str]:
+        return self.department.name if self.department else None
 

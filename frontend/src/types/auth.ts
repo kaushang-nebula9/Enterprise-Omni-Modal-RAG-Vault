@@ -5,6 +5,8 @@ export interface RoleResponse {
   is_default: boolean
   tenant_id: string
   parent_role_id: string | null
+  department_id: string | null
+  department_name: string | null
   created_at: string
 }
 

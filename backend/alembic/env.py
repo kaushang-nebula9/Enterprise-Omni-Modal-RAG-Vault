@@ -25,6 +25,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.invite_token import InviteToken
 from app.models.otp_verification import OTPVerification
 from app.models.role import Role
+from app.models.department import Department
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

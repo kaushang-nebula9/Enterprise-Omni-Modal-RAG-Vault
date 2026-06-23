@@ -22,6 +22,7 @@ class DocumentResponse(BaseModel):
     description: Optional[str] = None
     granted_via: Optional[str] = None
     inherited_from_role_name: Optional[str] = None
+    department_name: Optional[str] = None
     uploaded_at: datetime
     updated_at: datetime
 
@@ -61,3 +62,7 @@ class DocumentWithAccessResponse(DocumentResponse):
 
 class UpdateDocumentAccessRequest(BaseModel):
     role_ids: list[UUID] = Field(..., min_length=1)
+
+class AssignDepartmentRequest(BaseModel):
+    department_id: UUID
+

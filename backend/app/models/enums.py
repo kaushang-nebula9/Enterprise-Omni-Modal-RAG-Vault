@@ -35,6 +35,7 @@ class OTPPurpose(str, enum.Enum):
 class GrantedVia(str, enum.Enum):
     direct = "direct"
     inherited = "inherited"
+    department = "department"
 
 # SQLAlchemy Enum Types
 file_type_enum = SQLEnum(FileType, name="filetype")

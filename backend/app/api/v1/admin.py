@@ -47,7 +47,7 @@ def get_admin_members(
     db: Session = Depends(get_db)
 ):
     """Returns all users belonging to the admin's tenant."""
-    users = db.query(User).options(joinedload(User.role)).filter(
+    users = db.query(User).options(joinedload(User.role).joinedload(Role.department)).filter(
         User.tenant_id == current_admin.tenant_id
     ).all()
     return users
@@ -60,7 +60,7 @@ def update_member(
     db: Session = Depends(get_db)
 ):
     """Update a member's role or active status."""
-    target_user = db.query(User).options(joinedload(User.role)).filter(
+    target_user = db.query(User).options(joinedload(User.role).joinedload(Role.department)).filter(
         User.id == user_id,
         User.tenant_id == current_admin.tenant_id
     ).first()
