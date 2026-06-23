@@ -4,7 +4,7 @@ All routes are admin-only and scoped to the current user's tenant.
 """
 import uuid
 import logging
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -20,9 +20,11 @@ from app.schemas.document import (
     DocumentWithAccessResponse,
     UpdateDocumentAccessRequest,
 )
+from app.schemas.auth import RoleResponse
 from app.services.storage_service import save_file, delete_file, get_absolute_path
 from app.tasks.document_tasks import process_document_task
 from app.services.qdrant_service import delete_document_vectors, update_document_payload
+from app.services.role_service import get_role_ancestors
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,57 @@ def _load_document_with_policies(db: Session, document_id: uuid.UUID, tenant_id:
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
     return doc
+
+
+def _create_policies_with_inheritance(
+    db: Session,
+    document_id: uuid.UUID,
+    direct_role_ids: list[uuid.UUID],
+) -> None:
+    """
+    Create DocumentAccessPolicy rows for each direct role, then walk up each
+    role's ancestor chain and create inherited rows for every ancestor that
+    doesn't already have access to this document.
+    """
+    # Track which role_ids already have a policy for this document
+    covered: set[uuid.UUID] = set()
+
+    # 1. Create direct policies
+    for role_id in direct_role_ids:
+        if role_id in covered:
+            continue
+        policy = DocumentAccessPolicy(
+            document_id=document_id,
+            role_id=role_id,
+            granted_via="direct",
+            inherited_from_role_id=None,
+        )
+        db.add(policy)
+        covered.add(role_id)
+
+    # 2. Create inherited policies for ancestors of each direct role
+    for role_id in direct_role_ids:
+        ancestors = get_role_ancestors(role_id, db)
+        for ancestor in ancestors:
+            if ancestor.id in covered:
+                continue
+            # Check if ancestor already has any access policy for this document
+            existing = db.query(DocumentAccessPolicy).filter(
+                DocumentAccessPolicy.document_id == document_id,
+                DocumentAccessPolicy.role_id == ancestor.id,
+            ).first()
+            if existing:
+                covered.add(ancestor.id)
+                continue
+
+            policy = DocumentAccessPolicy(
+                document_id=document_id,
+                role_id=ancestor.id,
+                granted_via="inherited",
+                inherited_from_role_id=role_id,
+            )
+            db.add(policy)
+            covered.add(ancestor.id)
 
 
 # ---------------------------------------------------------------------------
@@ -139,13 +192,8 @@ def upload_document(
     )
     db.add(document)
 
-    # Create access policy records
-    for role_id in parsed_role_ids:
-        policy = DocumentAccessPolicy(
-            document_id=document_id,
-            role_id=role_id,
-        )
-        db.add(policy)
+    # Create access policy records (direct + inherited for ancestors)
+    _create_policies_with_inheritance(db, document_id, parsed_role_ids)
 
     db.commit()
 
@@ -184,11 +232,20 @@ def get_authorized_documents(
 ):
     """
     Return all organisation-owned documents for the user's tenant where the user's
-    role is in the document's access policies.
+    role is in the document's access policies.  Include granted_via and
+    inherited_from_role_name (resolved) for each document.
     """
-    docs = (
-        db.query(Document)
+    from sqlalchemy.orm import aliased
+
+    InheritedRole = aliased(Role)
+
+    rows = (
+        db.query(Document, DocumentAccessPolicy.granted_via, InheritedRole.name)
         .join(DocumentAccessPolicy, Document.id == DocumentAccessPolicy.document_id)
+        .outerjoin(
+            InheritedRole,
+            DocumentAccessPolicy.inherited_from_role_id == InheritedRole.id,
+        )
         .filter(
             Document.tenant_id == current_user.tenant_id,
             Document.owner_type == OwnerType.organisation,
@@ -196,7 +253,54 @@ def get_authorized_documents(
         )
         .all()
     )
-    return docs
+
+    results: list[dict] = []
+    for doc, granted_via, inherited_role_name in rows:
+        d = DocumentResponse.model_validate(doc)
+        d.granted_via = granted_via
+        d.inherited_from_role_name = inherited_role_name
+        results.append(d)
+    return results
+
+
+@router.get("/preview-assignment", response_model=list[RoleResponse])
+def preview_assignment(
+    role_id: uuid.UUID = Query(...),
+    document_id: uuid.UUID | None = Query(None),
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Dry-run preview: given a role (and optionally a document), return the list
+    of ancestor roles that would also gain access via inheritance.
+
+    If document_id is provided, ancestors that already have direct or inherited
+    access to that document are excluded.
+    """
+    # Validate role belongs to tenant
+    role = db.query(Role).filter(
+        Role.id == role_id,
+        Role.tenant_id == current_admin.tenant_id,
+    ).first()
+    if not role:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Role not found in this organisation",
+        )
+
+    ancestors = get_role_ancestors(role_id, db)
+
+    if document_id is not None:
+        # Filter out ancestors that already have access
+        existing_role_ids = {
+            p.role_id
+            for p in db.query(DocumentAccessPolicy)
+            .filter(DocumentAccessPolicy.document_id == document_id)
+            .all()
+        }
+        ancestors = [a for a in ancestors if a.id not in existing_role_ids]
+
+    return ancestors
 
 
 @router.get("/{document_id}/download")
@@ -265,7 +369,7 @@ def update_document_access(
 ):
     """
     Replace all access policies for a document with the provided role_ids,
-    then update Qdrant payload to reflect the new role_ids.
+    then update Qdrant payload to reflect the new role_ids (including inherited).
     """
     doc = db.query(Document).filter(
         Document.id == document_id,
@@ -275,11 +379,6 @@ def update_document_access(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
     # Validate each role
-    new_role_ids = [str(rid) for rid in request.role_ids]
-    uploader_id = str(doc.uploaded_by)
-    if uploader_id not in new_role_ids:
-        new_role_ids.append(uploader_id)
-
     for role_id in request.role_ids:
         role = db.query(Role).filter(
             Role.id == role_id,
@@ -296,15 +395,21 @@ def update_document_access(
         DocumentAccessPolicy.document_id == document_id
     ).delete()
 
-    # Create new policies
-    for role_id in request.role_ids:
-        policy = DocumentAccessPolicy(
-            document_id=document_id,
-            role_id=role_id,
-        )
-        db.add(policy)
+    # Create new policies (direct + inherited for ancestors)
+    _create_policies_with_inheritance(db, document_id, list(request.role_ids))
 
     db.commit()
+
+    # Build the complete list of role_ids for Qdrant (all policies)
+    all_policies = (
+        db.query(DocumentAccessPolicy)
+        .filter(DocumentAccessPolicy.document_id == document_id)
+        .all()
+    )
+    new_role_ids = [str(p.role_id) for p in all_policies]
+    uploader_id = str(doc.uploaded_by)
+    if uploader_id not in new_role_ids:
+        new_role_ids.append(uploader_id)
 
     # Update Qdrant payload if vectors exist
     if doc.status == DocumentStatus.ready and doc.file_type != FileType.excel:
@@ -322,3 +427,5 @@ def update_document_access(
     # Reload with updated policies
     updated_doc = _load_document_with_policies(db, document_id, current_admin.tenant_id)
     return updated_doc
+
+

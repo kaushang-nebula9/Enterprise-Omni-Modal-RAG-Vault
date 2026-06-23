@@ -1,10 +1,10 @@
 from datetime import datetime
 import uuid
-from sqlalchemy import DateTime, Uuid, ForeignKey, UniqueConstraint, func
+from sqlalchemy import DateTime, Uuid, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from app.models.document import Document
@@ -24,6 +24,14 @@ class DocumentAccessPolicy(Base):
         ForeignKey("roles.id", ondelete="CASCADE"), 
         nullable=False
     )
+    granted_via: Mapped[str] = mapped_column(
+        String, nullable=False, server_default="direct"
+    )
+    inherited_from_role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid,
+        ForeignKey("roles.id", ondelete="CASCADE"),
+        nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # Unique Constraint
@@ -33,4 +41,6 @@ class DocumentAccessPolicy(Base):
 
     # Relationships
     document: Mapped["Document"] = relationship("Document", back_populates="access_policies")
-    role: Mapped["Role"] = relationship("Role")
+    role: Mapped["Role"] = relationship("Role", foreign_keys=[role_id])
+    inherited_from_role: Mapped[Optional["Role"]] = relationship("Role", foreign_keys=[inherited_from_role_id])
+

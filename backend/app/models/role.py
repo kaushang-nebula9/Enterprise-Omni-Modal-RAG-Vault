@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import String, DateTime, Uuid, ForeignKey, Boolean, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from app.models.tenant import Tenant
@@ -21,6 +21,11 @@ class Role(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    parent_role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid,
+        ForeignKey("roles.id", ondelete="SET NULL"),
+        nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 
@@ -37,3 +42,15 @@ class Role(Base):
     # Relationships
     tenant: Mapped["Tenant"] = relationship("Tenant", back_populates="roles")
     users: Mapped[list["User"]] = relationship("User", back_populates="role")
+    parent_role: Mapped[Optional["Role"]] = relationship(
+        "Role",
+        remote_side=[id],
+        back_populates="child_roles",
+        foreign_keys=[parent_role_id],
+    )
+    child_roles: Mapped[list["Role"]] = relationship(
+        "Role",
+        back_populates="parent_role",
+        foreign_keys=[parent_role_id],
+    )
+

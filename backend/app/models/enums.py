@@ -32,6 +32,10 @@ class OTPPurpose(str, enum.Enum):
     registration = "registration"
     forgot_password = "forgot_password"
 
+class GrantedVia(str, enum.Enum):
+    direct = "direct"
+    inherited = "inherited"
+
 # SQLAlchemy Enum Types
 file_type_enum = SQLEnum(FileType, name="filetype")
 owner_type_enum = SQLEnum(OwnerType, name="ownertype")
@@ -39,3 +43,4 @@ visibility_enum = SQLEnum(Visibility, name="visibility")
 document_status_enum = SQLEnum(DocumentStatus, name="documentstatus")
 message_role_enum = SQLEnum(MessageRole, name="messagerole")
 otp_purpose_enum = SQLEnum(OTPPurpose, name="otppurpose")
+granted_via_enum = SQLEnum(GrantedVia, name="grantedvia")

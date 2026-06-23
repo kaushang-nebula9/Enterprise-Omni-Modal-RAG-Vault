@@ -6,6 +6,7 @@ from app.core.dependencies import get_current_user, require_admin
 from app.models.user import User
 from app.models.role import Role
 from app.schemas.role import CreateRoleRequest, UpdateRoleRequest, RoleResponse
+from app.services.role_service import check_role_cycle
 
 router = APIRouter()
 
@@ -17,6 +18,23 @@ def get_roles(
     """Protected route to get all roles belonging to the current user's tenant."""
     roles = db.query(Role).filter(Role.tenant_id == current_user.tenant_id).all()
     return roles
+
+def _validate_parent_role(
+    parent_role_id: uuid.UUID | None,
+    tenant_id: uuid.UUID,
+    db: Session,
+) -> None:
+    """Validate that the parent role exists and belongs to the same tenant."""
+    if parent_role_id is not None:
+        parent_role = db.query(Role).filter(
+            Role.id == parent_role_id,
+            Role.tenant_id == tenant_id
+        ).first()
+        if not parent_role:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Parent role not found in this organisation"
+            )
 
 @router.post("", response_model=RoleResponse, status_code=status.HTTP_201_CREATED)
 def create_role(
@@ -35,11 +53,15 @@ def create_role(
             detail="A role with this name already exists"
         )
 
+    # Validate parent_role_id if provided
+    _validate_parent_role(request.parent_role_id, current_admin.tenant_id, db)
+
     new_role = Role(
         tenant_id=current_admin.tenant_id,
         name=request.name,
         is_admin=False,
-        is_default=False
+        is_default=False,
+        parent_role_id=request.parent_role_id,
     )
     db.add(new_role)
     db.commit()
@@ -53,7 +75,7 @@ def update_role(
     current_admin: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    """Protected route (admin only) to update a role's name."""
+    """Protected route (admin only) to update a role's name and parent."""
     role = db.query(Role).filter(
         Role.id == role_id,
         Role.tenant_id == current_admin.tenant_id
@@ -76,7 +98,20 @@ def update_role(
             detail="A role with this name already exists"
         )
 
+    # Validate parent_role_id if provided
+    _validate_parent_role(request.parent_role_id, current_admin.tenant_id, db)
+
+    if request.parent_role_id is not None:
+        # Cycle detection: reject if the role being edited appears in the
+        # proposed parent's ancestor chain.
+        if check_role_cycle(role_id, request.parent_role_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot set this parent role — it would create a circular hierarchy"
+            )
+
     role.name = request.name
+    role.parent_role_id = request.parent_role_id
     db.commit()
     db.refresh(role)
     return role
@@ -115,3 +150,4 @@ def delete_role(
     db.delete(role)
     db.commit()
     return {"message": "Role deleted successfully"}
+

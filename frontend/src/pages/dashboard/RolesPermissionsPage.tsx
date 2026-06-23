@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { roleService } from '../../services/roleService';
 import type { RoleResponse } from '../../types/auth';
@@ -17,11 +17,12 @@ export const RolesPermissionsPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] });
       setIsCreateOpen(false);
       setNewRoleName('');
+      setNewParentRoleId(null);
     }
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { name: string } }) => roleService.updateRole(id, data),
+    mutationFn: ({ id, data }: { id: string; data: { name: string; parent_role_id?: string | null } }) => roleService.updateRole(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] });
       setEditingRole(null);
@@ -38,9 +39,32 @@ export const RolesPermissionsPage: React.FC = () => {
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
+  const [newParentRoleId, setNewParentRoleId] = useState<string | null>(null);
 
   const [editingRole, setEditingRole] = useState<RoleResponse | null>(null);
+  const [editParentRoleId, setEditParentRoleId] = useState<string | null>(null);
   const [deletingRole, setDeletingRole] = useState<RoleResponse | null>(null);
+
+  useEffect(() => {
+    if (editingRole) {
+      setEditParentRoleId(editingRole.parent_role_id ?? null);
+    }
+  }, [editingRole]);
+
+  const editExcludedIds = useMemo(() => {
+    if (!editingRole || !roles) return new Set<string>();
+    const excluded = new Set<string>([editingRole.id]);
+    const addDescendants = (parentId: string) => {
+      for (const r of roles) {
+        if (r.parent_role_id === parentId && !excluded.has(r.id)) {
+          excluded.add(r.id);
+          addDescendants(r.id);
+        }
+      }
+    };
+    addDescendants(editingRole.id);
+    return excluded;
+  }, [editingRole, roles]);
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-6xl mx-auto h-full text-slate-800 dark:text-slate-100">
@@ -71,6 +95,12 @@ export const RolesPermissionsPage: React.FC = () => {
                 <div className="flex justify-between items-start">
                   <div className="flex flex-col gap-1">
                     <span className="font-semibold text-slate-800 dark:text-slate-100 text-lg">{role.name}</span>
+                    {role.parent_role_id && (() => {
+                      const parentRole = roles?.find((r: RoleResponse) => r.id === role.parent_role_id);
+                      return parentRole ? (
+                        <span className="text-sm text-slate-500 dark:text-slate-400">↳ Reports to: {parentRole.name}</span>
+                      ) : null;
+                    })()}
                     {role.is_admin && (
                       <span className="inline-block bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-405 rounded-full px-3 py-1 text-xs font-medium w-fit mt-1">Admin Role</span>
                     )}
@@ -98,10 +128,19 @@ export const RolesPermissionsPage: React.FC = () => {
               <h2 className="text-lg font-semibold font-sora text-slate-800 dark:text-slate-100">Create Role</h2>
               <button onClick={() => setIsCreateOpen(false)} className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"><X className="w-5 h-5"/></button>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate({ name: newRoleName }); }} className="p-6 flex flex-col gap-4">
+            <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate({ name: newRoleName, parent_role_id: newParentRoleId || null }); }} className="p-6 flex flex-col gap-4">
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Role Name</label>
                 <input required autoFocus value={newRoleName} onChange={e=>setNewRoleName(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Parent Role</label>
+                <select value={newParentRoleId ?? ''} onChange={e => setNewParentRoleId(e.target.value || null)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all">
+                  <option value="">None (Top-level role)</option>
+                  {roles?.map((role: RoleResponse) => (
+                    <option key={role.id} value={role.id}>{role.name}</option>
+                  ))}
+                </select>
               </div>
               <button type="submit" disabled={createMutation.isPending} className="mt-2 w-full bg-indigo-700 dark:bg-indigo-500 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50">
                 {createMutation.isPending ? 'Creating...' : 'Create Role'}
@@ -119,10 +158,19 @@ export const RolesPermissionsPage: React.FC = () => {
               <h2 className="text-lg font-semibold font-sora text-slate-800 dark:text-slate-100">Edit Role</h2>
               <button onClick={() => setEditingRole(null)} className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"><X className="w-5 h-5"/></button>
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); updateMutation.mutate({ id: editingRole.id, data: { name: editingRole.name } }); }} className="p-6 flex flex-col gap-4">
+            <form onSubmit={(e) => { e.preventDefault(); updateMutation.mutate({ id: editingRole.id, data: { name: editingRole.name, parent_role_id: editParentRoleId || null } }); }} className="p-6 flex flex-col gap-4">
               <div className="space-y-1">
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Role Name</label>
                 <input required autoFocus value={editingRole.name} onChange={e=>setEditingRole({ ...editingRole, name: e.target.value })} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Parent Role</label>
+                <select value={editParentRoleId ?? ''} onChange={e => setEditParentRoleId(e.target.value || null)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all">
+                  <option value="">None (Top-level role)</option>
+                  {roles?.filter((role: RoleResponse) => !editExcludedIds.has(role.id)).map((role: RoleResponse) => (
+                    <option key={role.id} value={role.id}>{role.name}</option>
+                  ))}
+                </select>
               </div>
               <button type="submit" disabled={updateMutation.isPending} className="mt-2 w-full bg-indigo-700 dark:bg-indigo-500 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50">
                 {updateMutation.isPending ? 'Saving...' : 'Save Changes'}

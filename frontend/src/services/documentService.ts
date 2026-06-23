@@ -1,6 +1,6 @@
 import api from './api'
 import type { DocumentResponse } from '../types/document'
-import type { MessageResponse } from '../types/auth'
+import type { MessageResponse, RoleResponse } from '../types/auth'
 
 export const documentService = {
   /**
@@ -30,6 +30,20 @@ export const documentService = {
    */
   getAuthorizedDocuments: async (): Promise<DocumentResponse[]> => {
     const response = await api.get('/api/v1/documents/authorized')
+    return response.data
+  },
+
+  /**
+   * Preview which ancestor roles would gain inherited access when assigning
+   * a document to a role (dry-run).
+   */
+  previewAssignment: async (
+    roleId: string,
+    documentId?: string,
+  ): Promise<RoleResponse[]> => {
+    const params: Record<string, string> = { role_id: roleId }
+    if (documentId) params.document_id = documentId
+    const response = await api.get('/api/v1/documents/preview-assignment', { params })
     return response.data
   },
 
@@ -105,3 +119,4 @@ export const documentService = {
     return response.data
   },
 }
+

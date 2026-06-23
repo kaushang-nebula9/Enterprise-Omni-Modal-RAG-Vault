@@ -20,6 +20,8 @@ class DocumentResponse(BaseModel):
     file_path: Optional[str] = None
     file_size: Optional[int] = None
     description: Optional[str] = None
+    granted_via: Optional[str] = None
+    inherited_from_role_name: Optional[str] = None
     uploaded_at: datetime
     updated_at: datetime
 

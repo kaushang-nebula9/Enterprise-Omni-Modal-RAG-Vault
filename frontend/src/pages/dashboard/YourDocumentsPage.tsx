@@ -663,6 +663,11 @@ export default function YourDocumentsPage() {
                             <span className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[280px]" title={doc.filename}>
                               {doc.filename}
                             </span>
+                            {doc.granted_via === 'inherited' && doc.inherited_from_role_name && (
+                              <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-400 whitespace-nowrap">
+                                Auto-access via {doc.inherited_from_role_name}
+                              </span>
+                            )}
                           </div>
                         </td>
 

@@ -4,6 +4,7 @@ export interface RoleResponse {
   is_admin: boolean
   is_default: boolean
   tenant_id: string
+  parent_role_id: string | null
   created_at: string
 }
 

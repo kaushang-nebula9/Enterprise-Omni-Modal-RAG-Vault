@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileText,
@@ -86,8 +86,59 @@ function SkeletonRow() {
 }
 
 // ---------------------------------------------------------------------------
-// Upload Modal
+// Inheritance Preview Helpers
 // ---------------------------------------------------------------------------
+
+function usePreviewAncestors(selectedRoleIds: string[], documentId?: string) {
+  const [previewAncestors, setPreviewAncestors] = useState<RoleResponse[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchPreviews() {
+      if (selectedRoleIds.length === 0) {
+        setPreviewAncestors([])
+        return
+      }
+      try {
+        const seen = new Set<string>(selectedRoleIds)
+        const allAncestors: RoleResponse[] = []
+        for (const roleId of selectedRoleIds) {
+          const ancestors = await documentService.previewAssignment(roleId, documentId)
+          for (const a of ancestors) {
+            if (!seen.has(a.id)) {
+              seen.add(a.id)
+              allAncestors.push(a)
+            }
+          }
+        }
+        if (!cancelled) setPreviewAncestors(allAncestors)
+      } catch {
+        if (!cancelled) setPreviewAncestors([])
+      }
+    }
+    fetchPreviews()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedRoleIds, documentId])
+
+  return previewAncestors
+}
+
+function InheritancePreview({ ancestors }: { ancestors: RoleResponse[] }) {
+  if (ancestors.length === 0) return null
+  return (
+    <div className="flex items-start gap-2 text-violet-700 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-900/50 rounded-lg px-3 py-2.5">
+      <svg className="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+        <rect x="9" y="3" width="6" height="4" rx="1" />
+      </svg>
+      <span className="text-sm">
+        This will also give access to: <strong>{ancestors.map((a) => a.name).join(', ')}</strong>
+      </span>
+    </div>
+  )
+}
 
 interface UploadModalProps {
   roles: RoleResponse[]
@@ -99,6 +150,7 @@ function UploadModal({ roles, onClose, onSuccess }: UploadModalProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const previewAncestors = usePreviewAncestors(selectedRoleIds)
 
   const uploadMutation = useMutation({
     mutationFn: ({ file, roleIds }: { file: File; roleIds: string[] }) =>
@@ -205,6 +257,9 @@ function UploadModal({ roles, onClose, onSuccess }: UploadModalProps) {
             </div>
           </div>
 
+          {/* Inheritance preview */}
+          <InheritancePreview ancestors={previewAncestors} />
+
           {/* Error */}
           {error && (
             <div className="flex items-start gap-2 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-lg px-3 py-2.5">
@@ -255,6 +310,7 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
   const currentRoleIds = document.access_policies.map((r) => r.id)
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(currentRoleIds)
   const [error, setError] = useState<string | null>(null)
+  const previewAncestors = usePreviewAncestors(selectedRoleIds, document.id)
 
   const updateMutation = useMutation({
     mutationFn: (roleIds: string[]) =>
@@ -325,6 +381,9 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
               )
             })}
           </div>
+
+          {/* Inheritance preview */}
+          <InheritancePreview ancestors={previewAncestors} />
 
           {error && (
             <div className="flex items-start gap-2 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-lg px-3 py-2.5">

@@ -49,6 +49,7 @@ class RoleResponse(BaseModel):
     is_admin: bool
     is_default: bool
     tenant_id: UUID
+    parent_role_id: UUID | None = None
     created_at: datetime
 
     model_config = {
