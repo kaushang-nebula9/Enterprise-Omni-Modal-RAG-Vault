@@ -23,6 +23,8 @@ import { documentService } from '../../services/documentService'
 import type { MessageResponse } from '../../types/chat'
 import type { DocumentResponse, FileType } from '../../types/document'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+
 
 interface UploadedFile {
   file: File
@@ -884,9 +886,45 @@ const ChatPage: React.FC = () => {
                       <p className="text-indigo-300 dark:text-indigo-200 text-xs mt-1 text-right">{formatTime(msg.created_at)}</p>
                     </div>
                   </div>
-                ) : (
+                ) : msg.content === '' && msg.citations.length === 0 ? null : (
                   <div className="mr-auto max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm text-slate-800 dark:text-slate-100">
-                    <ReactMarkdown>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        table: ({ ...props }) => (
+                          <div className="my-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm custom-scrollbar">
+                            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left border-collapse" {...props} />
+                          </div>
+                        ),
+                        thead: ({ ...props }) => (
+                          <thead className="bg-slate-50 dark:bg-slate-800/50" {...props} />
+                        ),
+                        tbody: ({ ...props }) => (
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-850 bg-white dark:bg-slate-900" {...props} />
+                        ),
+                        tr: ({ ...props }) => (
+                          <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors duration-150" {...props} />
+                        ),
+                        th: ({ ...props }) => (
+                          <th className="px-4 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-850" {...props} />
+                        ),
+                        td: ({ ...props }) => (
+                          <td className="px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 whitespace-nowrap" {...props} />
+                        ),
+                        p: ({ ...props }) => (
+                          <p className="mb-2 last:mb-0 leading-relaxed" {...props} />
+                        ),
+                        ul: ({ ...props }) => (
+                          <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />
+                        ),
+                        ol: ({ ...props }) => (
+                          <ol className="list-decimal pl-5 mb-2 space-y-1" {...props} />
+                        ),
+                        li: ({ ...props }) => (
+                          <li className="text-sm" {...props} />
+                        ),
+                      }}
+                    >
                       {msg.content}
                     </ReactMarkdown>
                     <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">{formatTime(msg.created_at)}</p>
@@ -934,7 +972,7 @@ const ChatPage: React.FC = () => {
 
             {/* Typing indicator */}
             {isLoading && (
-              <div className="mr-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
+              <div className="mr-auto w-fit bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
                 <div className="flex items-center gap-1.5">
                   <span
                     className="w-2 h-2 bg-slate-400 dark:bg-slate-600 rounded-full animate-bounce"

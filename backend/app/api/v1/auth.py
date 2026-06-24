@@ -196,7 +196,8 @@ def register_verify_otp(
 
         tenant = Tenant(
             name=org_name,
-            slug=slug
+            slug=slug,
+            website=payload.get("org_website")
         )
         db.add(tenant)
         db.flush()
@@ -772,7 +773,8 @@ def google_complete_setup(
 
         tenant = Tenant(
             name=org_name,
-            slug=slug
+            slug=slug,
+            website=str(request.org_website)
         )
         db.add(tenant)
         db.flush()
