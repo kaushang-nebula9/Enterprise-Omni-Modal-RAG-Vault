@@ -3,24 +3,24 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
 class Settings(BaseSettings):
-    DATABASE_URL: str
-    QDRANT_URL: str
+    DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/rag_vault"
+    QDRANT_URL: str = "http://localhost:6333"
     QDRANT_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
-    SECRET_KEY: str
+    SECRET_KEY: str = "your-secret-key-change-this"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     ALGORITHM: str = "HS256"
     APP_ENV: str = "development"
     RESEND_API_KEY: str = "re_YuPvPF1Q_D896vzzUHrrqzmcE1wFqPDju"
-    FRONTEND_URL: str
+    FRONTEND_URL: str = "http://localhost:5173"
 
-    GOOGLE_CLIENT_ID: str
-    GOOGLE_CLIENT_SECRET: str
-    GOOGLE_REDIRECT_URI: str
+    GOOGLE_CLIENT_ID: str = "your-google-client-id"
+    GOOGLE_CLIENT_SECRET: str = "your-google-client-secret"
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
 
-    REDIS_URL: str
+    REDIS_URL: str = "redis://localhost:6379/0"
 
     model_config = SettingsConfigDict(
         env_file=".env",
