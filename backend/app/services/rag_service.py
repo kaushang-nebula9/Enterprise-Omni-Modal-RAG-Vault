@@ -203,6 +203,140 @@ Answer the user's question based ONLY on the provided context below.
 If the answer cannot be found in the context, say "I could not find relevant information in the available documents."
 Do not make up information. Be concise and accurate."""
 
+async def _rerank_chunks(query: str, hits: list[dict], label: str = "") -> list[dict]:
+    """
+    Re-ranks a list of Qdrant hits against the query using the CrossEncoder.
+    Falls back to the original (RRF-ranked) order if re-ranking fails.
+    """
+    if not hits:
+        return hits
+    try:
+        model = _get_cross_encoder()
+        pairs = [(query, hit.get("payload", {}).get("chunk_text") or "") for hit in hits]
+        scores = await asyncio.to_thread(model.predict, pairs)
+        for hit, score in zip(hits, scores):
+            hit["cross_encoder_score"] = float(score)
+        hits.sort(key=lambda x: x.get("cross_encoder_score", -999999.0), reverse=True)
+    except Exception as exc:
+        logger.error("CrossEncoder re-ranking failed%s: %s", f" for {label}" if label else "", exc)
+        # Fall back to original RRF-ranked order (already the order in `hits`)
+    return hits
+
+
+def _format_chunk_context(filename: str, hit: dict) -> str:
+    """Formats a single Qdrant hit into a context block line."""
+    payload = hit.get("payload", {})
+    page = payload.get("page_number")
+    slide = payload.get("slide_number")
+    chunk_idx = payload.get("chunk_index", 0)
+    chunk_text = payload.get("chunk_text", "")
+
+    location_parts = []
+    if page is not None:
+        location_parts.append(f"Page: {page}")
+    if slide is not None:
+        location_parts.append(f"Slide: {slide}")
+    location = " | ".join(location_parts) if location_parts else ""
+    location_str = f" | {location}" if location else ""
+
+    return f"Source: {filename}{location_str} | Chunk: {chunk_idx}\n{chunk_text}"
+
+
+async def _run_excel_query(doc: Document, query: str) -> Optional[dict]:
+    """Runs an Excel code-gen query for a single document. Returns None on failure or no schema."""
+    if not doc.excel_schema:
+        return None
+    try:
+        abs_path = get_absolute_path(doc.file_path)
+        result = await asyncio.to_thread(execute_excel_query, abs_path, doc.excel_schema, query)
+        if result is not None:
+            return {"filename": doc.filename, "document_id": str(doc.id), "result": result}
+    except Exception as exc:
+        logger.warning("Excel query failed for %s: %s", doc.filename, exc)
+    return None
+
+
+async def _run_qdrant_search(
+    query: str,
+    query_vector,
+    collection_name: str,
+    role_ids: list[str],
+    document_id: Optional[str] = None,
+    limit: int = 15,
+) -> list[dict]:
+    """Runs a Qdrant search, returning [] on failure rather than raising."""
+    try:
+        return await asyncio.to_thread(
+            search_vectors,
+            collection_name=collection_name,
+            query_text=query,
+            query_vector=query_vector,
+            role_ids=role_ids,
+            limit=limit,
+            document_id=document_id,
+        )
+    except Exception as exc:
+        logger.error("Qdrant search failed%s: %s", f" for document {document_id}" if document_id else "", exc)
+        return []
+
+
+async def _resolve_compare_document(
+    did_uuid: uuid.UUID,
+    query: str,
+    query_vector,
+    tenant_id: str,
+    role_ids: list[str],
+    compare_id_to_doc: dict[str, Document],
+    all_authorized_docs: list[Document],
+) -> tuple[str, list[str]]:
+    """
+    Resolves the context lines for a single document in /compare mode.
+    Returns (context_text, [the qdrant hits contributed, if any]) so the caller
+    can both build the context block and collect citations.
+    """
+    did_str = str(did_uuid)
+    doc_in_db = compare_id_to_doc.get(did_str)
+
+    if not doc_in_db:
+        return f"Source: Unknown Document ({did_str})\n[Note: This document was not found in the database.]", []
+
+    filename = doc_in_db.filename
+    authorized_doc = next((d for d in all_authorized_docs if str(d.id) == did_str), None)
+
+    if not authorized_doc:
+        return f"Source: {filename}\n[Note: This document has no available content or is still processing.]", []
+
+    if authorized_doc.file_type == FileType.excel:
+        if not authorized_doc.excel_schema:
+            return f"Source: {filename}\n[Note: This Excel document has no defined schema.]", []
+        result = await _run_excel_query(authorized_doc, query)
+        if result is not None:
+            return f"Source: {filename}\nQuery: {query}\nResult: {result['result']}", []
+        return f"Source: {filename}\n[Note: No data results were retrieved from this Excel document.]", []
+
+    # Non-Excel: Qdrant search scoped to this one document, then re-rank and keep top 6.
+    collection_name = authorized_doc.qdrant_collection or f"tenant_{tenant_id}"
+    doc_results = await _run_qdrant_search(
+        query=query,
+        query_vector=query_vector,
+        collection_name=collection_name,
+        role_ids=role_ids,
+        document_id=did_str,
+        limit=15,
+    )
+    doc_results = [
+        hit for hit in doc_results
+        if hit.get("payload", {}).get("document_id") == did_str
+    ]
+    doc_results = await _rerank_chunks(query, doc_results, label=filename)
+    doc_results = doc_results[:6]
+
+    if not doc_results:
+        return f"Source: {filename}\n[Note: This document has no ready or indexed chunks.]", []
+
+    lines = [_format_chunk_context(filename, hit) for hit in doc_results]
+    return "\n---\n".join(lines), doc_results
+
 
 async def run_rag_pipeline(
     query: str,
@@ -210,21 +344,25 @@ async def run_rag_pipeline(
     db: Session,
     conversation_history: str = "",
     document_id: Optional[uuid.UUID] = None,
+    command_instruction: Optional[str] = None,
+    compare_document_ids: Optional[list[uuid.UUID]] = None,
+    is_compare_mode: bool = False,
+    is_summarize_mode: bool = False,
 ) -> AsyncGenerator[dict, None]:
     """
     Main RAG pipeline with streaming output:
       1. Embed the user query
       2. Fetch authorised documents
-      3. Qdrant semantic search (non-Excel)
-      4. Excel code-gen pipeline
-      5. Build context
-      6. Use Gemini to stream response
-      7. Yield tokens and final citations
+      3. Qdrant semantic search (non-Excel) / Excel code-gen pipeline (run concurrently)
+      4. Build context
+      5. Use Claude to stream response
+      6. Yield tokens and final citations
     """
     tenant_id = str(user.tenant_id)
     role_id = str(user.role_id)
+    search_role_ids = [role_id, str(user.id)]
 
-    # 1. Embed the query
+    # Embed the query
     query_vector = embedding_service.embed_text(query)
 
     # Fetch documents accessible via role-based access policies or uploaded by the user
@@ -241,7 +379,9 @@ async def run_rag_pipeline(
         )
     )
 
-    if document_id:
+    if compare_document_ids:
+        docs_query = docs_query.filter(Document.id.in_(compare_document_ids))
+    elif document_id:
         docs_query = docs_query.filter(Document.id == document_id)
 
     all_authorized_docs = docs_query.distinct().all()
@@ -249,159 +389,132 @@ async def run_rag_pipeline(
     excel_docs = [d for d in all_authorized_docs if d.file_type == FileType.excel]
     non_excel_exist = any(d.file_type != FileType.excel for d in all_authorized_docs)
 
-    # Build a lookup of document_id → filename
-    doc_id_to_filename: dict[str, str] = {}
-    for doc in all_authorized_docs:
-        doc_id_to_filename[str(doc.id)] = doc.filename
+    # Build a lookup of document_id -> filename
+    doc_id_to_filename: dict[str, str] = {str(doc.id): doc.filename for doc in all_authorized_docs}
 
-    # Prepare concurrent tasks
-    coroutines = []
-    branches = []
+    context_parts: list[str] = []
     qdrant_results: list[dict] = []
-    excel_results: list[dict] = []
 
-    if non_excel_exist:
-        if document_id and all_authorized_docs:
-            collection_name = all_authorized_docs[0].qdrant_collection
-        else:
-            collection_name = f"tenant_{tenant_id}"
+    if is_compare_mode and compare_document_ids:
+        compare_docs_db = db.query(Document).filter(Document.id.in_(compare_document_ids)).all()
+        compare_id_to_doc = {str(d.id): d for d in compare_docs_db}
 
-        async def run_qdrant():
-            try:
-                # Search with role-based filter for shared docs
-                search_role_ids = [role_id]
-                search_role_ids.append(str(user.id))
+        # Make sure compare docs are in doc_id_to_filename so citation lookups work
+        for did_str, doc in compare_id_to_doc.items():
+            doc_id_to_filename.setdefault(did_str, doc.filename)
 
-                return await asyncio.to_thread(
-                    search_vectors,
-                    collection_name=collection_name,
-                    query_text=query,
-                    query_vector=query_vector,
-                    role_ids=search_role_ids,
-                    limit=15,
-                    document_id=str(document_id) if document_id else None,
+        # Resolve each document in the compare set concurrently (preserves order via gather).
+        resolutions = await asyncio.gather(
+            *[
+                _resolve_compare_document(
+                    did_uuid, query, query_vector, tenant_id, search_role_ids,
+                    compare_id_to_doc, all_authorized_docs,
                 )
-            except Exception as exc:
-                logger.error("Qdrant search failed: %s", exc)
-                return []
+                for did_uuid in compare_document_ids
+            ],
+            return_exceptions=True,
+        )
 
-        coroutines.append(run_qdrant())
-        branches.append("qdrant")
+        for did_uuid, resolution in zip(compare_document_ids, resolutions):
+            if isinstance(resolution, BaseException):
+                logger.error("Compare resolution failed for document %s: %s", did_uuid, resolution)
+                context_parts.append(f"Source: Unknown Document ({did_uuid})\n[Note: Failed to retrieve content for this document.]")
+                context_parts.append("---")
+                continue
+            context_text, contributed_hits = resolution
+            context_parts.append(context_text)
+            context_parts.append("---")
+            qdrant_results.extend(contributed_hits)
 
-    excel_docs_to_run = [doc for doc in excel_docs if doc.excel_schema]
-    if excel_docs_to_run:
-        async def run_excel():
-            async def run_single_excel(doc):
-                try:
-                    abs_path = get_absolute_path(doc.file_path)
-                    result = await asyncio.to_thread(
-                        execute_excel_query, abs_path, doc.excel_schema, query
-                    )
-                    if result is not None:
-                        return {
-                            "filename": doc.filename,
-                            "document_id": str(doc.id),
-                            "result": result,
-                        }
-                except Exception as exc:
-                    logger.warning("Excel query failed for %s: %s", doc.filename, exc)
-                return None
+        context_block = "\n".join(context_parts) if context_parts else "No relevant context found."
 
-            sub_tasks = [run_single_excel(doc) for doc in excel_docs_to_run]
-            sub_results = await asyncio.gather(*sub_tasks)
-            return [r for r in sub_results if r is not None]
+    else:
+        # Standard search/retrieval path: run Qdrant search and Excel pipeline concurrently.
+        coroutines = []
+        branches = []
+        excel_results: list[dict] = []
 
-        coroutines.append(run_excel())
-        branches.append("excel")
+        if non_excel_exist:
+            collection_name = (
+                all_authorized_docs[0].qdrant_collection
+                if document_id and all_authorized_docs
+                else f"tenant_{tenant_id}"
+            )
+            coroutines.append(
+                _run_qdrant_search(
+                    query=query,
+                    query_vector=query_vector,
+                    collection_name=collection_name,
+                    role_ids=search_role_ids,
+                    document_id=str(document_id) if document_id else None,
+                    limit=15,
+                )
+            )
+            branches.append("qdrant")
 
-    if coroutines:
-        results = await asyncio.gather(*coroutines, return_exceptions=True)
-        for branch, result in zip(branches, results):
-            if isinstance(result, BaseException):
-                logger.error("%s branch failed with exception: %s", branch, result)
-                if branch == "qdrant":
-                    qdrant_results = []
-                elif branch == "excel":
-                    excel_results = []
-            else:
+        excel_docs_to_run = [doc for doc in excel_docs if doc.excel_schema]
+        if excel_docs_to_run:
+            async def run_excel():
+                sub_results = await asyncio.gather(
+                    *[_run_excel_query(doc, query) for doc in excel_docs_to_run]
+                )
+                return [r for r in sub_results if r is not None]
+
+            coroutines.append(run_excel())
+            branches.append("excel")
+
+        if coroutines:
+            results = await asyncio.gather(*coroutines, return_exceptions=True)
+            for branch, result in zip(branches, results):
+                if isinstance(result, BaseException):
+                    logger.error("%s branch failed with exception: %s", branch, result)
+                    result = []
                 if branch == "qdrant":
                     qdrant_results = result
                 elif branch == "excel":
                     excel_results = result
 
-    # Filter out any orphaned Qdrant vectors (e.g. from deleted documents)
-    valid_qdrant_results = []
-    for hit in qdrant_results:
-        payload = hit.get("payload", {})
-        if payload.get("document_id") in doc_id_to_filename:
-            valid_qdrant_results.append(hit)
-    qdrant_results = valid_qdrant_results
+        # Filter out any orphaned Qdrant vectors (e.g. from deleted documents)
+        qdrant_results = [
+            hit for hit in qdrant_results
+            if hit.get("payload", {}).get("document_id") in doc_id_to_filename
+        ]
 
-    # Re-rank candidates using the CrossEncoder
-    if qdrant_results:
-        try:
-            model = _get_cross_encoder()
-            pairs = [(query, hit.get("payload", {}).get("chunk_text") or "") for hit in qdrant_results]
-            scores = await asyncio.to_thread(model.predict, pairs)
-            
-            # Associate scores with candidates and sort descending
-            for hit, score in zip(qdrant_results, scores):
-                hit["cross_encoder_score"] = float(score)
-            
-            qdrant_results.sort(key=lambda x: x.get("cross_encoder_score", -999999.0), reverse=True)
-        except Exception as exc:
-            logger.error("CrossEncoder re-ranking failed: %s", exc)
-            # Fall back to original RRF-ranked order (which is already the order in qdrant_results)
-            pass
+        qdrant_results = await _rerank_chunks(query, qdrant_results)
 
-    # Truncate to top 5 candidates
-    qdrant_results = qdrant_results[:5]
+        # Truncate candidates: allow more chunks (8) for summarize mode
+        final_limit = 8 if (is_summarize_mode and document_id) else 5
+        qdrant_results = qdrant_results[:final_limit]
 
+        if qdrant_results:
+            context_parts.append("[Document Chunks]")
+            for hit in qdrant_results:
+                filename = doc_id_to_filename.get(hit.get("payload", {}).get("document_id", ""), "Unknown")
+                context_parts.append(_format_chunk_context(filename, hit))
+                context_parts.append("---")
 
-    # 5. Build context block
-    context_parts: list[str] = []
+        if excel_results:
+            context_parts.append("[Excel Data Results]")
+            for er in excel_results:
+                context_parts.append(f"Source: {er['filename']}\nQuery: {query}\nResult: {er['result']}")
+                context_parts.append("---")
 
-    if qdrant_results:
-        context_parts.append("[Document Chunks]")
-        for hit in qdrant_results:
-            payload = hit.get("payload", {})
-            filename = doc_id_to_filename.get(payload.get("document_id", ""), "Unknown")
-            page = payload.get("page_number")
-            slide = payload.get("slide_number")
-            chunk_idx = payload.get("chunk_index", 0)
-            chunk_text = payload.get("chunk_text", "")
+        context_block = "\n".join(context_parts) if context_parts else "No relevant context found."
 
-            location_parts = []
-            if page is not None:
-                location_parts.append(f"Page: {page}")
-            if slide is not None:
-                location_parts.append(f"Slide: {slide}")
-            location = " | ".join(location_parts) if location_parts else ""
-            location_str = f" | {location}" if location else ""
-
-            context_parts.append(
-                f"Source: {filename}{location_str} | Chunk: {chunk_idx}\n{chunk_text}"
-            )
-            context_parts.append("---")
-
-    if excel_results:
-        context_parts.append("[Excel Data Results]")
-        for er in excel_results:
-            context_parts.append(f"Source: {er['filename']}\nQuery: {query}\nResult: {er['result']}")
-            context_parts.append("---")
-
-    context_block = "\n".join(context_parts) if context_parts else "No relevant context found."
-
-    # 6. Call LLM for the final answer (using Anthropic Claude Streaming)
+    # Call LLM for the final answer (using Anthropic Claude Streaming)
     final_prompt = f"""Context:
-{context_block}
+    {context_block}
 
-Conversation History (recent messages):
-{conversation_history if conversation_history else "No previous messages."}
+    Conversation History (recent messages):
+    {conversation_history if conversation_history else "No previous messages."}
 
-User Question: {query}
+    User Question: {query}
 
-Answer:"""
+    Answer:"""
+
+    system_prompt = _SYSTEM_PROMPT
+    if command_instruction:
+        system_prompt += f"\n\n[Instructions]\n{command_instruction}"
 
     full_answer_list = []
     try:
@@ -410,7 +523,7 @@ Answer:"""
             model="claude-haiku-4-5-20251001",
             max_tokens=8192,
             temperature=0,
-            system=_SYSTEM_PROMPT,
+            system=system_prompt,
             messages=[
                 {"role": "user", "content": final_prompt}
             ]
@@ -430,7 +543,7 @@ Answer:"""
         full_answer = "I could not generate an answer. Please try rephrasing your question."
         yield {"type": "token", "content": full_answer}
 
-    # 7. Build citations list
+    # Build citations list
     citations: list[dict] = []
     for hit in qdrant_results:
         payload = hit.get("payload", {})

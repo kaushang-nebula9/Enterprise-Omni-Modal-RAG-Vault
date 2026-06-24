@@ -58,6 +58,140 @@ EXTENSION_TO_FILE_TYPE: dict[str, FileType] = {
     ".m4a": FileType.audio,
 }
 
+import re
+import uuid
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from app.models.document import Document
+from app.models.document_access_policy import DocumentAccessPolicy
+from app.models.enums import DocumentStatus
+from app.models.user import User
+
+SUMMARIZE_DOC_INSTRUCTION = "The user wants a summary, not a detailed answer. Identify the key points, main arguments, and important facts from the provided context. Present them concisely, in your own words, organized in a logical order (e.g. by topic or chronology, whichever fits the source). Omit minor details unless they are essential to understanding the core content. Keep the summary significantly shorter than the source material. If summarizing a document, mention the document's overall purpose or subject in the first sentence before going into specifics."
+SUMMARIZE_FOCUSED_INSTRUCTION = "The user wants a concise, summary-style answer rather than an exhaustive one. Answer the question directly in 3-5 sentences or a short bullet list, covering only the most important points. Avoid tangents, background context, or exhaustive detail unless the question explicitly asks for it."
+SUMMARIZE_CONV_INSTRUCTION = "Summarize the conversation history so far. Highlight key topics, questions, and answers."
+COMPARE_INSTRUCTION = "The user wants a direct comparison between two specific documents. Structure your answer to clearly address both documents side by side, not as two separate summaries. Identify concrete similarities and differences, supported by specific details from each document. If the user provided a specific angle or question to focus the comparison, prioritize that angle; otherwise, compare them across their most salient shared dimensions (e.g. scope, conclusions, figures, recommendations, depending on what the documents actually contain). Clearly attribute each point to the document it came from so the user can tell which document supports which claim."
+DETAILED_INSTRUCTION = "The user wants a thorough, in-depth answer, not a brief one. Cover relevant context, explain reasoning or mechanisms where applicable, address nuances or edge cases, and don't omit relevant details from the source material for the sake of brevity. Organize longer answers with clear structure (paragraphs or sections) so the depth doesn't become hard to follow. Still stay grounded strictly in the provided context, do not pad the answer with generic information not supported by the retrieved sources."
+TABLE_INSTRUCTION = "The user wants the answer formatted as a table wherever the content has comparable attributes, categories, or structured data (e.g. multiple items with shared properties, numeric data, side-by-side comparisons). Use markdown table syntax. Choose column headers that reflect the actual dimensions in the data. If the answer content genuinely doesn't fit a tabular structure (e.g. a single narrative fact with no comparable rows/columns), briefly explain why and answer in normal prose instead rather than forcing an unnatural table."
+BULLETS_INSTRUCTION = "The user wants the answer formatted as bullet points rather than prose paragraphs. Break the answer into clear, concise bullet points, each covering one distinct idea or fact. Use nested sub-bullets only if there's a genuine hierarchy of information. Avoid restating the question as a lead-in sentence, start directly with the bulleted content."
+ELI5_INSTRUCTION = "The user wants this explained in very simple terms, as if to someone with no background in the topic. Avoid jargon and technical terminology entirely; where a technical term is unavoidable, immediately explain it in plain words. Use everyday analogies or comparisons where they genuinely help understanding. Keep sentences short. Do not oversimplify to the point of being inaccurate, the goal is accessible language, not losing correctness."
+
+# Simple commands: token -> (flag_name, instruction)
+SIMPLE_COMMANDS = {
+    "/detailed": DETAILED_INSTRUCTION,
+    "/table": TABLE_INSTRUCTION,
+    "/bullets": BULLETS_INSTRUCTION,
+    "/eli5": ELI5_INSTRUCTION,
+}
+
+COMMAND_PATTERN = re.compile(
+    r"/compare\s+\[([^\]]+)\]\s+\[([^\]]+)\]"  # structured compare, group 1/2
+    r"|/compare"                                 # unstructured compare
+    r"|/summarize"
+    r"|/detailed"
+    r"|/table"
+    r"|/bullets"
+    r"|/eli5"
+)
+
+
+def parse_chat_command(
+    content: str,
+    db: Session,
+    user: User,
+    attached_doc_id: uuid.UUID | None,
+) -> tuple[str, str, str | None, list[uuid.UUID] | None, bool, bool]:
+    """
+    Parses one or more slash commands out of a user message.
+
+    Returns:
+        clean_display_content: raw message, unchanged, shown in chat history as typed.
+        clean_retrieval_query: message with all command tokens stripped, used for embedding/search.
+        command_instruction: combined instruction text to append to the system prompt, or None.
+        compare_document_ids: resolved document IDs for /compare, or None.
+        is_compare: True if /compare was found.
+        is_summarize: True if /summarize should trigger document/conversation summary mode
+                      (only when no question follows it).
+    """
+    matches = list(COMMAND_PATTERN.finditer(content))
+    if not matches:
+        return content, content, None, None, False, False
+
+    # Strip all matched command spans out of the message to get the plain question.
+    pieces, cursor = [], 0
+    for m in matches:
+        pieces.append(content[cursor:m.start()])
+        cursor = m.end()
+    pieces.append(content[cursor:])
+    clean_retrieval_query = " ".join("".join(pieces).split())
+
+    has_summarize = "/summarize" in content  # cheap containment check is fine; commands are fixed tokens
+    compare_match = next((m for m in matches if m.group(0).startswith("/compare")), None)
+
+    instructions: list[str] = []
+    compare_document_ids = None
+    is_compare = False
+    is_summarize = False
+    has_question = bool(clean_retrieval_query)
+
+    if compare_match:
+        is_compare = True
+        instructions.append(COMPARE_INSTRUCTION)
+        doc1_name, doc2_name = compare_match.group(1), compare_match.group(2)
+        if doc1_name and doc2_name:
+            docs = (
+                db.query(Document)
+                .outerjoin(DocumentAccessPolicy, Document.id == DocumentAccessPolicy.document_id)
+                .filter(
+                    Document.tenant_id == user.tenant_id,
+                    Document.status == DocumentStatus.ready,
+                    Document.filename.in_([doc1_name.strip(), doc2_name.strip()]),
+                    or_(
+                        DocumentAccessPolicy.role_id == user.role_id,
+                        Document.uploaded_by == user.id,
+                    ),
+                )
+                .distinct()
+                .all()
+            )
+            compare_document_ids = [d.id for d in docs]
+            if not has_question:
+                clean_retrieval_query = f"Compare {doc1_name.strip()} and {doc2_name.strip()}"
+        elif not has_question:
+            clean_retrieval_query = "Compare documents"
+
+    if has_summarize:
+        if has_question:
+            # /summarize [question] -> focused-summary style, not full doc/conversation summary
+            instructions.append(SUMMARIZE_FOCUSED_INSTRUCTION)
+        else:
+            is_summarize = True
+            if attached_doc_id:
+                instructions.append(SUMMARIZE_DOC_INSTRUCTION)
+                clean_retrieval_query = "Summarize this document"
+            else:
+                instructions.append(SUMMARIZE_CONV_INSTRUCTION)
+                clean_retrieval_query = "Summarize conversation"
+
+    simple_fallback_text = {
+        "/detailed": "Give a detailed answer",
+        "/table": "Format as table",
+        "/bullets": "Format as bullet points",
+        "/eli5": "Explain simply",
+    }
+    # Preserve the order the user actually typed the commands in, not dict order.
+    simple_tokens_found = sorted(
+        (token for token in SIMPLE_COMMANDS if token in content),
+        key=lambda token: content.index(token),
+    )
+    for token in simple_tokens_found:
+        instructions.append(SIMPLE_COMMANDS[token])
+        if not clean_retrieval_query:
+            clean_retrieval_query = simple_fallback_text[token]
+
+    command_instruction = "\n\n".join(instructions) if instructions else None
+    return content, clean_retrieval_query, command_instruction, compare_document_ids, is_compare, is_summarize
 
 # ---------------------------------------------------------------------------
 # Session CRUD
@@ -227,6 +361,16 @@ async def send_query(
 
     content = body.content
 
+    # Parse command prefix and translate it into prompts/instructions
+    (
+        clean_display_content,
+        clean_retrieval_query,
+        command_instruction,
+        compare_document_ids,
+        is_compare,
+        is_summarize,
+    ) = parse_chat_command(content, db, current_user, body.document_id)
+
     # Fetch the last 10 messages for conversation history
     recent_messages = (
         db.query(QueryMessage)
@@ -250,19 +394,19 @@ async def send_query(
             history_lines.append(f"{role_label}: {msg.content}")
         conversation_history = "\n".join(history_lines)
 
-    # Store the user's message
+    # Store the user's message using clean display content
     user_message = QueryMessage(
         session_id=session_id,
         role=MessageRole.user,
-        content=content,
+        content=clean_display_content,
         created_at=datetime.now(timezone.utc),
         attached_document_id=body.document_id,
     )
     db.add(user_message)
 
-    # If first message, update session title
+    # If first message, update session title using clean display content
     if is_first_message:
-        session.title = content[:50]
+        session.title = clean_display_content[:50]
 
     # Commit before streaming starts so the user message is saved immediately
     db.commit()
@@ -270,11 +414,15 @@ async def send_query(
     async def event_generator():
         try:
             generator = run_rag_pipeline(
-                query=content,
+                query=clean_retrieval_query,
                 user=current_user,
                 db=db,
                 conversation_history=conversation_history,
                 document_id=body.document_id,
+                command_instruction=command_instruction,
+                compare_document_ids=compare_document_ids,
+                is_compare_mode=is_compare,
+                is_summarize_mode=is_summarize,
             )
 
             full_answer = ""

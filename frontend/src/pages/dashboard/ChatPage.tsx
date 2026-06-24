@@ -42,6 +42,17 @@ const FILE_TYPE_ICON: Record<FileType, React.FC<{ className?: string }>> = {
   audio: FileMusic,
 }
 
+const COMMANDS = [
+  { name: '/summarize', description: 'Summarize document(s) or conversation' },
+  { name: '/compare', description: 'Compare two documents' },
+  { name: '/detailed', description: 'Give a thorough, detailed answer' },
+  { name: '/table', description: 'Format the answer as a table' },
+  { name: '/pin', description: 'Pin the current chat session' },
+  { name: '/new', description: 'Start a new conversation' },
+  { name: '/bullets', description: 'Format the answer as bullet points' },
+  { name: '/eli5', description: 'Explain like I\'m 5. Explain in simple terms' },
+]
+
 
 const ChatPage: React.FC = () => {
   const { user } = useAuthStore()
@@ -173,6 +184,10 @@ const ChatPage: React.FC = () => {
   const [dropdownSearch, setDropdownSearch] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
 
+  // Compare picker states
+  const [isComparePickerOpen, setIsComparePickerOpen] = useState(false)
+  const [compareSelection, setCompareSelection] = useState<DocumentResponse[]>([])
+
   const dropdownRef = useRef<HTMLDivElement>(null)
   const dropdownSearchInputRef = useRef<HTMLInputElement>(null)
 
@@ -204,6 +219,17 @@ const ChatPage: React.FC = () => {
     return Array.from(docMap.values())
   }, [authorizedDocs, personalDocs])
 
+  // Filtered commands for search query
+  const filteredCommands = useMemo(() => {
+    if (isComparePickerOpen) return []
+    const query = dropdownSearch.trim().toLowerCase()
+    if (!query) return COMMANDS
+    return COMMANDS.filter(cmd =>
+      cmd.name.toLowerCase().includes(query) ||
+      cmd.description.toLowerCase().includes(query)
+    )
+  }, [dropdownSearch, isComparePickerOpen])
+
   // Filtered documents for search query
   const filteredDocs = useMemo(() => {
     const query = dropdownSearch.trim().toLowerCase()
@@ -211,10 +237,14 @@ const ChatPage: React.FC = () => {
     return allDocs.filter(doc => doc.filename.toLowerCase().includes(query))
   }, [allDocs, dropdownSearch])
 
-  // Reset activeIndex when filtered docs change
+  const totalDropdownItemsCount = isComparePickerOpen
+    ? filteredDocs.length
+    : filteredCommands.length + filteredDocs.length
+
+  // Reset activeIndex when filtered items change
   useEffect(() => {
     setActiveIndex(0)
-  }, [filteredDocs])
+  }, [filteredDocs, filteredCommands, isComparePickerOpen])
 
   // Focus search box when dropdown opens
   useEffect(() => {
@@ -230,6 +260,8 @@ const ChatPage: React.FC = () => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsDropdownOpen(false)
+        setIsComparePickerOpen(false)
+        setCompareSelection([])
       }
     }
     if (isDropdownOpen) {
@@ -270,22 +302,182 @@ const ChatPage: React.FC = () => {
     }
   }
 
+  // Prepend prefix command, remove trigger slash, place cursor after prefix
+  const insertCommandPrefix = (cmdName: string) => {
+    setIsDropdownOpen(false)
+    setDropdownSearch('')
+
+    const prefix = `${cmdName} `
+    if (textareaRef.current) {
+      const cursor = textareaRef.current.selectionStart
+      const text = inputValue
+      const textBeforeCursor = text.substring(0, cursor)
+      const textAfterCursor = text.substring(cursor)
+
+      const match = textBeforeCursor.match(/(?:^|\s)\/(\S*)$/)
+      if (match) {
+        const slashIndex = textBeforeCursor.lastIndexOf('/')
+        const beforeSlash = text.substring(0, slashIndex).trim()
+        const cleanRemaining = (beforeSlash + " " + textAfterCursor).trim()
+        const newText = prefix + cleanRemaining
+        setInputValue(newText)
+
+        setTimeout(() => {
+          textareaRef.current?.focus()
+          const newCursorPos = prefix.length
+          textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos)
+        }, 50)
+      } else {
+        const newText = prefix + text.trim()
+        setInputValue(newText)
+        setTimeout(() => {
+          textareaRef.current?.focus()
+          textareaRef.current?.setSelectionRange(prefix.length, prefix.length)
+        }, 50)
+      }
+    } else {
+      setInputValue(prefix)
+    }
+  }
+
+  // Prepend compare command, insert filenames, place cursor after command
+  const insertCompareCommand = (doc1Name: string, doc2Name: string) => {
+    setIsDropdownOpen(false)
+    setIsComparePickerOpen(false)
+    setCompareSelection([])
+    setDropdownSearch('')
+
+    const cmdText = `/compare [${doc1Name}] [${doc2Name}] `
+    if (textareaRef.current) {
+      const cursor = textareaRef.current.selectionStart
+      const text = inputValue
+      const textBeforeCursor = text.substring(0, cursor)
+      const textAfterCursor = text.substring(cursor)
+
+      const match = textBeforeCursor.match(/(?:^|\s)\/(\S*)$/)
+      if (match) {
+        const slashIndex = textBeforeCursor.lastIndexOf('/')
+        const beforeSlash = text.substring(0, slashIndex).trim()
+        const cleanRemaining = (beforeSlash + " " + textAfterCursor).trim()
+        const newText = cmdText + cleanRemaining
+        setInputValue(newText)
+
+        setTimeout(() => {
+          textareaRef.current?.focus()
+          const newCursorPos = cmdText.length
+          textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos)
+        }, 50)
+      } else {
+        setInputValue(cmdText + " " + inputValue)
+        setTimeout(() => {
+          textareaRef.current?.focus()
+          textareaRef.current?.setSelectionRange(cmdText.length, cmdText.length)
+        }, 50)
+      }
+    } else {
+      setInputValue(cmdText)
+    }
+  }
+
+  // Toggle document selection in comparison picker
+  const handleToggleCompareDocument = (doc: DocumentResponse) => {
+    setCompareSelection(prev => {
+      const exists = prev.some(d => d.id === doc.id)
+      let newSelection;
+      if (exists) {
+        newSelection = prev.filter(d => d.id !== doc.id)
+      } else {
+        if (prev.length >= 2) return prev
+        newSelection = [...prev, doc]
+      }
+
+      if (newSelection.length === 2) {
+        const [doc1, doc2] = newSelection
+        insertCompareCommand(doc1.filename, doc2.filename)
+      }
+      return newSelection
+    })
+  }
+
+  // Handle clear session action
+  const handleClearSession = () => {
+    setSearchParams({}, { replace: true })
+  }
+
+  // Handle pin toggle action
+  const handlePinSession = async () => {
+    if (!sessionId) {
+      setToast({ message: 'Send a message first to pin this conversation.', type: 'error' })
+      return
+    }
+    try {
+      await chatService.togglePin(sessionId)
+      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
+      setToast({ message: 'Conversation pin toggled.', type: 'success' })
+    } catch (err: any) {
+      setToast({ message: 'Failed to pin conversation.', type: 'error' })
+    }
+  }
+
+  // Handle command selections
+  const handleSelectCommand = (cmd: typeof COMMANDS[0]) => {
+    if (cmd.name === '/compare') {
+      setIsComparePickerOpen(true)
+      setCompareSelection([])
+      setDropdownSearch('')
+      setTimeout(() => {
+        dropdownSearchInputRef.current?.focus()
+      }, 50)
+      return
+    }
+
+    if (cmd.name === '/pin') {
+      handlePinSession()
+      setIsDropdownOpen(false)
+      setDropdownSearch('')
+      return
+    }
+
+    if (cmd.name === '/new') {
+      handleClearSession()
+      setIsDropdownOpen(false)
+      setDropdownSearch('')
+      return
+    }
+
+    // Prefixes: /summarize, /detailed, /table, /bullets, /eli5
+    insertCommandPrefix(cmd.name)
+  }
+
   // Keyboard navigation for dropdown
   const handleDropdownKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setActiveIndex((prev) => (filteredDocs.length > 0 ? (prev + 1) % filteredDocs.length : 0))
+      setActiveIndex((prev) => (totalDropdownItemsCount > 0 ? (prev + 1) % totalDropdownItemsCount : 0))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setActiveIndex((prev) => (filteredDocs.length > 0 ? (prev - 1 + filteredDocs.length) % filteredDocs.length : 0))
+      setActiveIndex((prev) => (totalDropdownItemsCount > 0 ? (prev - 1 + totalDropdownItemsCount) % totalDropdownItemsCount : 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      if (filteredDocs[activeIndex]) {
-        handleSelectDocument(filteredDocs[activeIndex])
+      if (isComparePickerOpen) {
+        if (filteredDocs[activeIndex]) {
+          handleToggleCompareDocument(filteredDocs[activeIndex])
+        }
+      } else {
+        if (activeIndex < filteredCommands.length) {
+          handleSelectCommand(filteredCommands[activeIndex])
+        } else {
+          const docIdx = activeIndex - filteredCommands.length
+          if (filteredDocs[docIdx]) {
+            handleSelectDocument(filteredDocs[docIdx])
+          }
+        }
       }
     } else if (e.key === 'Escape') {
       e.preventDefault()
       setIsDropdownOpen(false)
+      setIsComparePickerOpen(false)
+      setCompareSelection([])
       textareaRef.current?.focus()
     }
   }
@@ -1021,7 +1213,7 @@ const ChatPage: React.FC = () => {
             {isDropdownOpen && (
               <div
                 ref={dropdownRef}
-                className="absolute bottom-full left-0 mb-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-3 z-50 flex flex-col gap-2 transition-all h-72 w-1/2 text-slate-800 dark:text-slate-100"
+                className="absolute bottom-full left-0 mb-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-3 z-50 flex flex-col gap-2 transition-all h-96 w-1/2 text-slate-800 dark:text-slate-100"
               >
                 {/* Search Bar */}
                 <div className="relative flex items-center flex-shrink-0">
@@ -1032,63 +1224,180 @@ const ChatPage: React.FC = () => {
                     value={dropdownSearch}
                     onChange={(e) => setDropdownSearch(e.target.value)}
                     onKeyDown={handleDropdownKeyDown}
-                    placeholder="Search authorized documents..."
+                    placeholder={isComparePickerOpen ? "Search documents to compare..." : "Search commands or documents..."}
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                   />
                 </div>
+
+                {/* Compare Selection Header */}
+                {isComparePickerOpen && (
+                  <div className="flex flex-col gap-1.5 px-1 py-1 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        Compare Documents ({compareSelection.length}/2)
+                      </span>
+                      <button
+                        onClick={() => {
+                          setIsComparePickerOpen(false)
+                          setCompareSelection([])
+                        }}
+                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 font-medium"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {compareSelection.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {compareSelection.map(doc => (
+                          <span
+                            key={doc.id}
+                            className="inline-flex items-center gap-1 bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-xs px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-900"
+                          >
+                            <span className="truncate max-w-[120px]">{doc.filename}</span>
+                            <button
+                              onClick={() => handleToggleCompareDocument(doc)}
+                              className="text-indigo-500 hover:text-indigo-700 rounded-full"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Loading state */}
                 {(isLoadingAuth || isLoadingPersonal) ? (
                   <div className="flex-1 flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400 text-sm">
                     <Loader2 className="w-4 h-4 animate-spin text-indigo-600 dark:text-indigo-400" />
-                    Loading authorized documents...
+                    Loading...
                   </div>
-                ) : filteredDocs.length === 0 ? (
-                  /* Empty state */
-                  <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500 text-sm">
-                    No accessible documents found.
-                  </div>
+                ) : isComparePickerOpen ? (
+                  /* Compare Picker Mode Documents List */
+                  filteredDocs.length === 0 ? (
+                    <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500 text-sm">
+                      No accessible documents found.
+                    </div>
+                  ) : (
+                    <div className="flex-1 overflow-y-auto space-y-0.5 custom-scrollbar pr-1">
+                      {filteredDocs.map((doc, idx) => {
+                        const Icon = FILE_TYPE_ICON[doc.file_type] || FileText
+                        const isSelected = compareSelection.some(d => d.id === doc.id)
+                        const isActive = idx === activeIndex
+                        return (
+                          <button
+                            key={doc.id}
+                            onClick={() => handleToggleCompareDocument(doc)}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-colors ${
+                              isActive
+                                ? "bg-indigo-700 dark:bg-indigo-600 text-white"
+                                : isSelected
+                                ? "bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900"
+                                : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-white" : "text-indigo-600 dark:text-indigo-400"}`} />
+                              <span className="truncate text-sm font-medium pr-1.5">
+                                {doc.filename}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0 text-xs">
+                              {isSelected && (
+                                <span className={`font-semibold ${isActive ? "text-white" : "text-indigo-600 dark:text-indigo-400"}`}>
+                                  ✓
+                                </span>
+                              )}
+                              <span className={`px-2 py-0.5 rounded-md ${
+                                isActive ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                              }`}>
+                                {doc.owner_type === 'private' ? 'Personal' : 'Org'}
+                              </span>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )
                 ) : (
-                  /* Documents List */
-                  <div className="flex-1 overflow-y-auto space-y-0.5 custom-scrollbar pr-1">
-                    {filteredDocs.map((doc, idx) => {
-                      const Icon = FILE_TYPE_ICON[doc.file_type] || FileText
-                      const isActive = idx === activeIndex
-                      return (
-                        <button
-                          key={doc.id}
-                          onClick={() => handleSelectDocument(doc)}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-colors ${
-                            isActive
-                              ? "bg-indigo-700 dark:bg-indigo-600 text-white"
-                              : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-white" : "text-indigo-600 dark:text-indigo-400"}`} />
-                            <span className="truncate text-sm font-medium pr-1.5">
-                              {doc.filename}
-                            </span>
+                  /* Standard Mode - Commands & Documents */
+                  (filteredCommands.length === 0 && filteredDocs.length === 0) ? (
+                    <div className="flex-1 flex items-center justify-center text-slate-400 dark:text-slate-500 text-sm">
+                      No commands or documents found.
+                    </div>
+                  ) : (
+                    <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pr-1">
+                      {/* Commands Section */}
+                      {filteredCommands.length > 0 && (
+                        <div className="space-y-0.5">
+                          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 px-3 py-1">
+                            Commands
                           </div>
-                          <div className="flex items-center gap-1 flex-shrink-0 text-xs">
-                            {doc.owner_type === 'private' ? (
-                              <span className={`px-2 py-0.5 rounded-md ${
-                                isActive ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
-                              }`}>
-                                Personal
-                              </span>
-                            ) : (
-                              <span className={`px-2 py-0.5 rounded-md ${
-                                isActive ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
-                              }`}>
-                                Org
-                              </span>
-                            )}
+                          {filteredCommands.map((cmd, idx) => {
+                            const isActive = idx === activeIndex
+                            return (
+                              <button
+                                key={cmd.name}
+                                onClick={() => handleSelectCommand(cmd)}
+                                className={`w-full flex items-center px-3 py-1.5 rounded-xl text-left transition-colors ${
+                                  isActive
+                                    ? "bg-indigo-700 dark:bg-indigo-600 text-white"
+                                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                }`}
+                              >
+                                <div className="flex flex-col min-w-0">
+                                  <span className="text-sm font-semibold">{cmd.name}</span>
+                                  <span className={`text-xs ${isActive ? "text-indigo-200" : "text-slate-400 dark:text-slate-500"} truncate`}>
+                                    {cmd.description}
+                                  </span>
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* Attach Documents Section */}
+                      {filteredDocs.length > 0 && (
+                        <div className="space-y-0.5">
+                          <div className="text-sm font-semibold text-slate-500 dark:text-slate-400 px-3 py-1">
+                            Attach documents
                           </div>
-                        </button>
-                      )
-                    })}
-                  </div>
+                          {filteredDocs.map((doc, idx) => {
+                            const actualIdx = idx + filteredCommands.length
+                            const isActive = actualIdx === activeIndex
+                            const Icon = FILE_TYPE_ICON[doc.file_type] || FileText
+                            return (
+                              <button
+                                key={doc.id}
+                                onClick={() => handleSelectDocument(doc)}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-colors ${
+                                  isActive
+                                    ? "bg-indigo-700 dark:bg-indigo-600 text-white"
+                                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-white" : "text-indigo-600 dark:text-indigo-400"}`} />
+                                  <span className="truncate text-sm font-medium pr-1.5">
+                                    {doc.filename}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1 flex-shrink-0 text-xs">
+                                  <span className={`px-2 py-0.5 rounded-md ${
+                                    isActive ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                                  }`}>
+                                    {doc.owner_type === 'private' ? 'Personal' : 'Org'}
+                                  </span>
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
                 )}
               </div>
             )}
