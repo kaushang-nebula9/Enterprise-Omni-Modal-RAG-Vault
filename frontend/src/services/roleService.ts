@@ -1,6 +1,6 @@
 import api from './api';
 import type { RoleResponse, MessageResponse } from '../types/auth';
-import type { CreateRolePayload, UpdateRolePayload } from '../types/admin';
+import type { CreateRolePayload, UpdateRolePayload, RoleTreeNode } from '../types/admin';
 
 export const roleService = {
   getRoles: async (): Promise<RoleResponse[]> => {
@@ -21,5 +21,10 @@ export const roleService = {
   deleteRole: async (roleId: string): Promise<MessageResponse> => {
     const response = await api.delete(`/api/v1/roles/${roleId}`);
     return response.data;
-  }
+  },
+
+  getRolesTree: async (): Promise<RoleTreeNode[]> => {
+    const response = await api.get('/api/v1/roles/tree');
+    return response.data;
+  },
 };

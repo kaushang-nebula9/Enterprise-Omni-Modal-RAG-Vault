@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { roleService } from '../../services/roleService';
 import { departmentService } from '../../services/departmentService';
 import type { RoleResponse } from '../../types/auth';
-import { ShieldPlus, Edit2, Trash2, X, Search, ChevronDown } from 'lucide-react';
+import { ShieldPlus, Edit2, Trash2, X, Search, ChevronDown, LayoutList, GitBranch } from 'lucide-react';
+import { RoleHierarchyTree } from '../../components/dashboard/RoleHierarchyTree';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', {
@@ -25,10 +26,20 @@ export const RolesPermissionsPage: React.FC = () => {
     queryFn: departmentService.getDepartments,
   });
 
+  const {
+    data: treeData = [],
+    isLoading: isTreeLoading,
+    isError: isTreeError,
+  } = useQuery({
+    queryKey: ['rolesTree'],
+    queryFn: roleService.getRolesTree,
+  });
+
   const createMutation = useMutation({
     mutationFn: roleService.createRole,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] });
+      queryClient.invalidateQueries({ queryKey: ['rolesTree'] });
       setIsCreateOpen(false);
       setNewRoleName('');
       setNewParentRoleId(null);
@@ -40,6 +51,7 @@ export const RolesPermissionsPage: React.FC = () => {
     mutationFn: ({ id, data }: { id: string; data: { name: string; parent_role_id?: string | null; department_id?: string | null } }) => roleService.updateRole(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] });
+      queryClient.invalidateQueries({ queryKey: ['rolesTree'] });
       setEditingRole(null);
     }
   });
@@ -48,9 +60,12 @@ export const RolesPermissionsPage: React.FC = () => {
     mutationFn: roleService.deleteRole,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] });
+      queryClient.invalidateQueries({ queryKey: ['rolesTree'] });
       setDeletingRole(null);
     }
   });
+
+  const [activeTab, setActiveTab] = useState<'list' | 'hierarchy'>('list');
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newRoleName, setNewRoleName] = useState('');
@@ -139,14 +154,53 @@ export const RolesPermissionsPage: React.FC = () => {
         </div>
         <button 
           onClick={() => setIsCreateOpen(true)}
-          className="flex items-center gap-2 bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-850 dark:hover:bg-indigo-600 text-white px-4 py-2.5 rounded-xl transition-colors font-semibold shadow-sm text-sm"
+          className="flex items-center gap-2 bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-850 dark:hover:bg-indigo-600 text-white px-4 py-2.5 rounded-xl transition-colors font-semibold shadow"
         >
           <ShieldPlus className="w-4 h-4" />
           Create Role
         </button>
       </div>
 
-      {/* Filters & Search */}
+      {/* Tab Toggle */}
+      <div className="flex items-center gap-1 rounded-xl w-fit">
+        <button
+          id="tab-list-view"
+          onClick={() => setActiveTab('list')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+            activeTab === 'list'
+              ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-700'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <LayoutList className="w-4 h-4" />
+          List View
+        </button>
+        <button
+          id="tab-hierarchy-view"
+          onClick={() => setActiveTab('hierarchy')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
+            activeTab === 'hierarchy'
+              ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-700'
+              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+          }`}
+        >
+          <GitBranch className="w-4 h-4" />
+          Hierarchy View
+        </button>
+      </div>
+
+      {/* ── Hierarchy View ── */}
+      {activeTab === 'hierarchy' && (
+        <RoleHierarchyTree
+          treeData={treeData}
+          isLoading={isTreeLoading}
+          isError={isTreeError}
+        />
+      )}
+
+      {/* ── List View: Filters & Search ── */}
+      {activeTab === 'list' && (
+      <>
       <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
         {/* Search */}
         <div className="relative w-full flex-1 min-w-[200px]">
@@ -340,6 +394,9 @@ export const RolesPermissionsPage: React.FC = () => {
           )}
         </div>
       )}
+      </>
+      )}
+      {/* end list view */}
 
       {/* Create Modal */}
       {isCreateOpen && (
