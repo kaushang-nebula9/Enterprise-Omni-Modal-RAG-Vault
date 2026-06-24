@@ -5,7 +5,7 @@ from app.db.session import get_db
 from app.core.dependencies import get_current_user, require_admin
 from app.models.user import User
 from app.models.role import Role
-from app.schemas.role import CreateRoleRequest, UpdateRoleRequest, RoleResponse
+from app.schemas.role import CreateRoleRequest, UpdateRoleRequest, RoleResponse, RoleTreeNode
 from app.services.role_service import check_role_cycle
 
 router = APIRouter()
@@ -18,6 +18,79 @@ def get_roles(
     """Protected route to get all roles belonging to the current user's tenant."""
     roles = db.query(Role).filter(Role.tenant_id == current_user.tenant_id).all()
     return roles
+
+
+@router.get("/tree", response_model=list[RoleTreeNode])
+def get_roles_tree(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Return all roles for the tenant as a nested tree structure.
+
+    Each root-level node is a role with no parent (or an orphaned role whose
+    parent no longer exists in this tenant). Each node includes:
+      - id, name, parent_role_id, is_admin, is_default
+      - descendant_count: total number of roles anywhere below it in the tree
+      - children: direct child roles (recursively nested)
+    """
+    all_roles = db.query(Role).filter(Role.tenant_id == current_user.tenant_id).all()
+
+    # Build a lookup by id for fast access
+    role_by_id: dict[uuid.UUID, Role] = {r.id: r for r in all_roles}
+    valid_ids: set[uuid.UUID] = set(role_by_id.keys())
+
+    # descendant_count[role_id] accumulates as we walk up each role's ancestor chain
+    descendant_count: dict[uuid.UUID, int] = {r.id: 0 for r in all_roles}
+
+    for role in all_roles:
+        # Walk up from this role to the root, incrementing each ancestor's count
+        visited: set[uuid.UUID] = set()
+        current_id: uuid.UUID | None = role.parent_role_id
+        depth = 0
+        while current_id is not None and depth < 50:
+            if current_id not in valid_ids:
+                break  # orphan edge – stop here
+            if current_id in visited:
+                break  # cycle guard
+            visited.add(current_id)
+            descendant_count[current_id] += 1
+            parent_role = role_by_id[current_id]
+            current_id = parent_role.parent_role_id
+            depth += 1
+
+    # Build the tree: collect direct children for each role
+    children_map: dict[uuid.UUID, list[RoleTreeNode]] = {r.id: [] for r in all_roles}
+
+    # Determine which roles are effective roots:
+    # - roles with no parent_role_id, OR
+    # - roles whose parent_role_id points to a role outside this tenant (orphan)
+    root_nodes: list[RoleTreeNode] = []
+
+    def build_node(role: Role) -> RoleTreeNode:
+        return RoleTreeNode(
+            id=role.id,
+            name=role.name,
+            parent_role_id=role.parent_role_id,
+            is_admin=role.is_admin,
+            is_default=role.is_default,
+            descendant_count=descendant_count[role.id],
+            children=children_map[role.id],
+        )
+
+    # Two-pass: first create all nodes, then attach children
+    nodes: dict[uuid.UUID, RoleTreeNode] = {r.id: build_node(r) for r in all_roles}
+
+    for role in all_roles:
+        parent_id = role.parent_role_id
+        if parent_id is None or parent_id not in valid_ids:
+            # True root or orphan — treat as root
+            root_nodes.append(nodes[role.id])
+        else:
+            nodes[parent_id].children.append(nodes[role.id])
+
+    return root_nodes
+
 
 def _validate_parent_role(
     parent_role_id: uuid.UUID | None,
