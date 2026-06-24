@@ -154,3 +154,50 @@ def test_create_policies_with_inheritance(db):
     assert ceo.id in policy_map
     assert policy_map[ceo.id].granted_via == "inherited"
     assert policy_map[ceo.id].inherited_from_role_id == manager.id
+
+def test_create_policies_with_unchecked_ancestors(db):
+    tenant_id = uuid.uuid4()
+    ceo = Role(id=uuid.uuid4(), tenant_id=tenant_id, name="CEO", parent_role_id=None)
+    vp = Role(id=uuid.uuid4(), tenant_id=tenant_id, name="VP", parent_role_id=ceo.id)
+    manager = Role(id=uuid.uuid4(), tenant_id=tenant_id, name="Manager", parent_role_id=vp.id)
+    dev = Role(id=uuid.uuid4(), tenant_id=tenant_id, name="Developer", parent_role_id=manager.id)
+    
+    db.add_all([ceo, vp, manager, dev])
+    db.commit()
+
+    doc_id = uuid.uuid4()
+    document = Document(
+        id=doc_id,
+        tenant_id=tenant_id,
+        uploaded_by=uuid.uuid4(),
+        filename="test_unchecked.pdf",
+        file_type=FileType.pdf,
+        owner_type=OwnerType.organisation,
+        visibility=Visibility.org_wide,
+        chunk_count=0,
+        qdrant_collection="test_collection",
+        status=DocumentStatus.ready,
+        file_path="/path/test_unchecked.pdf",
+        file_size=100
+    )
+    db.add(document)
+    db.commit()
+
+    # Assign directly to Manager, but deliberately uncheck VP
+    _create_policies_with_inheritance(db, doc_id, [manager.id], [vp.id])
+    db.commit()
+
+    policies = db.query(DocumentAccessPolicy).filter(DocumentAccessPolicy.document_id == doc_id).all()
+    # Policies should exist for Manager (direct) and CEO (inherited), but not VP
+    assert len(policies) == 2
+
+    policy_map = {p.role_id: p for p in policies}
+    
+    assert manager.id in policy_map
+    assert policy_map[manager.id].granted_via == "direct"
+
+    assert ceo.id in policy_map
+    assert policy_map[ceo.id].granted_via == "inherited"
+
+    assert vp.id not in policy_map
+

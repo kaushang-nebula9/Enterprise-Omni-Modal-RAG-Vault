@@ -7,10 +7,16 @@ export const documentService = {
    * Upload a document with multipart/form-data.
    * Appends the file and each roleId as separate form fields.
    */
-  uploadDocument: async (file: File, roleIds: string[], departmentIds: string[] = []): Promise<DocumentResponse> => {
+  uploadDocument: async (
+    file: File,
+    roleIds: string[],
+    uncheckedAncestorIds: string[] = [],
+    departmentIds: string[] = []
+  ): Promise<DocumentResponse> => {
     const formData = new FormData()
     formData.append('file', file)
     roleIds.forEach((id) => formData.append('role_ids', id))
+    uncheckedAncestorIds.forEach((id) => formData.append('unchecked_ancestor_ids', id))
     departmentIds.forEach((id) => formData.append('department_ids', id))
     const response = await api.post('/api/v1/documents/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -78,10 +84,12 @@ export const documentService = {
    */
   updateDocumentAccess: async (
     documentId: string,
-    roleIds: string[]
+    roleIds: string[],
+    uncheckedAncestorIds: string[] = []
   ): Promise<DocumentResponse> => {
     const response = await api.patch(`/api/v1/documents/${documentId}/access`, {
       role_ids: roleIds,
+      unchecked_ancestor_ids: uncheckedAncestorIds,
     })
     return response.data
   },

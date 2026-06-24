@@ -67,11 +67,13 @@ def _create_policies_with_inheritance(
     db: Session,
     document_id: uuid.UUID,
     direct_role_ids: list[uuid.UUID],
+    unchecked_ancestor_ids: list[uuid.UUID] | None = None,
 ) -> None:
     """
     Create DocumentAccessPolicy rows for each direct role, then walk up each
     role's ancestor chain and create inherited rows for every ancestor that
-    doesn't already have access to this document.
+    doesn't already have access to this document, unless they are explicitly
+    excluded in unchecked_ancestor_ids.
     """
     # Track which role_ids already have a policy for this document
     covered: set[uuid.UUID] = set()
@@ -90,10 +92,13 @@ def _create_policies_with_inheritance(
         covered.add(role_id)
 
     # 2. Create inherited policies for ancestors of each direct role
+    unchecked_set = set(unchecked_ancestor_ids or [])
     for role_id in direct_role_ids:
         ancestors = get_role_ancestors(role_id, db)
         for ancestor in ancestors:
             if ancestor.id in covered:
+                continue
+            if ancestor.id in unchecked_set:
                 continue
             # Check if ancestor already has any access policy for this document
             existing = db.query(DocumentAccessPolicy).filter(
@@ -122,6 +127,7 @@ def _create_policies_with_inheritance(
 def upload_document(
     file: UploadFile = File(...),
     role_ids: list[str] = Form(default=[]),
+    unchecked_ancestor_ids: list[str] = Form(default=[]),
     department_ids: list[str] = Form(default=[]),
     current_admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
@@ -161,6 +167,30 @@ def upload_document(
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid role",
+                )
+
+    # Validate and parse unchecked ancestor UUIDs
+    parsed_unchecked_ids: list[uuid.UUID] = []
+    if unchecked_ancestor_ids:
+        for rid in unchecked_ancestor_ids:
+            try:
+                parsed_unchecked_ids.append(uuid.UUID(rid))
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid unchecked ancestor ID format: {rid}",
+                )
+
+        # Validate each unchecked ancestor role belongs to tenant
+        for rid in parsed_unchecked_ids:
+            role = db.query(Role).filter(
+                Role.id == rid,
+                Role.tenant_id == current_admin.tenant_id,
+            ).first()
+            if not role:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid unchecked ancestor role",
                 )
 
     # Validate and parse department UUIDs
@@ -223,7 +253,7 @@ def upload_document(
 
     # Create access policy records (direct + inherited for ancestors)
     if parsed_role_ids:
-        _create_policies_with_inheritance(db, document_id, parsed_role_ids)
+        _create_policies_with_inheritance(db, document_id, parsed_role_ids, parsed_unchecked_ids)
 
     # Create department-based access policies
     if parsed_dept_ids:
@@ -448,13 +478,31 @@ def update_document_access(
                 detail="Invalid role",
             )
 
+    # Validate unchecked ancestor roles
+    if request.unchecked_ancestor_ids:
+        for rid in request.unchecked_ancestor_ids:
+            role = db.query(Role).filter(
+                Role.id == rid,
+                Role.tenant_id == current_admin.tenant_id,
+            ).first()
+            if not role:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid unchecked ancestor role",
+                )
+
     # Delete existing policies
     db.query(DocumentAccessPolicy).filter(
         DocumentAccessPolicy.document_id == document_id
     ).delete()
 
     # Create new policies (direct + inherited for ancestors)
-    _create_policies_with_inheritance(db, document_id, list(request.role_ids))
+    _create_policies_with_inheritance(
+        db,
+        document_id,
+        list(request.role_ids),
+        request.unchecked_ancestor_ids
+    )
 
     db.commit()
 

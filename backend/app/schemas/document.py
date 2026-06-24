@@ -62,6 +62,7 @@ class DocumentWithAccessResponse(DocumentResponse):
 
 class UpdateDocumentAccessRequest(BaseModel):
     role_ids: list[UUID] = Field(..., min_length=1)
+    unchecked_ancestor_ids: list[UUID] | None = None
 
 class AssignDepartmentRequest(BaseModel):
     department_id: UUID

@@ -126,17 +126,50 @@ function usePreviewAncestors(selectedRoleIds: string[], documentId?: string) {
   return previewAncestors
 }
 
-function InheritancePreview({ ancestors }: { ancestors: RoleResponse[] }) {
+interface InheritanceChecklistProps {
+  ancestors: RoleResponse[]
+  uncheckedIds: string[]
+  onToggle: (id: string) => void
+}
+
+function InheritanceChecklist({ ancestors, uncheckedIds, onToggle }: InheritanceChecklistProps) {
   if (ancestors.length === 0) return null
   return (
-    <div className="flex items-start gap-2 text-violet-700 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-900/50 rounded-lg px-3 py-2.5">
-      <svg className="w-4 h-4 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
-        <rect x="9" y="3" width="6" height="4" rx="1" />
-      </svg>
-      <span className="text-sm">
-        This will also give access to: <strong>{ancestors.map((a) => a.name).join(', ')}</strong>
-      </span>
+    <div className="space-y-2 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
+      <div className="flex items-center gap-2 text-violet-755 dark:text-violet-400 font-semibold text-sm mb-1">
+        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+        <span>Inherited Access (Ancestor Roles)</span>
+      </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+        These parent roles will automatically inherit access. Uncheck any role to exclude it from gaining access.
+      </p>
+      <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+        {ancestors.map((role) => {
+          const checked = !uncheckedIds.includes(role.id)
+          return (
+            <button
+              key={role.id}
+              type="button"
+              onClick={() => onToggle(role.id)}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border transition-all text-left ${
+                checked
+                  ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300'
+                  : 'border-slate-100 dark:border-slate-800/60 bg-transparent text-slate-400 dark:text-slate-500 line-through'
+              }`}
+            >
+              {checked ? (
+                <CheckSquare className="w-4 h-4 text-indigo-800 dark:text-indigo-300 shrink-0" />
+              ) : (
+                <Square className="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0" />
+              )}
+              <span className="text-sm font-medium">{role.name}</span>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -155,10 +188,27 @@ function UploadModal({ roles, departments, onClose, onSuccess }: UploadModalProp
   const [tab, setTab] = useState<'roles' | 'departments'>('roles')
   const [error, setError] = useState<string | null>(null)
   const previewAncestors = usePreviewAncestors(selectedRoleIds)
+  const [uncheckedAncestorIds, setUncheckedAncestorIds] = useState<string[]>([])
+
+  // Synchronize/prune uncheckedAncestorIds when previewAncestors changes
+  useEffect(() => {
+    const ancestorIds = new Set(previewAncestors.map((a) => a.id))
+    setUncheckedAncestorIds((prev) => prev.filter((id) => ancestorIds.has(id)))
+  }, [previewAncestors])
 
   const uploadMutation = useMutation({
-    mutationFn: ({ file, roleIds, departmentIds }: { file: File; roleIds: string[]; departmentIds: string[] }) =>
-      documentService.uploadDocument(file, roleIds, departmentIds),
+    mutationFn: ({
+      file,
+      roleIds,
+      uncheckedAncestorIds,
+      departmentIds,
+    }: {
+      file: File
+      roleIds: string[]
+      uncheckedAncestorIds: string[]
+      departmentIds: string[]
+    }) =>
+      documentService.uploadDocument(file, roleIds, uncheckedAncestorIds, departmentIds),
     onSuccess: () => {
       onSuccess()
     },
@@ -179,6 +229,12 @@ function UploadModal({ roles, departments, onClose, onSuccess }: UploadModalProp
     )
   }
 
+  function toggleAncestor(id: string) {
+    setUncheckedAncestorIds((prev) =>
+      prev.includes(id) ? prev.filter((rid) => rid !== id) : [...prev, id]
+    )
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -189,6 +245,7 @@ function UploadModal({ roles, departments, onClose, onSuccess }: UploadModalProp
     uploadMutation.mutate({
       file: selectedFile,
       roleIds: selectedRoleIds,
+      uncheckedAncestorIds: uncheckedAncestorIds,
       departmentIds: selectedDeptIds,
     })
   }
@@ -332,7 +389,11 @@ function UploadModal({ roles, departments, onClose, onSuccess }: UploadModalProp
           </div>
 
           {/* Inheritance preview */}
-          <InheritancePreview ancestors={previewAncestors} />
+          <InheritanceChecklist
+            ancestors={previewAncestors}
+            uncheckedIds={uncheckedAncestorIds}
+            onToggle={toggleAncestor}
+          />
 
           {/* Error */}
           {error && (
@@ -385,6 +446,13 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>(currentRoleIds)
   const [error, setError] = useState<string | null>(null)
   const previewAncestors = usePreviewAncestors(selectedRoleIds, document.id)
+  const [uncheckedAncestorIds, setUncheckedAncestorIds] = useState<string[]>([])
+
+  // Synchronize/prune uncheckedAncestorIds when previewAncestors changes
+  useEffect(() => {
+    const ancestorIds = new Set(previewAncestors.map((a) => a.id))
+    setUncheckedAncestorIds((prev) => prev.filter((id) => ancestorIds.has(id)))
+  }, [previewAncestors])
 
   const { data: departments = [] } = useQuery({
     queryKey: ['departments'],
@@ -393,8 +461,8 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>('')
 
   const updateMutation = useMutation({
-    mutationFn: (roleIds: string[]) =>
-      documentService.updateDocumentAccess(document.id, roleIds),
+    mutationFn: ({ roleIds, uncheckedAncestorIds }: { roleIds: string[]; uncheckedAncestorIds: string[] }) =>
+      documentService.updateDocumentAccess(document.id, roleIds, uncheckedAncestorIds),
     onSuccess: () => onSuccess(),
     onError: (err: any) => {
       setError(err?.response?.data?.detail || 'Failed to update access.')
@@ -419,11 +487,20 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
     )
   }
 
+  function toggleAncestor(id: string) {
+    setUncheckedAncestorIds((prev) =>
+      prev.includes(id) ? prev.filter((rid) => rid !== id) : [...prev, id]
+    )
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (selectedRoleIds.length === 0) return setError('Please select at least one role.')
     setError(null)
-    updateMutation.mutate(selectedRoleIds)
+    updateMutation.mutate({
+      roleIds: selectedRoleIds,
+      uncheckedAncestorIds: uncheckedAncestorIds,
+    })
   }
 
   const isLoading = updateMutation.isPending || assignDeptMutation.isPending
@@ -475,7 +552,11 @@ function EditRolesModal({ document, roles, onClose, onSuccess }: EditRolesModalP
           </div>
 
           {/* Inheritance preview */}
-          <InheritancePreview ancestors={previewAncestors} />
+          <InheritanceChecklist
+            ancestors={previewAncestors}
+            uncheckedIds={uncheckedAncestorIds}
+            onToggle={toggleAncestor}
+          />
 
           {/* Department direct assignment */}
           <div className="space-y-2 border-t border-slate-100 dark:border-slate-800 pt-4">
