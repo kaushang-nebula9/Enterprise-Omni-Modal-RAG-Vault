@@ -209,15 +209,6 @@ def register_verify_otp(
             is_default=True
         )
         db.add(admin_role)
-
-        # Create Member default role for this tenant
-        member_role = Role(
-            tenant_id=tenant.id,
-            name="Member",
-            is_admin=False,
-            is_default=True
-        )
-        db.add(member_role)
         db.flush()
 
         user = User(
@@ -794,15 +785,6 @@ def google_complete_setup(
             is_default=True
         )
         db.add(admin_role)
-
-        # Create Member default role for this tenant
-        member_role = Role(
-            tenant_id=tenant.id,
-            name="Member",
-            is_admin=False,
-            is_default=True
-        )
-        db.add(member_role)
         db.flush()
 
         user = User(
