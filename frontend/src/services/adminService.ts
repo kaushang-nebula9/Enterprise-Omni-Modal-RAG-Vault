@@ -36,5 +36,27 @@ export const adminService = {
   deleteOrganisation: async (): Promise<MessageResponse> => {
     const response = await api.delete('/api/v1/admin/organisation');
     return response.data;
+  },
+
+  getModels: async (): Promise<AvailableModel[]> => {
+    const response = await api.get('/api/v1/admin/models');
+    return response.data;
+  },
+
+  createModel: async (data: { display_name: string; provider: 'anthropic' | 'openrouter'; model_string: string; is_active: boolean }): Promise<AvailableModel> => {
+    const response = await api.post('/api/v1/admin/models', data);
+    return response.data;
+  },
+
+  updateModel: async (modelId: string, data: { display_name?: string; provider?: 'anthropic' | 'openrouter'; model_string?: string; is_active?: boolean }): Promise<AvailableModel> => {
+    const response = await api.patch(`/api/v1/admin/models/${modelId}`, data);
+    return response.data;
+  },
+
+  deleteModel: async (modelId: string): Promise<MessageResponse> => {
+    const response = await api.delete(`/api/v1/admin/models/${modelId}`);
+    return response.data;
   }
 };
+
+import type { AvailableModel } from '../types/chat';

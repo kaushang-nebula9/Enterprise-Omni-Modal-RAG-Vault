@@ -25,3 +25,19 @@ class TenantResponse(BaseModel):
     model_config = {
         "from_attributes": True
     }
+
+from app.models.enums import ModelProvider
+from typing import Optional
+
+class ModelCreateRequest(BaseModel):
+    display_name: str = Field(..., min_length=1)
+    provider: ModelProvider
+    model_string: str = Field(..., min_length=1)
+    is_active: bool = True
+
+class ModelUpdateRequest(BaseModel):
+    display_name: Optional[str] = Field(None, min_length=1)
+    provider: Optional[ModelProvider] = None
+    model_string: Optional[str] = Field(None, min_length=1)
+    is_active: Optional[bool] = None
+

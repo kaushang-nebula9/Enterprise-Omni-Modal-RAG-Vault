@@ -44,6 +44,10 @@ class NotificationType(str, enum.Enum):
     document_access_inherited_department = "document_access_inherited_department"
     department_added = "department_added"
 
+class ModelProvider(str, enum.Enum):
+    anthropic = "anthropic"
+    openrouter = "openrouter"
+
 # SQLAlchemy Enum Types
 file_type_enum = SQLEnum(FileType, name="filetype")
 owner_type_enum = SQLEnum(OwnerType, name="ownertype")
@@ -53,4 +57,6 @@ message_role_enum = SQLEnum(MessageRole, name="messagerole")
 otp_purpose_enum = SQLEnum(OTPPurpose, name="otppurpose")
 granted_via_enum = SQLEnum(GrantedVia, name="grantedvia")
 notification_type_enum = SQLEnum(NotificationType, name="notificationtype")
+model_provider_enum = SQLEnum(ModelProvider, name="modelprovider")
+
 

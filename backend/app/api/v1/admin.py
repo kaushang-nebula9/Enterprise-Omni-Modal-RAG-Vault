@@ -195,3 +195,84 @@ def delete_organisation(
     response.delete_cookie("refresh_token")
 
     return MessageResponse(message="Organisation deleted successfully")
+
+
+from app.models.available_model import AvailableModel
+from app.schemas.chat import ModelResponse
+from app.schemas.admin import ModelCreateRequest, ModelUpdateRequest
+
+@router.get("/models", response_model=list[ModelResponse])
+def admin_get_models(
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns all models (active and inactive) for management.
+    """
+    models = db.query(AvailableModel).order_by(AvailableModel.created_at.asc()).all()
+    return models
+
+@router.post("/models", response_model=ModelResponse, status_code=status.HTTP_201_CREATED)
+def admin_create_model(
+    request: ModelCreateRequest,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new available model configuration.
+    """
+    new_model = AvailableModel(
+        display_name=request.display_name,
+        provider=request.provider,
+        model_string=request.model_string,
+        is_active=request.is_active
+    )
+    db.add(new_model)
+    db.commit()
+    db.refresh(new_model)
+    return new_model
+
+@router.patch("/models/{model_id}", response_model=ModelResponse)
+def admin_update_model(
+    model_id: UUID,
+    request: ModelUpdateRequest,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Update an available model configuration.
+    """
+    db_model = db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
+    if not db_model:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
+
+    if request.display_name is not None:
+        db_model.display_name = request.display_name
+    if request.provider is not None:
+        db_model.provider = request.provider
+    if request.model_string is not None:
+        db_model.model_string = request.model_string
+    if request.is_active is not None:
+        db_model.is_active = request.is_active
+
+    db.commit()
+    db.refresh(db_model)
+    return db_model
+
+@router.delete("/models/{model_id}", response_model=MessageResponse)
+def admin_delete_model(
+    model_id: UUID,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete an available model configuration.
+    """
+    db_model = db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
+    if not db_model:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
+
+    db.delete(db_model)
+    db.commit()
+    return MessageResponse(message="Model deleted successfully")
+

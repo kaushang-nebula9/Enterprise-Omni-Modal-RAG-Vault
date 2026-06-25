@@ -1,5 +1,5 @@
 import api from './api'
-import type { SessionResponse, SessionDetailResponse, CitationResponse } from '../types/chat'
+import type { SessionResponse, SessionDetailResponse, CitationResponse, AvailableModel } from '../types/chat'
 import type { DocumentResponse } from '../types/document'
 import type { MessageResponse as ApiMessageResponse } from '../types/auth'
 
@@ -11,6 +11,11 @@ export const chatService = {
 
   getSessions: async (): Promise<SessionResponse[]> => {
     const response = await api.get<SessionResponse[]>('/api/v1/chat/sessions')
+    return response.data
+  },
+
+  getModels: async (): Promise<AvailableModel[]> => {
+    const response = await api.get<AvailableModel[]>('/api/v1/chat/models')
     return response.data
   },
 
@@ -36,7 +41,8 @@ export const chatService = {
     onToken: (token: string) => void,
     onDone: (citations: CitationResponse[], messageId: string) => void,
     onError: (error: string) => void,
-    documentId?: string
+    documentId?: string,
+    modelId?: string
   ): void => {
     const baseURL = api.defaults.baseURL || 'http://localhost:8000'
     const url = `${baseURL}/api/v1/chat/sessions/${sessionId}/query`
@@ -49,6 +55,7 @@ export const chatService = {
       body: JSON.stringify({
         content,
         document_id: documentId,
+        model_id: modelId,
       }),
       credentials: 'include',
     })

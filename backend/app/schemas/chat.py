@@ -5,6 +5,17 @@ from pydantic import BaseModel, Field, model_validator
 from uuid import UUID
 from datetime import datetime
 from typing import Optional, Any
+from app.models.enums import ModelProvider
+
+class ModelResponse(BaseModel):
+    id: UUID
+    display_name: str
+    provider: ModelProvider
+    model_string: str
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class SessionResponse(BaseModel):
@@ -55,6 +66,8 @@ class MessageResponse(BaseModel):
     created_at: datetime
     citations: list[CitationResponse] = []
     attached_file: Optional[dict] = None
+    model_id: Optional[UUID] = None
+    model: Optional[ModelResponse] = None
 
     model_config = {"from_attributes": True}
 
@@ -91,6 +104,7 @@ class SessionDetailResponse(SessionResponse):
 class QueryRequest(BaseModel):
     content: str = Field(..., min_length=1, strip_whitespace=True)
     document_id: Optional[UUID] = None
+    model_id: Optional[UUID] = None
 
 
 

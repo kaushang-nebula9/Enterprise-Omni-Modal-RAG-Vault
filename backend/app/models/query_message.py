@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.models.query_citation import QueryCitation
     from app.models.query_session import QuerySession
     from app.models.document import Document
+    from app.models.available_model import AvailableModel
     
 
 class QueryMessage(Base):
@@ -30,10 +31,16 @@ class QueryMessage(Base):
         ForeignKey("documents.id", ondelete="SET NULL"),
         nullable=True
     )
+    model_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid,
+        ForeignKey("available_models.id", ondelete="SET NULL"),
+        nullable=True
+    )
 
     # Relationships
     session: Mapped["QuerySession"] = relationship("QuerySession", back_populates="messages")
     citations: Mapped[list["QueryCitation"]] = relationship("QueryCitation", back_populates="message", cascade="all, delete-orphan")
     attached_document: Mapped[Optional["Document"]] = relationship("Document")
+    model: Mapped[Optional["AvailableModel"]] = relationship("AvailableModel")
 
 

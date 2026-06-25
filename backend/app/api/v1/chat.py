@@ -275,6 +275,8 @@ def get_session(
             .joinedload(QueryCitation.document),
             joinedload(QuerySession.messages)
             .joinedload(QueryMessage.attached_document),
+            joinedload(QuerySession.messages)
+            .joinedload(QueryMessage.model),
         )
         .filter(
             QuerySession.id == session_id,
@@ -411,6 +413,31 @@ async def send_query(
     # Commit before streaming starts so the user message is saved immediately
     db.commit()
 
+    # Resolve the model to use
+    resolved_model_id = None
+    if body.model_id:
+        from app.models.available_model import AvailableModel
+        model_exists = db.query(AvailableModel).filter(
+            AvailableModel.id == body.model_id,
+            AvailableModel.is_active == True
+        ).first()
+        if model_exists:
+            resolved_model_id = body.model_id
+
+    if not resolved_model_id:
+        from app.models.available_model import AvailableModel
+        from app.models.enums import ModelProvider
+        default_model = db.query(AvailableModel).filter(
+            AvailableModel.is_active == True,
+            AvailableModel.provider == ModelProvider.anthropic
+        ).order_by(AvailableModel.created_at.asc()).first()
+        if not default_model:
+            default_model = db.query(AvailableModel).filter(
+                AvailableModel.is_active == True
+            ).order_by(AvailableModel.created_at.asc()).first()
+        if default_model:
+            resolved_model_id = default_model.id
+
     async def event_generator():
         try:
             generator = run_rag_pipeline(
@@ -423,6 +450,7 @@ async def send_query(
                 compare_document_ids=compare_document_ids,
                 is_compare_mode=is_compare,
                 is_summarize_mode=is_summarize,
+                model_id=resolved_model_id,
             )
 
             full_answer = ""
@@ -442,6 +470,7 @@ async def send_query(
                 role=MessageRole.assistant,
                 content=full_answer,
                 created_at=datetime.now(timezone.utc),
+                model_id=resolved_model_id,
             )
             db.add(assistant_message)
             db.flush()
@@ -627,3 +656,24 @@ def transcribe_voice_query(
                 os.remove(temp_file_path)
             except Exception as delete_exc:
                 logger.warning(f"Failed to delete temp file {temp_file_path}: {delete_exc}")
+
+
+from app.models.available_model import AvailableModel
+from app.schemas.chat import ModelResponse
+
+@router.get("/models", response_model=list[ModelResponse])
+def get_active_models(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get all active models for the user model selector.
+    """
+    models = (
+        db.query(AvailableModel)
+        .filter(AvailableModel.is_active == True)
+        .order_by(AvailableModel.created_at.asc())
+        .all()
+    )
+    return models
+

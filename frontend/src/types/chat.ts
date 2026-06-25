@@ -17,6 +17,15 @@ export interface CitationResponse {
   chunk_index: number
 }
 
+export interface AvailableModel {
+  id: string
+  display_name: string
+  provider: 'anthropic' | 'openrouter'
+  model_string: string
+  is_active: boolean
+  created_at: string
+}
+
 export interface MessageResponse {
   id: string
   session_id: string
@@ -28,6 +37,8 @@ export interface MessageResponse {
     name: string
     size: number
   }
+  model_id?: string
+  model?: AvailableModel
 }
 
 export interface SessionDetailResponse extends SessionResponse {

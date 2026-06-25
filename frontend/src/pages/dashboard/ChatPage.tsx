@@ -20,7 +20,7 @@ import {
 import { useAuthStore } from '../../store/authStore'
 import { chatService } from '../../services/chatService'
 import { documentService } from '../../services/documentService'
-import type { MessageResponse } from '../../types/chat'
+import type { MessageResponse, AvailableModel } from '../../types/chat'
 import type { DocumentResponse, FileType } from '../../types/document'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -77,6 +77,57 @@ const ChatPage: React.FC = () => {
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [audioLevels, setAudioLevels] = useState<number[]>([0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
   const [recordingSeconds, setRecordingSeconds] = useState(0)
+
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
+  const [selectedModel, setSelectedModel] = useState<AvailableModel | null>(null)
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false)
+  const modelDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Load available models
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const activeModels = await chatService.getModels()
+        setAvailableModels(activeModels)
+        
+        // Load last chosen model or select default
+        const savedModelId = localStorage.getItem('selected_model_id')
+        const found = activeModels.find(m => m.id === savedModelId)
+        if (found) {
+          setSelectedModel(found)
+        } else {
+          // Default to the cheapest/fastest Claude model (claude-haiku-4-5-20251001)
+          const defaultModel = activeModels.find(m => m.model_string === 'claude-haiku-4-5-20251001') 
+            || activeModels.find(m => m.provider === 'anthropic') 
+            || activeModels[0]
+          
+          if (defaultModel) {
+            setSelectedModel(defaultModel)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch models', err)
+      }
+    }
+    fetchModels()
+  }, [])
+
+  // Click outside to close model dropdown
+  useEffect(() => {
+    const handleClickOutsideModel = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setIsModelDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutsideModel)
+    return () => document.removeEventListener('mousedown', handleClickOutsideModel)
+  }, [])
+
+  const handleSelectModel = (model: AvailableModel) => {
+    setSelectedModel(model)
+    localStorage.setItem('selected_model_id', model.id)
+    setIsModelDropdownOpen(false)
+  }
 
   const renderHighlightedText = (text: string) => {
     let filenameToHighlight = ""
@@ -634,9 +685,10 @@ const ChatPage: React.FC = () => {
           )
         )
       },
-      docId
+      docId,
+      selectedModel?.id
     )
-  }, [inputValue, isLoading, isStreaming, ensureSession, uploadedFile, attachedDocument, queryClient])
+  }, [inputValue, isLoading, isStreaming, ensureSession, uploadedFile, attachedDocument, queryClient, selectedModel])
 
   const urlSessionId = searchParams.get('session')
   const autoQuery = searchParams.get('q')
@@ -758,7 +810,9 @@ const ChatPage: React.FC = () => {
               : msg
           )
         )
-      }
+      },
+      undefined,
+      selectedModel?.id
     )
   }
 
@@ -1119,7 +1173,17 @@ const ChatPage: React.FC = () => {
                     >
                       {msg.content}
                     </ReactMarkdown>
-                    <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">{formatTime(msg.created_at)}</p>
+                    <div className="flex items-center gap-2 mt-1 select-none">
+                      <span className="text-slate-400 dark:text-slate-500 text-xs">{formatTime(msg.created_at)}</span>
+                      {msg.model && (
+                        <>
+                          <span className="text-slate-300 dark:text-slate-700">•</span>
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200/40 dark:border-slate-700/50">
+                            {msg.model.display_name}
+                          </span>
+                        </>
+                      )}
+                    </div>
 
                     {msg.citations.length > 0 && (
                       <div className="mt-2">
@@ -1400,16 +1464,16 @@ const ChatPage: React.FC = () => {
                   )
                 )}
               </div>
-            )}
+                  )}
 
             {/* Input row */}
-            <div className="border border-slate-200 dark:border-slate-700 rounded-3xl bg-white dark:bg-slate-900 focus-within:ring-2 focus-within:ring-indigo-500 text-slate-800 dark:text-slate-100 mb-2">
+            <div className="border border-slate-200 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-900 focus-within:ring-2 focus-within:ring-indigo-500 text-slate-800 dark:text-slate-100 mb-2 p-3 flex flex-col gap-2 shadow-sm">
 
               {/* File preview inside input */}
               {uploadedFile && (uploadedFile.status === 'uploading' || uploadedFile.error) && (
-                <div className="px-3 pt-3">
+                <div className="px-1 pt-1">
                   <div
-                    className={`inline-flex items-center gap-2 px-3 py-2 ml-8 rounded-xl border text-sm ${
+                    className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm ${
                       uploadedFile.error
                         ? "border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400"
                         : uploadedFile.status === "uploading"
@@ -1445,36 +1509,14 @@ const ChatPage: React.FC = () => {
 
               {/* Input area */}
               <div className="relative">
-                {!isAdmin && (
-                  <>
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isFileUploading || isLoading || isStreaming}
-                      type="button"
-                      className="absolute left-2 bottom-2.5 z-20 flex items-center justify-center w-10 h-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
-                    >
-                      <Plus className="w-5 h-5" strokeWidth={2.5} />
-                    </button>
-
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      className="hidden"
-                      onChange={handleFileUpload}
-                    />
-                  </>
-                )}
-
                 {isRecording ? (
                   <div
-                    className={`flex items-center gap-4 py-3.5 h-[52px] w-full ${
-                      !isAdmin ? "pl-12" : "pl-4"
-                    } pr-24 text-slate-800 dark:text-slate-100 z-10`}
+                    className="flex items-center gap-4 py-2.5 h-[40px] w-full px-2 text-slate-800 dark:text-slate-100 z-10"
                   >
                     {/* Soundwave animation */}
-                    <div className="flex items-center gap-1 h-8">
+                    <div className="flex items-center gap-1 h-6">
                       {audioLevels.map((level, idx) => {
-                        const height = 8 + (level * 24);
+                        const height = 6 + (level * 18);
                         return (
                           <div
                             key={idx}
@@ -1498,14 +1540,13 @@ const ChatPage: React.FC = () => {
                     {/* Mirror Div for inline highlighted tags */}
                     <div
                       ref={mirrorRef}
-                      className={`absolute inset-0 pointer-events-none whitespace-pre-wrap break-words py-3 pt-4 border-0 overflow-y-auto custom-scrollbar select-none text-slate-800 dark:text-slate-100 z-10 ${
-                        !isAdmin ? "pl-12 pr-24" : "pl-4 pr-24"
-                      }`}
+                      className="absolute inset-0 pointer-events-none whitespace-pre-wrap break-words px-2 py-1 border-0 overflow-y-auto custom-scrollbar select-none text-slate-800 dark:text-slate-100 z-10"
                       style={{
                         fontFamily: 'inherit',
                         fontSize: 'inherit',
                         lineHeight: 'inherit',
-                        maxHeight: '200px',
+                        minHeight: '80px',
+                        maxHeight: '260px',
                       }}
                     >
                       {renderHighlightedText(inputValue)}
@@ -1525,61 +1566,156 @@ const ChatPage: React.FC = () => {
                       placeholder={
                         isFileUploading
                           ? "Please wait while the document is processed..."
-                          : "Ask about your documents..."
+                          : "Ask about your documents, or type '/' to see commands and attach documents"
                       }
                       rows={1}
-                      className={`w-full text-transparent caret-slate-800 dark:caret-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-transparent py-3 pt-4 resize-none focus:outline-none border-0 placeholder:pl-1 custom-scrollbar relative z-0 ${
-                        !isAdmin ? "pl-12 pr-24" : "pl-4 pr-24"
-                      }`}
+                      className="w-full text-transparent caret-slate-800 dark:caret-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-transparent px-2 py-1 resize-none focus:outline-none border-0 custom-scrollbar relative z-0"
                       style={{ maxHeight: "200px" }}
                     />
                   </>
                 )}
+              </div>
 
-                {/* Cancel Button */}
-                {isRecording && (
-                  <button
-                    onClick={cancelRecording}
-                    type="button"
-                    className="absolute right-[104px] bottom-2 z-20 flex items-center justify-center w-10 h-10 rounded-full text-slate-400 hover:text-red-500 hover:bg-slate-100 dark:text-slate-500 dark:hover:text-red-400 dark:hover:bg-slate-800 transition-all duration-200"
-                    title="Cancel recording"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                )}
+              {/* Lower Actions Row (Claude style) */}
+              <div className="flex items-center justify-between border-slate-100 dark:border-slate-800/60 pt-2 px-1">
+                {/* Left Group: Attach File, Model Selector */}
+                <div className="flex items-center gap-2">
+                  {!isAdmin && !isRecording && (
+                    <>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isFileUploading || isLoading || isStreaming}
+                        type="button"
+                        className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-slate-105 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
+                        title="Upload file"
+                      >
+                        <Plus className="w-4 h-4" strokeWidth={2.5} />
+                      </button>
 
-                {/* Mic Button */}
-                <button
-                  onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isTranscribing}
-                  type="button"
-                  className={`absolute right-14 bottom-2 z-20 flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 ${
-                    isRecording
-                      ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
-                      : isTranscribing
-                      ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
-                      : "text-slate-400 hover:text-indigo-600 dark:text-slate-500 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  }`}
-                  title={isRecording ? "Stop recording" : isTranscribing ? "Transcribing..." : "Record voice query"}
-                >
-                  {isTranscribing ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : isRecording ? (
-                    <div className="w-3.5 h-3.5 bg-white rounded-sm" />
-                  ) : (
-                    <Mic className="w-5 h-5" />
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        onChange={handleFileUpload}
+                      />
+                    </>
                   )}
-                </button>
 
-                {/* Send Button */}
-                <button
-                  onClick={() => handleSend()}
-                  disabled={isSendDisabled}
-                  type="button"
-                  className="absolute right-2 bottom-2 z-20 flex items-center justify-center w-10 h-10 rounded-full bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white disabled:opacity-50"
-                >
-                  <SendHorizontal className="w-4 h-4" />
-                </button>
+                  {availableModels.length > 0 && !isRecording && (
+                    <div ref={modelDropdownRef} className="relative">
+                      <button
+                        onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                        disabled={isLoading || isStreaming}
+                        type="button"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-650 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all font-semibold text-sm outline-none"
+                      >
+                        <span>{selectedModel?.display_name || 'Select model'}</span>
+                        <ChevronDown className="w-3 h-3 text-slate-450" />
+                      </button>
+
+                      {isModelDropdownOpen && (
+                        <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-2 z-50 flex flex-col gap-1 text-slate-800 dark:text-slate-100 max-h-72 overflow-y-auto">
+                          {/* Anthropic / Claude models */}
+                          {availableModels.some(m => m.provider === 'anthropic') && (
+                            <div>
+                              <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider select-none">
+                                Claude Models
+                              </div>
+                              {availableModels.filter(m => m.provider === 'anthropic').map(model => (
+                                <button
+                                  key={model.id}
+                                  type="button"
+                                  onClick={() => handleSelectModel(model)}
+                                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left text-xs transition-colors ${
+                                    selectedModel?.id === model.id
+                                      ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 font-semibold"
+                                      : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                                  }`}
+                                >
+                                  <span>{model.display_name}</span>
+                                  {selectedModel?.id === model.id && <span className="text-indigo-600 dark:text-indigo-400 font-bold">✓</span>}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* OpenRouter models */}
+                          {availableModels.some(m => m.provider === 'openrouter') && (
+                            <div className="border-t border-slate-100 dark:border-slate-800/60 mt-1 pt-1">
+                              <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider select-none">
+                                Other Models
+                              </div>
+                              {availableModels.filter(m => m.provider === 'openrouter').map(model => (
+                                <button
+                                  key={model.id}
+                                  type="button"
+                                  onClick={() => handleSelectModel(model)}
+                                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left text-xs transition-colors ${
+                                    selectedModel?.id === model.id
+                                      ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 font-semibold"
+                                      : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                                  }`}
+                                >
+                                  <span>{model.display_name}</span>
+                                  {selectedModel?.id === model.id && <span className="text-indigo-600 dark:text-indigo-400 font-bold">✓</span>}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right Group: Cancel, Mic, Send */}
+                <div className="flex items-center gap-2">
+                  {/* Cancel Button */}
+                  {isRecording && (
+                    <button
+                      onClick={cancelRecording}
+                      type="button"
+                      className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-450 hover:text-red-500 hover:bg-slate-100 dark:text-slate-500 dark:hover:text-red-400 dark:hover:bg-slate-800 transition-colors"
+                      title="Cancel recording"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  {/* Mic Button */}
+                  <button
+                    onClick={isRecording ? stopRecording : startRecording}
+                    disabled={isTranscribing}
+                    type="button"
+                    className={`flex items-center justify-center w-8 h-8 rounded-lg transition-all duration-200 ${
+                      isRecording
+                        ? "bg-red-500 hover:bg-red-600 text-white animate-pulse"
+                        : isTranscribing
+                        ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
+                        : "text-slate-400 hover:text-indigo-600 dark:text-slate-550 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    }`}
+                    title={isRecording ? "Stop recording" : isTranscribing ? "Transcribing..." : "Record voice query"}
+                  >
+                    {isTranscribing ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : isRecording ? (
+                      <div className="w-2.5 h-2.5 bg-white rounded-sm" />
+                    ) : (
+                      <Mic className="w-4 h-4" />
+                    )}
+                  </button>
+
+                  {/* Send Button */}
+                  <button
+                    onClick={() => handleSend()}
+                    disabled={isSendDisabled}
+                    type="button"
+                    className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white disabled:opacity-50 transition-colors"
+                    title="Send message"
+                  >
+                    <SendHorizontal className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
 

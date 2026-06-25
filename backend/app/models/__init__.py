@@ -9,3 +9,4 @@ from .otp_verification import OTPVerification
 from .role import Role
 from .department import Department
 from .notification import Notification
+from .available_model import AvailableModel

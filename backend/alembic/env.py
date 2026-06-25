@@ -27,6 +27,7 @@ from app.models.otp_verification import OTPVerification
 from app.models.role import Role
 from app.models.department import Department
 from app.models.notification import Notification
+from app.models.available_model import AvailableModel
 
 
 # this is the Alembic Config object, which provides

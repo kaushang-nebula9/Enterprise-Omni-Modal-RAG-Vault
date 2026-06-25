@@ -1,12 +1,90 @@
 import React, { useState, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { adminService } from '../../services/adminService';
+import { Plus, Trash2, Edit } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useNavigate } from 'react-router-dom';
 
 export const OrganisationSettingsPage: React.FC = () => {
   const { logout } = useAuthStore();
   const navigate = useNavigate();
+
+  // Models CRUD state
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingModelId, setEditingModelId] = useState<string | null>(null);
+  
+  const [displayName, setDisplayName] = useState('');
+  const [provider, setProvider] = useState<'anthropic' | 'openrouter'>('anthropic');
+  const [modelString, setModelString] = useState('');
+  const [isActive, setIsActive] = useState(true);
+
+  const resetForm = () => {
+    setDisplayName('');
+    setProvider('anthropic');
+    setModelString('');
+    setIsActive(true);
+    setEditingModelId(null);
+  };
+
+  const { data: modelsData, refetch: refetchModels } = useQuery({
+    queryKey: ['admin-models'],
+    queryFn: adminService.getModels,
+  });
+
+  const createModelMutation = useMutation({
+    mutationFn: adminService.createModel,
+    onSuccess: () => {
+      refetchModels();
+      setIsAddModalOpen(false);
+      resetForm();
+    }
+  });
+
+  const updateModelMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => adminService.updateModel(id, data),
+    onSuccess: () => {
+      refetchModels();
+      setIsAddModalOpen(false);
+      resetForm();
+    }
+  });
+
+  const deleteModelMutation = useMutation({
+    mutationFn: adminService.deleteModel,
+    onSuccess: () => {
+      refetchModels();
+    }
+  });
+
+  const handleSubmitModel = (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      display_name: displayName,
+      provider,
+      model_string: modelString,
+      is_active: isActive
+    };
+
+    if (isEditing && editingModelId) {
+      updateModelMutation.mutate({ id: editingModelId, data: payload });
+    } else {
+      createModelMutation.mutate(payload);
+    }
+  };
+
+  const handleToggleActive = (model: any) => {
+    updateModelMutation.mutate({
+      id: model.id,
+      data: { is_active: !model.is_active }
+    });
+  };
+
+  const handleDeleteModel = (id: string) => {
+    if (confirm('Are you sure you want to delete this model configuration?')) {
+      deleteModelMutation.mutate(id);
+    }
+  };
 
   const [orgName, setOrgName] = useState('');
   const [orgWebsite, setOrgWebsite] = useState('');
@@ -97,7 +175,102 @@ export const OrganisationSettingsPage: React.FC = () => {
 
         <hr className="border-slate-200 dark:border-slate-800 my-2" />
 
-        <section className="border border-red-200 dark:border-red-950/60 rounded-xl p-6 bg-red-50 dark:bg-red-950/10">
+        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 font-sora">Models Configuration</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Manage the available LLMs for RAG chat generation and system settings.</p>
+            </div>
+            <button
+              onClick={() => {
+                setIsEditing(false);
+                setIsAddModalOpen(true);
+                resetForm();
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-700 dark:bg-indigo-500 text-white rounded-lg text-sm font-medium hover:bg-indigo-600 dark:hover:bg-indigo-400 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Model
+            </button>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left border-collapse">
+              <thead className="bg-slate-50 dark:bg-slate-800/40">
+                <tr>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Display Name</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Provider</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Model Identifier</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Status</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 text-sm">
+                {!modelsData || modelsData.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-slate-400 dark:text-slate-500">
+                      No models configured. Add a model to get started.
+                    </td>
+                  </tr>
+                ) : (
+                  modelsData.map((model) => (
+                    <tr key={model.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
+                      <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">{model.display_name}</td>
+                      <td className="px-4 py-3.5">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          model.provider === 'anthropic'
+                            ? 'bg-orange-50 dark:bg-orange-950/20 text-orange-700 dark:text-orange-400'
+                            : 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400'
+                        }`}>
+                          {model.provider === 'anthropic' ? 'Anthropic' : 'OpenRouter'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{model.model_string}</td>
+                      <td className="px-4 py-3.5">
+                        <button
+                          onClick={() => handleToggleActive(model)}
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold cursor-pointer select-none transition-colors ${
+                            model.is_active
+                              ? 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-900/50'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200/50 dark:border-slate-700/50'
+                          }`}
+                        >
+                          {model.is_active ? 'Active' : 'Inactive'}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3.5 text-right space-x-2">
+                        <button
+                          onClick={() => {
+                            setIsEditing(true);
+                            setEditingModelId(model.id);
+                            setDisplayName(model.display_name);
+                            setProvider(model.provider);
+                            setModelString(model.model_string);
+                            setIsActive(model.is_active);
+                            setIsAddModalOpen(true);
+                          }}
+                          className="text-slate-500 hover:text-indigo-650 dark:text-slate-400 dark:hover:text-indigo-400 p-1"
+                        >
+                          <Edit className="w-4 h-4 inline" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteModel(model.id)}
+                          className="text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-450 p-1"
+                        >
+                          <Trash2 className="w-4 h-4 inline" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <hr className="border-slate-200 dark:border-slate-800 my-2" />
+
+        <section className="border border-red-200 dark:border-red-950/60 rounded-xl p-6 bg-red-50 dark:bg-red-950/10 mb-10">
           <h2 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2 font-sora">Danger Zone</h2>
           <div className="flex flex-col md:flex-row gap-6 md:items-center justify-between">
             <div>
@@ -129,7 +302,7 @@ export const OrganisationSettingsPage: React.FC = () => {
               className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-red-100 dark:focus:ring-red-950/50 focus:border-red-500 dark:focus:border-red-400 outline-none transition-all mb-6 text-center text-slate-800 dark:text-slate-100" 
             />
             <div className="flex gap-3 w-full">
-              <button onClick={() => { setIsDeleteModalOpen(false); setDeleteConfirmName(''); }} className="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium transition-colors">Cancel</button>
+              <button onClick={() => { setIsDeleteModalOpen(false); setDeleteConfirmName(''); }} className="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-55 dark:hover:bg-slate-800 font-medium transition-colors">Cancel</button>
               <button 
                 disabled={deleteConfirmName !== orgName || deleteMutation.isPending}
                 onClick={handleDelete} 
@@ -138,6 +311,81 @@ export const OrganisationSettingsPage: React.FC = () => {
                 {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl w-full max-w-md p-6 text-slate-800 dark:text-slate-100">
+            <h3 className="text-xl font-semibold mb-4 font-sora">{isEditing ? 'Edit Model' : 'Add Model'}</h3>
+            <form onSubmit={handleSubmitModel} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Display Name</label>
+                <input
+                  required
+                  type="text"
+                  placeholder="e.g. Claude 4.5 Haiku"
+                  value={displayName}
+                  onChange={e => setDisplayName(e.target.value)}
+                  className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Provider</label>
+                <select
+                  value={provider}
+                  onChange={e => setProvider(e.target.value as 'anthropic' | 'openrouter')}
+                  className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all text-slate-800 dark:text-slate-100"
+                >
+                  <option value="anthropic">Anthropic</option>
+                  <option value="openrouter">OpenRouter</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Model Identifier String</label>
+                <input
+                  required
+                  type="text"
+                  placeholder="e.g. claude-haiku-4-5-20251001"
+                  value={modelString}
+                  onChange={e => setModelString(e.target.value)}
+                  className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all font-mono text-sm text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-2">
+                <input
+                  type="checkbox"
+                  id="is_active_checkbox"
+                  checked={isActive}
+                  onChange={e => setIsActive(e.target.checked)}
+                  className="rounded border-slate-300 dark:border-slate-700 text-indigo-650 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                />
+                <label htmlFor="is_active_checkbox" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                  Model is Active and available for selection
+                </label>
+              </div>
+
+              <div className="flex gap-3 w-full pt-4">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-650 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createModelMutation.isPending || updateModelMutation.isPending}
+                  className="flex-1 py-2 rounded-lg bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-medium transition-colors disabled:opacity-50"
+                >
+                  {createModelMutation.isPending || updateModelMutation.isPending ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

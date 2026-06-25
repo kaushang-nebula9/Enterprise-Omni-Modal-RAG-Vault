@@ -348,6 +348,7 @@ async def run_rag_pipeline(
     compare_document_ids: Optional[list[uuid.UUID]] = None,
     is_compare_mode: bool = False,
     is_summarize_mode: bool = False,
+    model_id: Optional[uuid.UUID] = None,
 ) -> AsyncGenerator[dict, None]:
     """
     Main RAG pipeline with streaming output:
@@ -516,24 +517,53 @@ async def run_rag_pipeline(
     if command_instruction:
         system_prompt += f"\n\n[Instructions]\n{command_instruction}"
 
+    # Resolve model and provider
+    selected_model_string = "claude-haiku-4-5-20251001"
+    selected_provider = "anthropic"
+
+    if model_id:
+        from app.models.available_model import AvailableModel
+        db_model = db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
+        if db_model:
+            selected_model_string = db_model.model_string
+            selected_provider = db_model.provider
+
     full_answer_list = []
     try:
-        client = _get_async_anthropic_client()
-        async with client.messages.stream(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=8192,
-            temperature=0,
-            system=system_prompt,
-            messages=[
-                {"role": "user", "content": final_prompt}
-            ]
-        ) as stream:
-            async for event in stream:
-                if event.type == "text":
-                    full_answer_list.append(event.text)
-                    yield {"type": "token", "content": event.text}
+        if selected_provider == "anthropic":
+            client = _get_async_anthropic_client()
+            stream_kwargs = {
+                "model": selected_model_string,
+                "max_tokens": 8192,
+                "system": system_prompt,
+                "messages": [
+                    {"role": "user", "content": final_prompt}
+                ]
+            }
+            # Omit temperature if model is Opus (deprecated)
+            if "opus" not in selected_model_string.lower():
+                stream_kwargs["temperature"] = 0
+
+            async with client.messages.stream(**stream_kwargs) as stream:
+                async for event in stream:
+                    if event.type == "text":
+                        full_answer_list.append(event.text)
+                        yield {"type": "token", "content": event.text}
+        elif selected_provider == "openrouter":
+            from app.services.openrouter_service import stream_openrouter_completion
+            async for chunk in stream_openrouter_completion(
+                model_string=selected_model_string,
+                system_prompt=system_prompt,
+                messages=[
+                    {"role": "user", "content": final_prompt}
+                ]
+            ):
+                full_answer_list.append(chunk)
+                yield {"type": "token", "content": chunk}
+        else:
+            raise ValueError(f"Unsupported model provider: {selected_provider}")
     except Exception as exc:
-        logger.error("Anthropic streaming answer generation failed: %s", exc)
+        logger.error("%s streaming answer generation failed: %s", selected_provider, exc)
         error_msg = "I encountered an error while generating an answer. Please try again."
         full_answer_list.append(error_msg)
         yield {"type": "token", "content": error_msg}

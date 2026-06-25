@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
+    OPENROUTER_API_KEY: Optional[str] = None
     SECRET_KEY: str = "your-secret-key-change-this"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
