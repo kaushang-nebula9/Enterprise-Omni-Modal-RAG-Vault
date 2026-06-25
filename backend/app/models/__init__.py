@@ -10,3 +10,5 @@ from .role import Role
 from .department import Department
 from .notification import Notification
 from .available_model import AvailableModel
+from .usage_log import UsageLog
+

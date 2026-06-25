@@ -41,3 +41,14 @@ class ModelUpdateRequest(BaseModel):
     model_string: Optional[str] = Field(None, min_length=1)
     is_active: Optional[bool] = None
 
+from datetime import date
+
+class UsageSummaryItem(BaseModel):
+    date: date
+    request_count: int
+    total_tokens: int
+
+class UsageSummaryResponse(BaseModel):
+    usage: list[UsageSummaryItem]
+
+

@@ -8,3 +8,4 @@ from app.models.otp_verification import OTPVerification
 from app.models.role import Role
 from app.models.department import Department
 from app.models.available_model import AvailableModel
+from app.models.usage_log import UsageLog

@@ -10,10 +10,11 @@ async def stream_openrouter_completion(
     model_string: str,
     system_prompt: str,
     messages: list[dict],
-) -> AsyncGenerator[str, None]:
+) -> AsyncGenerator[tuple[str, str | dict], None]:
     """
     Streams tokens from OpenRouter API using an OpenAI-compatible format.
-    Accepts system prompt and user messages, and yields text chunks as they arrive.
+    Accepts system prompt and user messages, and yields tuples of (chunk_type, data)
+    where chunk_type is "text" (with string delta) or "usage" (with usage dictionary).
     """
     if not settings.OPENROUTER_API_KEY:
         raise ValueError("OPENROUTER_API_KEY is not configured.")
@@ -39,6 +40,7 @@ async def stream_openrouter_completion(
         "messages": formatted_messages,
         "stream": True,
         "temperature": 0.0,
+        "stream_options": {"include_usage": True},
     }
 
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -62,12 +64,17 @@ async def stream_openrouter_completion(
                         break
                     try:
                         data = json.loads(data_str)
+                        usage = data.get("usage")
+                        if usage:
+                            yield "usage", usage
+
                         choices = data.get("choices", [])
                         if choices:
                             delta = choices[0].get("delta", {})
                             content = delta.get("content")
                             if content:
-                                yield content
+                                yield "text", content
                     except json.JSONDecodeError:
                         # Sometimes OpenRouter sends metadata comments or empty lines, ignore parse errors
                         logger.debug("Non-JSON line in SSE stream: %s", line)
+

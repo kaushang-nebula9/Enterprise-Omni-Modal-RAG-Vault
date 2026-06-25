@@ -32,6 +32,15 @@ class MockEvent:
         self.type = "text"
         self.text = text
 
+class MockUsage:
+    def __init__(self, input_tokens=10, output_tokens=20):
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+
+class MockFinalMessage:
+    def __init__(self):
+        self.usage = MockUsage()
+
 class MockStream:
     async def __aenter__(self):
         return self
@@ -39,6 +48,8 @@ class MockStream:
         pass
     async def __aiter__(self):
         yield MockEvent("Mocked answer token")
+    async def get_final_message(self):
+        return MockFinalMessage()
 
 class MockMessages:
     def stream(self, *args, **kwargs):

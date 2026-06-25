@@ -65,6 +65,7 @@ class UserResponse(BaseModel):
     role_id: UUID
     role: RoleResponse
     tenant_id: UUID
+    tenant_name: str
     is_active: bool
     has_password: bool
     avatar_url: str | None = None

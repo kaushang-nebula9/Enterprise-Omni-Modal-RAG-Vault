@@ -49,3 +49,7 @@ class User(Base):
     query_sessions: Mapped[list["QuerySession"]] = relationship("QuerySession", back_populates="user", cascade="all, delete-orphan")
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
     invite_tokens: Mapped[list["InviteToken"]] = relationship("InviteToken", back_populates="user", cascade="all, delete-orphan")
+
+    @property
+    def tenant_name(self) -> str:
+        return self.tenant.name if self.tenant else ""

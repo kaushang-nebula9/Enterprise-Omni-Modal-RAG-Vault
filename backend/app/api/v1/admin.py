@@ -12,7 +12,8 @@ from app.schemas.admin import (
     AdminStatsResponse,
     UpdateMemberRequest,
     UpdateOrganisationRequest,
-    TenantResponse
+    TenantResponse,
+    UsageSummaryResponse
 )
 from app.schemas.auth import MessageResponse
 import re
@@ -275,4 +276,67 @@ def admin_delete_model(
     db.delete(db_model)
     db.commit()
     return MessageResponse(message="Model deleted successfully")
+
+
+from datetime import date, timedelta
+from sqlalchemy import cast, Date, func
+from app.models.usage_log import UsageLog
+from app.schemas.admin import UsageSummaryItem
+
+@router.get("/usage", response_model=UsageSummaryResponse)
+def get_usage_summary(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    provider: str | None = None,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns daily aggregates of token usage and request count for the admin's tenant.
+    """
+    if not end_date:
+        end_date = date.today()
+    if not start_date:
+        start_date = end_date - timedelta(days=30)
+
+    # Use appropriate date extraction expression depending on DB dialect (SQLite vs PostgreSQL)
+    if db.bind.dialect.name == "sqlite":
+        date_expr = func.date(UsageLog.created_at)
+    else:
+        date_expr = cast(UsageLog.created_at, Date)
+
+    query = db.query(
+        date_expr.label("day"),
+        func.count(UsageLog.id).label("request_count"),
+        func.sum(UsageLog.input_tokens + UsageLog.output_tokens).label("total_tokens")
+    ).filter(
+        UsageLog.tenant_id == current_admin.tenant_id,
+        date_expr >= start_date,
+        date_expr <= end_date
+    )
+
+    if provider:
+        query = query.filter(UsageLog.provider == provider)
+
+    results = query.group_by(
+        date_expr
+    ).order_by(
+        date_expr.asc()
+    ).all()
+
+    usage_items = []
+    for row in results:
+        day_val = row.day
+        if isinstance(day_val, str):
+            day_val = date.fromisoformat(day_val)
+        usage_items.append(
+            UsageSummaryItem(
+                date=day_val,
+                request_count=row.request_count,
+                total_tokens=int(row.total_tokens) if row.total_tokens is not None else 0
+            )
+        )
+
+    return UsageSummaryResponse(usage=usage_items)
+
 

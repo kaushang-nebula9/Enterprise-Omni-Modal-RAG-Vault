@@ -529,6 +529,8 @@ async def run_rag_pipeline(
             selected_provider = db_model.provider
 
     full_answer_list = []
+    input_tokens = 0
+    output_tokens = 0
     try:
         if selected_provider == "anthropic":
             client = _get_async_anthropic_client()
@@ -549,24 +551,51 @@ async def run_rag_pipeline(
                     if event.type == "text":
                         full_answer_list.append(event.text)
                         yield {"type": "token", "content": event.text}
+                
+                final_msg = await stream.get_final_message()
+                if getattr(final_msg, "usage", None):
+                    input_tokens = getattr(final_msg.usage, "input_tokens", 0)
+                    output_tokens = getattr(final_msg.usage, "output_tokens", 0)
         elif selected_provider == "openrouter":
             from app.services.openrouter_service import stream_openrouter_completion
-            async for chunk in stream_openrouter_completion(
+            async for chunk_type, data in stream_openrouter_completion(
                 model_string=selected_model_string,
                 system_prompt=system_prompt,
                 messages=[
                     {"role": "user", "content": final_prompt}
                 ]
             ):
-                full_answer_list.append(chunk)
-                yield {"type": "token", "content": chunk}
+                if chunk_type == "text":
+                    full_answer_list.append(data)
+                    yield {"type": "token", "content": data}
+                elif chunk_type == "usage":
+                    input_tokens = data.get("prompt_tokens", 0)
+                    output_tokens = data.get("completion_tokens", 0)
         else:
             raise ValueError(f"Unsupported model provider: {selected_provider}")
+
+        # Save UsageLog row
+        try:
+            from app.models.usage_log import UsageLog
+            usage_log = UsageLog(
+                tenant_id=user.tenant_id,
+                user_id=user.id,
+                provider=selected_provider,
+                model_string=selected_model_string,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens
+            )
+            db.add(usage_log)
+            db.commit()
+        except Exception as db_exc:
+            logger.error("Failed to save usage log to database: %s", db_exc)
+            db.rollback()
     except Exception as exc:
         logger.error("%s streaming answer generation failed: %s", selected_provider, exc)
         error_msg = "I encountered an error while generating an answer. Please try again."
         full_answer_list.append(error_msg)
         yield {"type": "token", "content": error_msg}
+
 
     full_answer = "".join(full_answer_list).strip()
     if not full_answer:

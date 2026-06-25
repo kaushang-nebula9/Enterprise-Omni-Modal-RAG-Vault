@@ -17,6 +17,7 @@ export interface UserResponse {
   role_id: string
   role: RoleResponse
   tenant_id: string
+  tenant_name: string
   is_active: boolean
   has_password: boolean
   avatar_url: string | null
