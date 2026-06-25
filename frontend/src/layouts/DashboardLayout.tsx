@@ -1,10 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from '../components/dashboard/Sidebar';
 import TopNavbar from '../components/dashboard/TopNavbar';
+import { useNotificationStore } from '../store/notificationStore';
 
 const DashboardLayout: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(true);
+  const { fetchNotifications, connectSSE, disconnectSSE } = useNotificationStore();
+
+  useEffect(() => {
+    fetchNotifications();
+    connectSSE();
+    return () => {
+      disconnectSSE();
+    };
+  }, [fetchNotifications, connectSSE, disconnectSSE]);
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden font-inter">

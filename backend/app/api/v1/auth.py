@@ -574,7 +574,19 @@ def invite_member(
         )
         db.add(invite_token)
         db.commit()
-        
+
+        # Send role_assigned notification
+        from app.services.notification_service import create_notification
+        from app.models.enums import NotificationType
+        create_notification(
+            db=db,
+            user_id=user.id,
+            tenant_id=user.tenant_id,
+            type=NotificationType.role_assigned,
+            message=f"You have been assigned the role: {role.name}",
+            related_role_id=role.id
+        )
+
         # Send invite email
         send_invite_email(
             to_email=request.email,

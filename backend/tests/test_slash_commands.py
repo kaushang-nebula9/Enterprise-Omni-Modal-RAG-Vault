@@ -80,10 +80,11 @@ def test_parse_summarize_with_question(db):
     role_id = uuid.uuid4()
     user = User(id=user_id, tenant_id=tenant_id, role_id=role_id, email="test@example.com", full_name="Test User", hashed_password="some_hash")
 
+    from app.api.v1.chat import SUMMARIZE_FOCUSED_INSTRUCTION
     disp, ret, inst, cmp_ids, is_cmp, is_sum = parse_chat_command("/summarize How to build a RAG?", db, user, None)
     assert disp == "/summarize How to build a RAG?"
     assert ret == "How to build a RAG?"
-    assert inst is None
+    assert inst == SUMMARIZE_FOCUSED_INSTRUCTION
     assert cmp_ids is None
     assert is_cmp is False
     assert is_sum is False

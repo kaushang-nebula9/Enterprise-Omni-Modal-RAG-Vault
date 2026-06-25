@@ -204,10 +204,35 @@ def update_role(
                 detail="Cannot set this parent role — it would create a circular hierarchy"
             )
 
+    # Track department changes
+    old_dept_id = role.department_id
+    dept_changed = request.department_id is not None and request.department_id != old_dept_id
+
     role.name = request.name
     role.parent_role_id = request.parent_role_id
     role.department_id = request.department_id
     db.commit()
+
+    if dept_changed and request.department_id:
+        from app.models.department import Department
+        from app.services.notification_service import create_notification
+        from app.models.enums import NotificationType
+        
+        dept = db.query(Department).filter(Department.id == request.department_id).first()
+        dept_name = dept.name if dept else "unknown department"
+        
+        role_users = db.query(User).filter(User.role_id == role.id).all()
+        for u in role_users:
+            create_notification(
+                db=db,
+                user_id=u.id,
+                tenant_id=u.tenant_id,
+                type=NotificationType.department_added,
+                message=f"Your role '{role.name}' has been added to department: {dept_name}",
+                related_role_id=role.id,
+                related_department_id=request.department_id
+            )
+
     db.refresh(role)
     return role
 

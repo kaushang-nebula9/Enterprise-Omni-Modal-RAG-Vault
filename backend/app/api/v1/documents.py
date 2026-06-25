@@ -75,6 +75,13 @@ def _create_policies_with_inheritance(
     doesn't already have access to this document, unless they are explicitly
     excluded in unchecked_ancestor_ids.
     """
+    from app.services.notification_service import create_notification
+    from app.models.enums import NotificationType
+    
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        return
+
     # Track which role_ids already have a policy for this document
     covered: set[uuid.UUID] = set()
 
@@ -91,10 +98,27 @@ def _create_policies_with_inheritance(
         db.add(policy)
         covered.add(role_id)
 
+        # Notify users in direct role
+        role_users = db.query(User).filter(User.role_id == role_id).all()
+        for user in role_users:
+            create_notification(
+                db=db,
+                user_id=user.id,
+                tenant_id=user.tenant_id,
+                type=NotificationType.document_access_direct,
+                message=f"You have been granted direct access to document: {document.filename}",
+                related_document_id=document_id,
+                related_role_id=role_id,
+                flush_only=True,
+            )
+
     # 2. Create inherited policies for ancestors of each direct role
     unchecked_set = set(unchecked_ancestor_ids or [])
     for role_id in direct_role_ids:
         ancestors = get_role_ancestors(role_id, db)
+        child_role = db.query(Role).filter(Role.id == role_id).first()
+        child_role_name = child_role.name if child_role else "another role"
+        
         for ancestor in ancestors:
             if ancestor.id in covered:
                 continue
@@ -117,6 +141,21 @@ def _create_policies_with_inheritance(
             )
             db.add(policy)
             covered.add(ancestor.id)
+
+            # Notify users in ancestor role
+            ancestor_users = db.query(User).filter(User.role_id == ancestor.id).all()
+            for user in ancestor_users:
+                create_notification(
+                    db=db,
+                    user_id=user.id,
+                    tenant_id=user.tenant_id,
+                    type=NotificationType.document_access_inherited_hierarchy,
+                    message=f"You have been granted inherited access to document: {document.filename} (inherited from role: {child_role_name})",
+                    related_document_id=document_id,
+                    related_role_id=ancestor.id,
+                    flush_only=True,
+                )
+
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +289,9 @@ def upload_document(
         file_size=file.size,
     )
     db.add(document)
+    # Flush so the document row exists in the DB before policies and
+    # notifications try to reference it via foreign keys.
+    db.flush()
 
     # Create access policy records (direct + inherited for ancestors)
     if parsed_role_ids:
@@ -257,6 +299,9 @@ def upload_document(
 
     # Create department-based access policies
     if parsed_dept_ids:
+        from app.services.notification_service import create_notification
+        from app.models.enums import NotificationType
+
         for dept_id in parsed_dept_ids:
             dept_roles = db.query(Role).filter(
                 Role.department_id == dept_id,
@@ -276,6 +321,22 @@ def upload_document(
                         inherited_from_role_id=None
                     )
                     db.add(policy)
+
+            # Notify users whose role belongs to that department
+            dept = db.query(Department).filter(Department.id == dept_id).first()
+            dept_name = dept.name if dept else "unknown department"
+            dept_users = db.query(User).join(Role).filter(Role.department_id == dept_id).all()
+            for u in dept_users:
+                create_notification(
+                    db=db,
+                    user_id=u.id,
+                    tenant_id=u.tenant_id,
+                    type=NotificationType.document_access_inherited_department,
+                    message=f"You have been granted access to document: {filename} (via department: {dept_name})",
+                    related_document_id=document_id,
+                    related_department_id=dept_id,
+                    flush_only=True,
+                )
 
     db.commit()
 
@@ -587,6 +648,22 @@ def assign_department(
                 inherited_from_role_id=None
             )
             db.add(policy)
+
+    # Notify users in this department
+    from app.services.notification_service import create_notification
+    from app.models.enums import NotificationType
+    dept_users = db.query(User).join(Role).filter(Role.department_id == dept.id).all()
+    for u in dept_users:
+        create_notification(
+            db=db,
+            user_id=u.id,
+            tenant_id=u.tenant_id,
+            type=NotificationType.document_access_inherited_department,
+            message=f"You have been granted access to document: {doc.filename} (via department: {dept.name})",
+            related_document_id=document_id,
+            related_department_id=dept.id,
+            flush_only=True,
+        )
 
     db.commit()
 

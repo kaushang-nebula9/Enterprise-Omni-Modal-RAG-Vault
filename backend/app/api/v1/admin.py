@@ -74,6 +74,8 @@ def update_member(
     if target_user.role.is_admin:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot modify another admin's account")
 
+    role_changed = False
+    new_role = None
     if request.role_id is not None:
         new_role = db.query(Role).filter(
             Role.id == request.role_id,
@@ -81,6 +83,7 @@ def update_member(
         ).first()
         if not new_role:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role")
+        role_changed = target_user.role_id != request.role_id
         target_user.role_id = request.role_id
 
     if request.is_active is not None:
@@ -89,6 +92,19 @@ def update_member(
             db.query(RefreshToken).filter(RefreshToken.user_id == target_user.id).update({RefreshToken.is_revoked: True})
 
     db.commit()
+
+    if role_changed and new_role:
+        from app.services.notification_service import create_notification
+        from app.models.enums import NotificationType
+        create_notification(
+            db=db,
+            user_id=target_user.id,
+            tenant_id=target_user.tenant_id,
+            type=NotificationType.role_assigned,
+            message=f"You have been assigned the role: {new_role.name}",
+            related_role_id=new_role.id
+        )
+
     db.refresh(target_user)
     # Re-fetch to ensure role relationship is eager-loaded
     target_user = db.query(User).options(joinedload(User.role)).filter(User.id == target_user.id).first()

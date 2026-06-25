@@ -8,3 +8,4 @@ from .query_message import QueryMessage
 from .otp_verification import OTPVerification
 from .role import Role
 from .department import Department
+from .notification import Notification
