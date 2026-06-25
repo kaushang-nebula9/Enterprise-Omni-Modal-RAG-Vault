@@ -279,9 +279,17 @@ def admin_delete_model(
 
 
 from datetime import date, timedelta
-from sqlalchemy import cast, Date, func
+from sqlalchemy import cast, Date, func, case, and_
+from sqlalchemy.orm import joinedload
 from app.models.usage_log import UsageLog
-from app.schemas.admin import UsageSummaryItem
+from app.models.department import Department
+from app.schemas.admin import (
+    UsageSummaryItem,
+    DashboardOverviewResponse,
+    DocumentInsightsResponse,
+    DocumentTypeCount,
+    RecentDocumentItem
+)
 
 @router.get("/usage", response_model=UsageSummaryResponse)
 def get_usage_summary(
@@ -297,7 +305,7 @@ def get_usage_summary(
     if not end_date:
         end_date = date.today()
     if not start_date:
-        start_date = end_date - timedelta(days=30)
+        start_date = end_date - timedelta(days=6)
 
     # Use appropriate date extraction expression depending on DB dialect (SQLite vs PostgreSQL)
     if db.bind.dialect.name == "sqlite":
@@ -308,7 +316,67 @@ def get_usage_summary(
     query = db.query(
         date_expr.label("day"),
         func.count(UsageLog.id).label("request_count"),
-        func.sum(UsageLog.input_tokens + UsageLog.output_tokens).label("total_tokens")
+        func.sum(UsageLog.input_tokens + UsageLog.output_tokens).label("total_tokens"),
+        func.sum(
+            case(
+                (UsageLog.provider == "anthropic", UsageLog.input_tokens),
+                else_=0
+            )
+        ).label("claude_input_tokens"),
+        func.sum(
+            case(
+                (UsageLog.provider == "anthropic", UsageLog.output_tokens),
+                else_=0
+            )
+        ).label("claude_output_tokens"),
+        func.sum(
+            case(
+                (UsageLog.provider == "openrouter", UsageLog.input_tokens),
+                else_=0
+            )
+        ).label("openrouter_input_tokens"),
+        func.sum(
+            case(
+                (UsageLog.provider == "openrouter", UsageLog.output_tokens),
+                else_=0
+            )
+        ).label("openrouter_output_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "anthropic", func.lower(UsageLog.model_string).like("%haiku%")), UsageLog.input_tokens),
+                else_=0
+            )
+        ).label("claude_haiku_input_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "anthropic", func.lower(UsageLog.model_string).like("%haiku%")), UsageLog.output_tokens),
+                else_=0
+            )
+        ).label("claude_haiku_output_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "anthropic", func.lower(UsageLog.model_string).like("%sonnet%")), UsageLog.input_tokens),
+                else_=0
+            )
+        ).label("claude_sonnet_input_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "anthropic", func.lower(UsageLog.model_string).like("%sonnet%")), UsageLog.output_tokens),
+                else_=0
+            )
+        ).label("claude_sonnet_output_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "anthropic", func.lower(UsageLog.model_string).like("%opus%")), UsageLog.input_tokens),
+                else_=0
+            )
+        ).label("claude_opus_input_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "anthropic", func.lower(UsageLog.model_string).like("%opus%")), UsageLog.output_tokens),
+                else_=0
+            )
+        ).label("claude_opus_output_tokens")
     ).filter(
         UsageLog.tenant_id == current_admin.tenant_id,
         date_expr >= start_date,
@@ -333,10 +401,91 @@ def get_usage_summary(
             UsageSummaryItem(
                 date=day_val,
                 request_count=row.request_count,
-                total_tokens=int(row.total_tokens) if row.total_tokens is not None else 0
+                total_tokens=int(row.total_tokens) if row.total_tokens is not None else 0,
+                claude_input_tokens=int(row.claude_input_tokens) if row.claude_input_tokens is not None else 0,
+                claude_output_tokens=int(row.claude_output_tokens) if row.claude_output_tokens is not None else 0,
+                openrouter_input_tokens=int(row.openrouter_input_tokens) if row.openrouter_input_tokens is not None else 0,
+                openrouter_output_tokens=int(row.openrouter_output_tokens) if row.openrouter_output_tokens is not None else 0,
+                claude_haiku_input_tokens=int(row.claude_haiku_input_tokens) if row.claude_haiku_input_tokens is not None else 0,
+                claude_haiku_output_tokens=int(row.claude_haiku_output_tokens) if row.claude_haiku_output_tokens is not None else 0,
+                claude_sonnet_input_tokens=int(row.claude_sonnet_input_tokens) if row.claude_sonnet_input_tokens is not None else 0,
+                claude_sonnet_output_tokens=int(row.claude_sonnet_output_tokens) if row.claude_sonnet_output_tokens is not None else 0,
+                claude_opus_input_tokens=int(row.claude_opus_input_tokens) if row.claude_opus_input_tokens is not None else 0,
+                claude_opus_output_tokens=int(row.claude_opus_output_tokens) if row.claude_opus_output_tokens is not None else 0
             )
         )
 
     return UsageSummaryResponse(usage=usage_items)
+
+
+@router.get("/dashboard-overview", response_model=DashboardOverviewResponse)
+def get_dashboard_overview(
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns counts for departments, documents, roles, and members for the admin's tenant.
+    """
+    department_count = db.query(Department).filter(Department.tenant_id == current_admin.tenant_id).count()
+    document_count = db.query(Document).filter(Document.tenant_id == current_admin.tenant_id).count()
+    role_count = db.query(Role).filter(Role.tenant_id == current_admin.tenant_id).count()
+    member_count = db.query(User).filter(User.tenant_id == current_admin.tenant_id).count()
+
+    return DashboardOverviewResponse(
+        department_count=department_count,
+        document_count=document_count,
+        role_count=role_count,
+        member_count=member_count
+    )
+
+
+@router.get("/document-insights", response_model=DocumentInsightsResponse)
+def get_document_insights(
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns document type distribution and details of the 3 most recently uploaded documents.
+    """
+    # 1. Distribution
+    dist_raw = db.query(
+        Document.file_type,
+        func.count(Document.id).label("count")
+    ).filter(
+        Document.tenant_id == current_admin.tenant_id
+    ).group_by(
+        Document.file_type
+    ).all()
+
+    distribution = [
+        DocumentTypeCount(file_type=row.file_type.value, count=row.count)
+        for row in dist_raw
+    ]
+
+    # 2. Recent documents
+    recent_raw = db.query(Document).options(
+        joinedload(Document.uploader)
+    ).filter(
+        Document.tenant_id == current_admin.tenant_id
+    ).order_by(
+        Document.uploaded_at.desc()
+    ).limit(3).all()
+
+    recent_documents = [
+        RecentDocumentItem(
+            filename=doc.filename,
+            file_type=doc.file_type.value,
+            uploaded_by=doc.uploader.full_name if doc.uploader else "Unknown",
+            uploaded_at=doc.uploaded_at,
+            status=doc.status.value
+        )
+        for doc in recent_raw
+    ]
+
+    return DocumentInsightsResponse(
+        distribution=distribution,
+        recent_documents=recent_documents
+    )
+
 
 

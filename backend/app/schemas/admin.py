@@ -41,14 +41,47 @@ class ModelUpdateRequest(BaseModel):
     model_string: Optional[str] = Field(None, min_length=1)
     is_active: Optional[bool] = None
 
-from datetime import date
+from datetime import date, datetime
+from uuid import UUID
 
 class UsageSummaryItem(BaseModel):
     date: date
     request_count: int
     total_tokens: int
+    claude_input_tokens: int
+    claude_output_tokens: int
+    openrouter_input_tokens: int
+    openrouter_output_tokens: int
+    claude_haiku_input_tokens: int
+    claude_haiku_output_tokens: int
+    claude_sonnet_input_tokens: int
+    claude_sonnet_output_tokens: int
+    claude_opus_input_tokens: int
+    claude_opus_output_tokens: int
 
 class UsageSummaryResponse(BaseModel):
     usage: list[UsageSummaryItem]
+
+class DashboardOverviewResponse(BaseModel):
+    department_count: int
+    document_count: int
+    role_count: int
+    member_count: int
+
+class DocumentTypeCount(BaseModel):
+    file_type: str
+    count: int
+
+class RecentDocumentItem(BaseModel):
+    filename: str
+    file_type: str
+    uploaded_by: str
+    uploaded_at: datetime
+    status: str
+
+class DocumentInsightsResponse(BaseModel):
+    distribution: list[DocumentTypeCount]
+    recent_documents: list[RecentDocumentItem]
+
 
 

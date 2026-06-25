@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import { roleService } from '../../services/roleService';
 import { departmentService } from '../../services/departmentService';
 import type { RoleResponse } from '../../types/auth';
@@ -16,6 +17,7 @@ function formatDate(iso: string): string {
 
 export const RolesPermissionsPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const location = useLocation();
   const { data: roles, isLoading } = useQuery({
     queryKey: ['roles'],
     queryFn: roleService.getRoles,
@@ -71,6 +73,12 @@ export const RolesPermissionsPage: React.FC = () => {
   const [newRoleName, setNewRoleName] = useState('');
   const [newParentRoleId, setNewParentRoleId] = useState<string | null>(null);
   const [newDepartmentId, setNewDepartmentId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (location.state?.openCreate) {
+      setIsCreateOpen(true);
+    }
+  }, [location]);
 
   const [search, setSearch] = useState('');
   const [filterDept, setFilterDept] = useState('all');

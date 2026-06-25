@@ -1,10 +1,35 @@
 import api from './api';
 import type { UserResponse, AdminStatsResponse, TenantResponse, MessageResponse } from '../types/auth';
-import type { UpdateMemberPayload, UpdateOrganisationPayload } from '../types/admin';
+import type { 
+  UpdateMemberPayload, 
+  UpdateOrganisationPayload,
+  UsageSummaryResponse,
+  DashboardOverviewResponse,
+  DocumentInsightsResponse
+} from '../types/admin';
+import type { AvailableModel } from '../types/chat';
 
 export const adminService = {
   getStats: async (): Promise<AdminStatsResponse> => {
     const response = await api.get('/api/v1/admin/stats');
+    return response.data;
+  },
+
+  getUsageSummary: async (startDate?: string, endDate?: string): Promise<UsageSummaryResponse> => {
+    const params = new URLSearchParams();
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    const response = await api.get('/api/v1/admin/usage', { params });
+    return response.data;
+  },
+
+  getDashboardOverview: async (): Promise<DashboardOverviewResponse> => {
+    const response = await api.get('/api/v1/admin/dashboard-overview');
+    return response.data;
+  },
+
+  getDocumentInsights: async (): Promise<DocumentInsightsResponse> => {
+    const response = await api.get('/api/v1/admin/document-insights');
     return response.data;
   },
 
@@ -59,4 +84,3 @@ export const adminService = {
   }
 };
 
-import type { AvailableModel } from '../types/chat';

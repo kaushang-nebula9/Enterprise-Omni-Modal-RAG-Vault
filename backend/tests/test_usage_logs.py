@@ -309,17 +309,33 @@ def test_get_usage_summary_endpoint(db):
     )
     
     assert len(resp.usage) == 3
+    
+    # 2 days ago: log3 (anthropic, input 300, output 400)
     assert resp.usage[0].date == two_days_ago.date()
     assert resp.usage[0].request_count == 1
     assert resp.usage[0].total_tokens == 700
+    assert resp.usage[0].claude_input_tokens == 300
+    assert resp.usage[0].claude_output_tokens == 400
+    assert resp.usage[0].openrouter_input_tokens == 0
+    assert resp.usage[0].openrouter_output_tokens == 0
     
+    # Yesterday: log2 (openrouter, input 50, output 150)
     assert resp.usage[1].date == yesterday.date()
     assert resp.usage[1].request_count == 1
     assert resp.usage[1].total_tokens == 200
+    assert resp.usage[1].claude_input_tokens == 0
+    assert resp.usage[1].claude_output_tokens == 0
+    assert resp.usage[1].openrouter_input_tokens == 50
+    assert resp.usage[1].openrouter_output_tokens == 150
 
+    # Today: log1 (anthropic, input 100, output 200)
     assert resp.usage[2].date == today.date()
     assert resp.usage[2].request_count == 1
     assert resp.usage[2].total_tokens == 300
+    assert resp.usage[2].claude_input_tokens == 100
+    assert resp.usage[2].claude_output_tokens == 200
+    assert resp.usage[2].openrouter_input_tokens == 0
+    assert resp.usage[2].openrouter_output_tokens == 0
 
     resp_anthropic = get_usage_summary(
         provider="anthropic",
@@ -338,3 +354,79 @@ def test_get_usage_summary_endpoint(db):
     assert len(resp_range.usage) == 2
     assert resp_range.usage[0].date == yesterday.date()
     assert resp_range.usage[1].date == today.date()
+
+
+from app.api.v1.admin import get_dashboard_overview, get_document_insights
+from app.models.enums import FileType, DocumentStatus, OwnerType, Visibility
+
+def test_new_dashboard_endpoints(db):
+    tenant = Tenant(id=uuid.uuid4(), name="Stats Org", slug="stats-org")
+    db.add(tenant)
+    db.commit()
+    
+    role = Role(id=uuid.uuid4(), tenant_id=tenant.id, name="Admin", is_admin=True, is_default=True)
+    db.add(role)
+    db.commit()
+
+    admin_user = User(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        email="stats-admin@example.com",
+        full_name="Stats Admin",
+        hashed_password="hash",
+        role_id=role.id,
+        is_active=True
+    )
+    db.add(admin_user)
+    db.commit()
+
+    department = Department(id=uuid.uuid4(), tenant_id=tenant.id, name="Engineering")
+    db.add(department)
+    
+    doc1 = Document(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        uploaded_by=admin_user.id,
+        filename="notes.txt",
+        file_type=FileType.text,
+        owner_type=OwnerType.organisation,
+        visibility=Visibility.org_wide,
+        status=DocumentStatus.ready,
+        qdrant_collection="test",
+        uploaded_at=datetime.now() - timedelta(minutes=5)
+    )
+    doc2 = Document(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        uploaded_by=admin_user.id,
+        filename="report.pdf",
+        file_type=FileType.pdf,
+        owner_type=OwnerType.organisation,
+        visibility=Visibility.org_wide,
+        status=DocumentStatus.pending,
+        qdrant_collection="test",
+        uploaded_at=datetime.now()
+    )
+    db.add_all([doc1, doc2])
+    db.commit()
+
+    # Test /dashboard-overview endpoint
+    overview_resp = get_dashboard_overview(current_admin=admin_user, db=db)
+    assert overview_resp.department_count == 1
+    assert overview_resp.document_count == 2
+    assert overview_resp.role_count == 1  # only default Admin role
+    assert overview_resp.member_count == 1
+
+    # Test /document-insights endpoint
+    insights_resp = get_document_insights(current_admin=admin_user, db=db)
+    assert len(insights_resp.distribution) == 2
+    
+    dist_map = {item.file_type: item.count for item in insights_resp.distribution}
+    assert dist_map.get("text") == 1
+    assert dist_map.get("pdf") == 1
+
+    assert len(insights_resp.recent_documents) == 2
+    assert insights_resp.recent_documents[0].filename == "report.pdf"  # Uploaded last
+    assert insights_resp.recent_documents[0].uploaded_by == "Stats Admin"
+    assert insights_resp.recent_documents[0].status == "pending"
+

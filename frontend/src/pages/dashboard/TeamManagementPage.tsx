@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
 import { roleService } from '../../services/roleService';
 import { departmentService } from '../../services/departmentService';
@@ -37,6 +38,7 @@ const inviteMemberAPI = async (data: { full_name: string; email: string; role_id
 export const TeamManagementPage: React.FC = () => {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuthStore();
+  const location = useLocation();
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   
   // Modals state for actions
@@ -125,6 +127,17 @@ export const TeamManagementPage: React.FC = () => {
   const [editingDeptId, setEditingDeptId] = useState<string | null>(null);
   const [deptNameInput, setDeptNameInput] = useState('');
   const [deletingDeptId, setDeletingDeptId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (location.state?.openInvite) {
+      setIsInviteModalOpen(true);
+    }
+    if (location.state?.openCreateDept) {
+      setIsDeptModalOpen(true);
+      setDeptModalType('create');
+      setDeptNameInput('');
+    }
+  }, [location]);
 
   const createDeptMutation = useMutation({
     mutationFn: departmentService.createDepartment,

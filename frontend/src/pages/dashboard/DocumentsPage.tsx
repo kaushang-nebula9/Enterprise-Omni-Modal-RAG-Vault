@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useLocation } from 'react-router-dom'
 import {
   FileText,
   File,
@@ -720,6 +721,7 @@ type ModalState =
 
 export default function DocumentsPage() {
   const queryClient = useQueryClient()
+  const location = useLocation()
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
@@ -728,6 +730,12 @@ export default function DocumentsPage() {
 
   const [modal, setModal] = useState<ModalState>({ type: 'none' })
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (location.state?.openUpload) {
+      setModal({ type: 'upload' })
+    }
+  }, [location])
 
   const { data: documents = [], isLoading: docsLoading } = useQuery({
     queryKey: ['documents'],

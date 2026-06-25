@@ -29,3 +29,49 @@ export interface RoleTreeNode {
   descendant_count: number
   children: RoleTreeNode[]
 }
+
+export interface UsageSummaryItem {
+  date: string
+  request_count: number
+  total_tokens: number
+  claude_input_tokens: number
+  claude_output_tokens: number
+  openrouter_input_tokens: number
+  openrouter_output_tokens: number
+  claude_haiku_input_tokens: number
+  claude_haiku_output_tokens: number
+  claude_sonnet_input_tokens: number
+  claude_sonnet_output_tokens: number
+  claude_opus_input_tokens: number
+  claude_opus_output_tokens: number
+}
+
+export interface UsageSummaryResponse {
+  usage: UsageSummaryItem[]
+}
+
+export interface DashboardOverviewResponse {
+  department_count: number
+  document_count: number
+  role_count: number
+  member_count: number
+}
+
+export interface DocumentTypeCount {
+  file_type: string
+  count: number
+}
+
+export interface RecentDocumentItem {
+  filename: string
+  file_type: string
+  uploaded_by: string
+  uploaded_at: string
+  status: string
+}
+
+export interface DocumentInsightsResponse {
+  distribution: DocumentTypeCount[]
+  recent_documents: RecentDocumentItem[]
+}
+
