@@ -68,12 +68,26 @@ export const adminService = {
     return response.data;
   },
 
-  createModel: async (data: { display_name: string; provider: 'anthropic' | 'openrouter'; model_string: string; is_active: boolean }): Promise<AvailableModel> => {
+  createModel: async (data: { 
+    display_name: string; 
+    provider: 'anthropic' | 'openrouter'; 
+    model_string: string; 
+    is_active: boolean;
+    input_price_per_million?: number | null;
+    output_price_per_million?: number | null;
+  }): Promise<AvailableModel> => {
     const response = await api.post('/api/v1/admin/models', data);
     return response.data;
   },
 
-  updateModel: async (modelId: string, data: { display_name?: string; provider?: 'anthropic' | 'openrouter'; model_string?: string; is_active?: boolean }): Promise<AvailableModel> => {
+  updateModel: async (modelId: string, data: { 
+    display_name?: string; 
+    provider?: 'anthropic' | 'openrouter'; 
+    model_string?: string; 
+    is_active?: boolean;
+    input_price_per_million?: number | null;
+    output_price_per_million?: number | null;
+  }): Promise<AvailableModel> => {
     const response = await api.patch(`/api/v1/admin/models/${modelId}`, data);
     return response.data;
   },

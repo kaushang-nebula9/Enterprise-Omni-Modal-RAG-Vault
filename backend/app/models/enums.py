@@ -44,6 +44,7 @@ class NotificationType(str, enum.Enum):
     document_access_inherited_department = "document_access_inherited_department"
     department_added = "department_added"
     evaluation_completed = "evaluation_completed"
+    budget_exceeded = "budget_exceeded"
 
 class ModelProvider(str, enum.Enum):
     anthropic = "anthropic"

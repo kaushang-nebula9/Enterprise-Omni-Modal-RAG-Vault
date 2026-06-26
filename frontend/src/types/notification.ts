@@ -4,7 +4,8 @@ export type NotificationType =
   | 'document_access_inherited_hierarchy'
   | 'document_access_inherited_department'
   | 'department_added'
-  | 'evaluation_completed';
+  | 'evaluation_completed'
+  | 'budget_exceeded';
 
 export interface Notification {
   id: string;

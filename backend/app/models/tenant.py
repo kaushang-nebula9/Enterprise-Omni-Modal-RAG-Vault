@@ -1,10 +1,10 @@
 from datetime import datetime
 import uuid
-from sqlalchemy import String, DateTime, Uuid, func
+from sqlalchemy import String, DateTime, Uuid, func, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from app.models.document import Document
@@ -20,6 +20,7 @@ class Tenant(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     slug: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     website: Mapped[str | None] = mapped_column(String, nullable=True)
+    monthly_budget_limit: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 

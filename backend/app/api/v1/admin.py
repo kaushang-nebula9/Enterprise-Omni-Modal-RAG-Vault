@@ -16,6 +16,7 @@ from app.schemas.admin import (
     UsageSummaryResponse
 )
 from app.schemas.auth import MessageResponse
+from app.services.billing_service import calculate_tenant_monthly_cost
 import re
 import random
 from uuid import UUID
@@ -146,6 +147,10 @@ def get_organisation(
     tenant = db.query(Tenant).filter(Tenant.id == current_admin.tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    
+    # Calculate estimated usage dynamically
+    estimated_usage = calculate_tenant_monthly_cost(db, tenant.id)
+    tenant.estimated_usage_this_month = estimated_usage
     return tenant
 
 @router.patch("/organisation", response_model=TenantResponse)
@@ -154,7 +159,7 @@ def update_organisation(
     current_admin: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    """Update the tenant's name and/or website."""
+    """Update the tenant's name, website, and/or monthly budget limit."""
     tenant = db.query(Tenant).filter(Tenant.id == current_admin.tenant_id).first()
     if not tenant:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
@@ -173,8 +178,15 @@ def update_organisation(
         # Convert HttpUrl to string
         tenant.website = str(request.website)
 
+    if "monthly_budget_limit" in request.model_fields_set:
+        tenant.monthly_budget_limit = request.monthly_budget_limit
+
     db.commit()
     db.refresh(tenant)
+
+    # Attach estimated usage before returning
+    estimated_usage = calculate_tenant_monthly_cost(db, tenant.id)
+    tenant.estimated_usage_this_month = estimated_usage
     return tenant
 
 @router.delete("/organisation", response_model=MessageResponse)
@@ -226,7 +238,9 @@ def admin_create_model(
         display_name=request.display_name,
         provider=request.provider,
         model_string=request.model_string,
-        is_active=request.is_active
+        is_active=request.is_active,
+        input_price_per_million=request.input_price_per_million,
+        output_price_per_million=request.output_price_per_million
     )
     db.add(new_model)
     db.commit()
@@ -255,6 +269,10 @@ def admin_update_model(
         db_model.model_string = request.model_string
     if request.is_active is not None:
         db_model.is_active = request.is_active
+    if "input_price_per_million" in request.model_fields_set:
+        db_model.input_price_per_million = request.input_price_per_million
+    if "output_price_per_million" in request.model_fields_set:
+        db_model.output_price_per_million = request.output_price_per_million
 
     db.commit()
     db.refresh(db_model)

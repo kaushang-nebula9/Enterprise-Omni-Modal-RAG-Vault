@@ -23,6 +23,12 @@ celery_app.conf.update(
     # all connected simultaneously that easily exceeds the limit.
     broker_pool_limit=2,
     redis_max_connections=5,
+    beat_schedule={
+        "check-tenant-budgets-hourly": {
+            "task": "app.tasks.billing_tasks.check_tenant_budgets_task",
+            "schedule": 3600.0,
+        }
+    }
 )
 celery_app.autodiscover_tasks(["app.tasks"])
 

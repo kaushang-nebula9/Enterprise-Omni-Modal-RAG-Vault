@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bell, LogOut, UserCheck, FileText, Layers, Briefcase, Building2, Award } from 'lucide-react';
+import { Bell, LogOut, UserCheck, FileText, Layers, Briefcase, Building2, Award, AlertTriangle } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { logout } from '../../services/authService';
 import ThemeToggle from '../shared/ThemeToggle';
@@ -122,6 +122,8 @@ const TopNavbar: React.FC = () => {
                           return <Building2 className={`${baseClass} text-pink-500`} />;
                         case 'evaluation_completed':
                           return <Award className={`${baseClass} text-indigo-500`} />;
+                        case 'budget_exceeded':
+                          return <AlertTriangle className={`${baseClass} text-rose-500`} />;
                         default:
                           return <Bell className={`${baseClass} text-slate-500`} />;
                       }

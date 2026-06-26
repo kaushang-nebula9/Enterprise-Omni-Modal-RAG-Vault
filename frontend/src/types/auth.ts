@@ -83,6 +83,8 @@ export interface TenantResponse {
   name: string
   slug: string
   website: string | null
+  monthly_budget_limit: number | null
+  estimated_usage_this_month?: number
   created_at: string
 }
 

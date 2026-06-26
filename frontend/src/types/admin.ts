@@ -6,6 +6,7 @@ export interface UpdateMemberPayload {
 export interface UpdateOrganisationPayload {
   name?: string
   website?: string
+  monthly_budget_limit?: number | null
 }
 
 export interface CreateRolePayload {

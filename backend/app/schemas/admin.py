@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, HttpUrl
 from uuid import UUID
 from datetime import datetime
+from typing import Optional
 
 class AdminStatsResponse(BaseModel):
     total_documents: int
@@ -14,12 +15,15 @@ class UpdateMemberRequest(BaseModel):
 class UpdateOrganisationRequest(BaseModel):
     name: str | None = Field(None, min_length=2)
     website: HttpUrl | None = None
+    monthly_budget_limit: Optional[float] = None
 
 class TenantResponse(BaseModel):
     id: UUID
     name: str
     slug: str
     website: str | None = None
+    monthly_budget_limit: Optional[float] = None
+    estimated_usage_this_month: Optional[float] = None
     created_at: datetime
 
     model_config = {
@@ -34,12 +38,16 @@ class ModelCreateRequest(BaseModel):
     provider: ModelProvider
     model_string: str = Field(..., min_length=1)
     is_active: bool = True
+    input_price_per_million: Optional[float] = None
+    output_price_per_million: Optional[float] = None
 
 class ModelUpdateRequest(BaseModel):
     display_name: Optional[str] = Field(None, min_length=1)
     provider: Optional[ModelProvider] = None
     model_string: Optional[str] = Field(None, min_length=1)
     is_active: Optional[bool] = None
+    input_price_per_million: Optional[float] = None
+    output_price_per_million: Optional[float] = None
 
 from datetime import date, datetime
 from uuid import UUID

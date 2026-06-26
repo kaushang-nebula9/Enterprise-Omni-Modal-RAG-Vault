@@ -23,6 +23,8 @@ export interface AvailableModel {
   provider: 'anthropic' | 'openrouter'
   model_string: string
   is_active: boolean
+  input_price_per_million?: number | null
+  output_price_per_million?: number | null
   created_at: string
 }
 

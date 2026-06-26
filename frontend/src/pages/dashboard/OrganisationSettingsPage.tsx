@@ -18,12 +18,16 @@ export const OrganisationSettingsPage: React.FC = () => {
   const [provider, setProvider] = useState<'anthropic' | 'openrouter'>('anthropic');
   const [modelString, setModelString] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [inputPrice, setInputPrice] = useState('');
+  const [outputPrice, setOutputPrice] = useState('');
 
   const resetForm = () => {
     setDisplayName('');
     setProvider('anthropic');
     setModelString('');
     setIsActive(true);
+    setInputPrice('');
+    setOutputPrice('');
     setEditingModelId(null);
   };
 
@@ -63,7 +67,9 @@ export const OrganisationSettingsPage: React.FC = () => {
       display_name: displayName,
       provider,
       model_string: modelString,
-      is_active: isActive
+      is_active: isActive,
+      input_price_per_million: inputPrice === '' ? null : parseFloat(inputPrice),
+      output_price_per_million: outputPrice === '' ? null : parseFloat(outputPrice)
     };
 
     if (isEditing && editingModelId) {
@@ -88,7 +94,7 @@ export const OrganisationSettingsPage: React.FC = () => {
 
   const [orgName, setOrgName] = useState('');
   const [orgWebsite, setOrgWebsite] = useState('');
-  const [updateStatus, setUpdateStatus] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
+  const [budgetLimit, setBudgetLimit] = useState('');
 
   const { data: orgData } = useQuery({
     queryKey: ['organisation'],
@@ -99,30 +105,48 @@ export const OrganisationSettingsPage: React.FC = () => {
     if (orgData) {
       setOrgName(orgData.name);
       setOrgWebsite(orgData.website || '');
+      setBudgetLimit(orgData.monthly_budget_limit != null ? orgData.monthly_budget_limit.toString() : '');
     }
   }, [orgData]);
 
-  // We don't have tenant name in user response currently, so we might fetch it or just use what we know. 
-  // Wait, UserResponse has tenant_id but not tenant object. Let's just leave it blank initially or require fetching.
-  // Actually, we can fetch tenant info via a new endpoint or just use orgName state for now.
-  // Let's rely on the update payload.
+  const [generalUpdateStatus, setGeneralUpdateStatus] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
+  const [budgetUpdateStatus, setBudgetUpdateStatus] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
 
-  const updateMutation = useMutation({
+  const updateGeneralMutation = useMutation({
     mutationFn: adminService.updateOrganisation,
     onSuccess: (data) => {
-      setUpdateStatus({ type: 'success', msg: 'Organisation updated successfully' });
+      setGeneralUpdateStatus({ type: 'success', msg: 'Organisation updated successfully' });
       setOrgName(data.name);
       setOrgWebsite(data.website || '');
-      setTimeout(() => setUpdateStatus(null), 3000);
+      setTimeout(() => setGeneralUpdateStatus(null), 3000);
     },
     onError: (err: any) => {
-      setUpdateStatus({ type: 'error', msg: err.response?.data?.detail || 'Update failed' });
+      setGeneralUpdateStatus({ type: 'error', msg: err.response?.data?.detail || 'Update failed' });
     }
   });
 
-  const handleUpdate = (e: React.FormEvent) => {
+  const updateBudgetMutation = useMutation({
+    mutationFn: adminService.updateOrganisation,
+    onSuccess: (data) => {
+      setBudgetUpdateStatus({ type: 'success', msg: 'Budget updated successfully' });
+      setBudgetLimit(data.monthly_budget_limit != null ? data.monthly_budget_limit.toString() : '');
+      setTimeout(() => setBudgetUpdateStatus(null), 3000);
+    },
+    onError: (err: any) => {
+      setBudgetUpdateStatus({ type: 'error', msg: err.response?.data?.detail || 'Update failed' });
+    }
+  });
+
+  const handleUpdateGeneral = (e: React.FormEvent) => {
     e.preventDefault();
-    updateMutation.mutate({ name: orgName, website: orgWebsite });
+    updateGeneralMutation.mutate({ name: orgName, website: orgWebsite });
+  };
+
+  const handleUpdateBudget = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateBudgetMutation.mutate({ 
+      monthly_budget_limit: budgetLimit === '' ? null : parseFloat(budgetLimit)
+    });
   };
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -141,37 +165,67 @@ export const OrganisationSettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col gap-8 w-full max-w-4xl mx-auto h-full pb-12 text-slate-800 dark:text-slate-100">
+    <div className="flex flex-col gap-8 w-full h-full pb-12 text-slate-800 dark:text-slate-100">
       <div className="shrink-0">
         <h1 className="text-2xl font-semibold font-sora text-slate-800 dark:text-slate-100">Organisation Settings</h1>
       </div>
 
       <div className="flex flex-col gap-6">
-        <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-4 font-sora">General</h2>
-          <form onSubmit={handleUpdate} className="flex flex-col gap-4 max-w-md">
-            {updateStatus && (
-              <div className={`p-3 rounded-lg text-sm border ${
-                updateStatus.type === 'success' 
-                  ? 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-900/50' 
-                  : 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/50'
-              }`}>
-                {updateStatus.msg}
-              </div>
-            )}
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Organisation Name</label>
-              <input required value={orgName} onChange={e=>setOrgName(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* General Card */}
+          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-4 font-sora">General</h2>
+              <form onSubmit={handleUpdateGeneral} className="flex flex-col gap-4">
+                {generalUpdateStatus && (
+                  <div className={`p-3 rounded-lg text-sm border ${
+                    generalUpdateStatus.type === 'success' 
+                      ? 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-900/50' 
+                      : 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/50'
+                  }`}>
+                    {generalUpdateStatus.msg}
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Organisation Name</label>
+                  <input required value={orgName} onChange={e=>setOrgName(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Website</label>
+                  <input type="url" value={orgWebsite} onChange={e=>setOrgWebsite(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
+                </div>
+                <button type="submit" disabled={updateGeneralMutation.isPending} className="mt-2 w-fit px-6 bg-indigo-700 dark:bg-indigo-500 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50">
+                  {updateGeneralMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </button>
+              </form>
             </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Website</label>
-              <input type="url" value={orgWebsite} onChange={e=>setOrgWebsite(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
+          </section>
+
+          {/* Monthly Budget Card */}
+          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm flex flex-col justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-4 font-sora">Monthly Budget</h2>
+              <form onSubmit={handleUpdateBudget} className="flex flex-col gap-4">
+                {budgetUpdateStatus && (
+                  <div className={`p-3 rounded-lg text-sm border ${
+                    budgetUpdateStatus.type === 'success' 
+                      ? 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-900/50' 
+                      : 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/50'
+                  }`}>
+                    {budgetUpdateStatus.msg}
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Monthly Budget Limit ($ USD)</label>
+                  <input type="number" step="0.01" min="0" placeholder="e.g. 100.00 (Leave blank for no limit)" value={budgetLimit} onChange={e=>setBudgetLimit(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
+                </div>
+                <button type="submit" disabled={updateBudgetMutation.isPending} className="mt-2 w-fit px-6 bg-indigo-700 dark:bg-indigo-500 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50">
+                  {updateBudgetMutation.isPending ? 'Saving...' : 'Update Budget'}
+                </button>
+              </form>
             </div>
-            <button type="submit" disabled={updateMutation.isPending} className="mt-2 w-fit px-6 bg-indigo-700 dark:bg-indigo-500 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50">
-              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-            </button>
-          </form>
-        </section>
+          </section>
+        </div>
 
         <hr className="border-slate-200 dark:border-slate-800 my-2" />
 
@@ -201,6 +255,7 @@ export const OrganisationSettingsPage: React.FC = () => {
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Display Name</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Provider</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Model Identifier</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Price (In/Out per M)</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">Status</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase text-right">Actions</th>
                 </tr>
@@ -227,6 +282,11 @@ export const OrganisationSettingsPage: React.FC = () => {
                       </td>
                       <td className="px-4 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{model.model_string}</td>
                       <td className="px-4 py-3.5">
+                        <span className="text-xs text-slate-650 dark:text-slate-400 font-medium">
+                          {model.input_price_per_million != null ? `$${Number(model.input_price_per_million).toFixed(2)}` : 'N/A'} / {model.output_price_per_million != null ? `$${Number(model.output_price_per_million).toFixed(2)}` : 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
                         <button
                           onClick={() => handleToggleActive(model)}
                           className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold cursor-pointer select-none transition-colors ${
@@ -247,6 +307,8 @@ export const OrganisationSettingsPage: React.FC = () => {
                             setProvider(model.provider);
                             setModelString(model.model_string);
                             setIsActive(model.is_active);
+                            setInputPrice(model.input_price_per_million != null ? model.input_price_per_million.toString() : '');
+                            setOutputPrice(model.output_price_per_million != null ? model.output_price_per_million.toString() : '');
                             setIsAddModalOpen(true);
                           }}
                           className="text-slate-500 hover:text-indigo-650 dark:text-slate-400 dark:hover:text-indigo-400 p-1"
@@ -355,6 +417,36 @@ export const OrganisationSettingsPage: React.FC = () => {
                   className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all font-mono text-sm text-slate-800 dark:text-slate-100"
                 />
               </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Input Price ($ / M tokens)</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    placeholder="Leave blank to skip"
+                    value={inputPrice}
+                    onChange={e => setInputPrice(e.target.value)}
+                    className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all text-slate-800 dark:text-slate-100"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Output Price ($ / M tokens)</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    placeholder="Leave blank to skip"
+                    value={outputPrice}
+                    onChange={e => setOutputPrice(e.target.value)}
+                    className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all text-slate-800 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-slate-550 dark:text-slate-400 -mt-2">
+                Leave blank to use a rough fallback estimate.
+              </p>
 
               <div className="flex items-center gap-2 pt-2">
                 <input

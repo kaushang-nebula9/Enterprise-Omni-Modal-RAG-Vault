@@ -13,6 +13,8 @@ class ModelResponse(BaseModel):
     provider: ModelProvider
     model_string: str
     is_active: bool
+    input_price_per_million: Optional[float] = None
+    output_price_per_million: Optional[float] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
