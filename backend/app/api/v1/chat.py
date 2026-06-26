@@ -489,6 +489,18 @@ async def send_query(
                 db.add(citation)
                 citation_models.append(citation)
 
+            # Create QueryLog entry for evaluations
+            from app.models.query_log import QueryLog
+            query_log = QueryLog(
+                tenant_id=session.tenant_id,
+                user_id=current_user.id,
+                question=clean_display_content,
+                contexts=[cit["chunk_text"] for cit in citations],
+                answer=full_answer,
+                created_at=datetime.now(timezone.utc),
+            )
+            db.add(query_log)
+
             # Update session timestamp
             session.updated_at = datetime.now(timezone.utc)
             db.commit()

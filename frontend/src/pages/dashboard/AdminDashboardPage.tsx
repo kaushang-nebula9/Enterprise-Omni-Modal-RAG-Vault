@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
+import { evaluationService } from '../../services/evaluationService';
 import { useAuthStore } from '../../store/authStore';
 import { formatCompactNumber } from '../../utils/format';
 import { 
@@ -15,7 +16,8 @@ import {
   Upload, 
   Plus, 
   ArrowRight,
-  TrendingUp
+  TrendingUp,
+  Award
 } from 'lucide-react';
 
 const AdminDashboardPage: React.FC = () => {
@@ -33,11 +35,44 @@ const AdminDashboardPage: React.FC = () => {
   const [startDate, setStartDate] = useState<string>(getPastDateString(6));
   const [endDate, setEndDate] = useState<string>(todayStr);
 
+  // Evaluation states
+  const [isEvalModalOpen, setIsEvalModalOpen] = useState(false);
+  const [evalScope, setEvalScope] = useState<'count' | 'date_range'>('count');
+  const [evalCount, setEvalCount] = useState<number>(50);
+  const [evalStartDate, setEvalStartDate] = useState<string>(getPastDateString(6));
+  const [evalEndDate, setEvalEndDate] = useState<string>(todayStr);
+  const [isSubmittingEval, setIsSubmittingEval] = useState(false);
+
   // Queries
   const { data: usageData, isLoading: usageLoading } = useQuery({
     queryKey: ['adminUsage', startDate, endDate],
     queryFn: () => adminService.getUsageSummary(startDate, endDate),
   });
+
+  const { data: latestEval, refetch: refetchLatestEval } = useQuery({
+    queryKey: ['latestEvaluation'],
+    queryFn: () => evaluationService.getLatestEvaluation(),
+  });
+
+  const handleRunEvaluation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmittingEval(true);
+    try {
+      await evaluationService.runEvaluation({
+        query_count: evalScope === 'count' ? evalCount : undefined,
+        date_range_start: evalScope === 'date_range' ? new Date(evalStartDate).toISOString() : undefined,
+        date_range_end: evalScope === 'date_range' ? new Date(evalEndDate).toISOString() : undefined,
+      });
+      setIsEvalModalOpen(false);
+      alert('Evaluation run has started in the background. You will receive a notification when it completes.');
+      refetchLatestEval();
+    } catch (err: any) {
+      console.error('Failed to run evaluation:', err);
+      alert('Failed to start evaluation. ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setIsSubmittingEval(false);
+    }
+  };
 
   const { data: overview, isLoading: overviewLoading } = useQuery({
     queryKey: ['adminOverview'],
@@ -469,6 +504,78 @@ const AdminDashboardPage: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Answer Quality Card */}
+          <div className="flex w-full lg:col-span-2">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between gap-4 group hover:shadow-md transition-shadow relative overflow-hidden w-full h-full">
+              
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Answer Quality (LLM-as-Judge)</span>
+                {latestEval && (
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${
+                    latestEval.status === 'completed' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400' :
+                    latestEval.status === 'running' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 animate-pulse' :
+                    latestEval.status === 'failed' ? 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400' :
+                    'bg-slate-50 dark:bg-slate-850 text-slate-500'
+                  }`}>
+                    {latestEval.status}
+                  </span>
+                )}
+              </div>
+
+              {!latestEval ? (
+                <div className="flex flex-col gap-2 mt-2">
+                  <span className="text-xl font-bold font-sora text-slate-400 dark:text-slate-500 font-sans">No evaluation run yet</span>
+                  <span className="text-xs text-slate-400 font-sans">Run an evaluation to measure faithfulness and relevance.</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 mt-2">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-slate-400 font-medium font-sans">Avg Faithfulness</span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
+                        {latestEval.avg_faithfulness_score !== undefined && latestEval.avg_faithfulness_score !== null
+                          ? `${Math.round(latestEval.avg_faithfulness_score)}%`
+                          : 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-slate-400 font-medium font-sans">Avg Retrieval Relevance</span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
+                        {latestEval.avg_relevance_score !== undefined && latestEval.avg_relevance_score !== null
+                          ? `${Math.round(latestEval.avg_relevance_score)}%`
+                          : 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 flex items-center justify-between gap-4 mt-auto">
+                <span className="text-xs text-slate-450 dark:text-slate-500 font-sans">
+                  {latestEval ? `Last run: ${new Date(latestEval.created_at).toLocaleDateString()}` : 'Evaluate model outputs'}
+                </span>
+                <div className="flex items-center gap-2">
+                  {latestEval && (
+                    <button
+                      onClick={() => navigate(`/dashboard/evaluations/${latestEval.id}`)}
+                      className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline transition-all cursor-pointer font-sans"
+                    >
+                      View Details
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsEvalModalOpen(true)}
+                    className="bg-indigo-650 bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 shadow-sm hover:shadow font-sans cursor-pointer"
+                  >
+                    Run Evaluation
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -686,6 +793,111 @@ const AdminDashboardPage: React.FC = () => {
           </button>
         </div>
       </section>
+
+      {/* Run Evaluation Modal */}
+      {isEvalModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 dark:bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between">
+              <h4 className="font-sora text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <Award className="w-5 h-5 text-indigo-500" />
+                Run LLM-as-Judge Evaluation
+              </h4>
+              <button 
+                onClick={() => setIsEvalModalOpen(false)}
+                className="text-slate-400 dark:text-slate-500 hover:text-slate-650 dark:hover:text-slate-300 transition-colors text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-slate-500 dark:text-slate-450 text-xs leading-relaxed font-sans">
+              Evaluate the quality of generated answers based on faithfulness (factuality against context) and retrieval relevance.
+            </p>
+
+            <form onSubmit={handleRunEvaluation} className="flex flex-col gap-4 mt-2">
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-sans">Evaluation Scope</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer font-sans">
+                    <input
+                      type="radio"
+                      checked={evalScope === 'count'}
+                      onChange={() => setEvalScope('count')}
+                      className="text-indigo-650 focus:ring-indigo-500"
+                    />
+                    Latest Queries Count
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer font-sans">
+                    <input
+                      type="radio"
+                      checked={evalScope === 'date_range'}
+                      onChange={() => setEvalScope('date_range')}
+                      className="text-indigo-650 focus:ring-indigo-500"
+                    />
+                    Custom Date Range
+                  </label>
+                </div>
+              </div>
+
+              {evalScope === 'count' ? (
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="eval-count" className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-sans">Number of Queries</label>
+                  <input
+                    id="eval-count"
+                    type="number"
+                    min="1"
+                    max="1000"
+                    value={evalCount}
+                    onChange={(e) => setEvalCount(parseInt(e.target.value) || 10)}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans"
+                  />
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="eval-start-date" className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-sans">Start Date</label>
+                    <input
+                      id="eval-start-date"
+                      type="date"
+                      value={evalStartDate}
+                      onChange={(e) => setEvalStartDate(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="eval-end-date" className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-sans">End Date</label>
+                    <input
+                      id="eval-end-date"
+                      type="date"
+                      value={evalEndDate}
+                      onChange={(e) => setEvalEndDate(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-3 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setIsEvalModalOpen(false)}
+                  className="px-4 py-2 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-sm font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-850 transition-colors font-sans cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingEval}
+                  className="px-4 py-2 bg-indigo-650 bg-indigo-700 disabled:bg-indigo-650/50 text-white text-sm font-semibold rounded-xl shadow-sm transition-colors font-sans cursor-pointer"
+                >
+                  {isSubmittingEval ? 'Scheduling...' : 'Run Evaluation'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

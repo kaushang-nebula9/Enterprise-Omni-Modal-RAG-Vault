@@ -36,6 +36,7 @@ def create_notification(
     related_document_id: Optional[uuid.UUID] = None,
     related_role_id: Optional[uuid.UUID] = None,
     related_department_id: Optional[uuid.UUID] = None,
+    related_evaluation_id: Optional[uuid.UUID] = None,
     flush_only: bool = False,
 ) -> Notification:
     """
@@ -55,6 +56,7 @@ def create_notification(
         related_document_id=related_document_id,
         related_role_id=related_role_id,
         related_department_id=related_department_id,
+        related_evaluation_id=related_evaluation_id,
         is_read=False,
     )
     db.add(notification)
@@ -77,9 +79,11 @@ def create_notification(
         "related_document_id": str(notification.related_document_id) if notification.related_document_id else None,
         "related_role_id": str(notification.related_role_id) if notification.related_role_id else None,
         "related_department_id": str(notification.related_department_id) if notification.related_department_id else None,
+        "related_evaluation_id": str(notification.related_evaluation_id) if notification.related_evaluation_id else None,
         "is_read": notification.is_read,
         "created_at": notification.created_at.isoformat() if notification.created_at else None,
     }
+
 
     # Push to active SSE connections if they exist
     if user_id in active_connections:

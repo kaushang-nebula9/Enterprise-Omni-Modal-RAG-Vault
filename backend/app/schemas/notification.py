@@ -13,8 +13,10 @@ class NotificationResponse(BaseModel):
     related_document_id: Optional[UUID] = None
     related_role_id: Optional[UUID] = None
     related_department_id: Optional[UUID] = None
+    related_evaluation_id: Optional[UUID] = None
     is_read: bool
     created_at: datetime
+
 
     model_config = {
         "from_attributes": True

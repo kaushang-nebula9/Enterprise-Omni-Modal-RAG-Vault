@@ -19,6 +19,7 @@ import { ProfileSettingsPage } from './pages/dashboard/ProfileSettingsPage';
 import DocumentsPage from './pages/dashboard/DocumentsPage';
 import ChatPage from './pages/dashboard/ChatPage';
 import YourDocumentsPage from './pages/dashboard/YourDocumentsPage';
+import EvaluationResultsPage from './pages/dashboard/EvaluationResultsPage';
 
 const App: React.FC = () => {
   const theme = useThemeStore((state) => state.theme);
@@ -62,6 +63,7 @@ const App: React.FC = () => {
           <Route path="chat" element={<ChatPage />} />
           <Route path="your-documents" element={<YourDocumentsPage />} />
           <Route path="profile" element={<ProfileSettingsPage />} />
+          <Route path="evaluations/:id" element={<ProtectedAdminRoute><EvaluationResultsPage /></ProtectedAdminRoute>} />
         </Route>
 
         {/* Root Redirect to Login */}

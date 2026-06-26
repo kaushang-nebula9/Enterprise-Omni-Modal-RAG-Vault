@@ -43,10 +43,17 @@ class NotificationType(str, enum.Enum):
     document_access_inherited_hierarchy = "document_access_inherited_hierarchy"
     document_access_inherited_department = "document_access_inherited_department"
     department_added = "department_added"
+    evaluation_completed = "evaluation_completed"
 
 class ModelProvider(str, enum.Enum):
     anthropic = "anthropic"
     openrouter = "openrouter"
+
+class EvaluationStatus(str, enum.Enum):
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    failed = "failed"
 
 # SQLAlchemy Enum Types
 file_type_enum = SQLEnum(FileType, name="filetype")
@@ -58,5 +65,6 @@ otp_purpose_enum = SQLEnum(OTPPurpose, name="otppurpose")
 granted_via_enum = SQLEnum(GrantedVia, name="grantedvia")
 notification_type_enum = SQLEnum(NotificationType, name="notificationtype")
 model_provider_enum = SQLEnum(ModelProvider, name="modelprovider")
+evaluation_status_enum = SQLEnum(EvaluationStatus, name="evaluationstatus")
 
 

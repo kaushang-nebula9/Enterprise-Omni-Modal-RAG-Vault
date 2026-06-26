@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bell, LogOut, UserCheck, FileText, Layers, Briefcase, Building2 } from 'lucide-react';
+import { Bell, LogOut, UserCheck, FileText, Layers, Briefcase, Building2, Award } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { logout } from '../../services/authService';
 import ThemeToggle from '../shared/ThemeToggle';
@@ -120,6 +120,8 @@ const TopNavbar: React.FC = () => {
                           return <Briefcase className={`${baseClass} text-amber-500`} />;
                         case 'department_added':
                           return <Building2 className={`${baseClass} text-pink-500`} />;
+                        case 'evaluation_completed':
+                          return <Award className={`${baseClass} text-indigo-500`} />;
                         default:
                           return <Bell className={`${baseClass} text-slate-500`} />;
                       }
@@ -143,7 +145,13 @@ const TopNavbar: React.FC = () => {
                     return (
                       <div 
                         key={notif.id} 
-                        className={`px-4 py-3 flex gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors ${!notif.is_read ? 'bg-indigo-50/20 dark:bg-indigo-950/5' : ''}`}
+                        onClick={() => {
+                          if (notif.type === 'evaluation_completed' && notif.related_evaluation_id) {
+                            navigate(`/dashboard/evaluations/${notif.related_evaluation_id}`);
+                            setShowNotifications(false);
+                          }
+                        }}
+                        className={`px-4 py-3 flex gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer ${!notif.is_read ? 'bg-indigo-50/20 dark:bg-indigo-950/5' : ''}`}
                       >
                         <div className="mt-0.5 flex-shrink-0 w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-800/80 flex items-center justify-center">
                           {getNotificationIcon(notif.type)}
