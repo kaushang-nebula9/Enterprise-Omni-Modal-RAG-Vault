@@ -1,19 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from app.db.session import get_db
 from app.core.dependencies import require_admin
 from app.models.user import User
 from app.models.evaluation import EvaluationRun, EvaluationResult
+from app.models.query_log import QueryLog
 from app.models.enums import EvaluationStatus
 from app.schemas.evaluation import (
     EvaluationRunRequest,
     EvaluationRunResponse,
     EvaluationDetailResponse,
     EvaluationResultResponse,
+    ModelEvaluationBreakdown,
 )
 from app.tasks.evaluation_tasks import run_evaluation_task
 import uuid
-from typing import Optional
+from typing import Optional, List
 
 router = APIRouter()
 
@@ -62,6 +65,29 @@ def get_latest_evaluation(
     )
     return run
 
+@router.get("/by-model", response_model=List[ModelEvaluationBreakdown])
+def get_evaluations_by_model(
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Aggregates EvaluationResult rows grouped by model_string across all evaluation runs.
+    """
+    results = (
+        db.query(
+            func.coalesce(QueryLog.model_string, "Unknown (legacy)").label("model_string"),
+            func.count(EvaluationResult.id).label("query_count"),
+            func.avg(EvaluationResult.faithfulness_score).label("avg_faithfulness_score"),
+            func.avg(EvaluationResult.relevance_score).label("avg_relevance_score"),
+        )
+        .join(EvaluationResult, EvaluationResult.query_log_id == QueryLog.id)
+        .join(EvaluationRun, EvaluationResult.evaluation_run_id == EvaluationRun.id)
+        .filter(EvaluationRun.tenant_id == current_admin.tenant_id)
+        .group_by(func.coalesce(QueryLog.model_string, "Unknown (legacy)"))
+        .all()
+    )
+    return results
+
 @router.get("/{id}", response_model=EvaluationDetailResponse)
 def get_evaluation_details(
     id: uuid.UUID,
@@ -104,6 +130,7 @@ def get_evaluation_details(
         if r.query_log:
             schema.question = r.query_log.question
             schema.answer = r.query_log.answer
+            schema.model_string = r.query_log.model_string
         results_response.append(schema)
         
     return EvaluationDetailResponse(

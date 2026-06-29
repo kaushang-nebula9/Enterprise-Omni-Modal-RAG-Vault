@@ -27,6 +27,7 @@ class QueryLog(Base):
     question: Mapped[str] = mapped_column(Text, nullable=False)
     contexts: Mapped[List[str]] = mapped_column(JSONB, nullable=False)
     answer: Mapped[str] = mapped_column(Text, nullable=False)
+    model_string: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

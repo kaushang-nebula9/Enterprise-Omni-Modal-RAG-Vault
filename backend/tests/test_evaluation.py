@@ -111,3 +111,105 @@ def test_evaluation_models(db):
     assert db_res.query_log_id == log.id
     assert db_res.query_log.question == "What is this database?"
     assert db_res.evaluation_run.status == EvaluationStatus.pending
+
+
+def test_evaluations_by_model(db):
+    from sqlalchemy import func
+
+    # Setup tenant and user
+    tenant_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+
+    # Create run
+    run = EvaluationRun(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        requested_by_user_id=user_id,
+        status=EvaluationStatus.completed,
+        query_count=2,
+        date_range_start=datetime.now(timezone.utc) - timedelta(days=1),
+        date_range_end=datetime.now(timezone.utc),
+    )
+    db.add(run)
+    db.commit()
+
+    # Log two queries: one with model_string, one with None (legacy)
+    log1 = QueryLog(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        user_id=user_id,
+        question="What is model A?",
+        contexts=["Context A"],
+        answer="Answer A",
+        model_string="gpt-4o",
+        created_at=datetime.now(timezone.utc)
+    )
+    log2 = QueryLog(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        user_id=user_id,
+        question="What is model B?",
+        contexts=["Context B"],
+        answer="Answer B",
+        model_string=None, # Legacy
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(log1)
+    db.add(log2)
+    db.commit()
+
+    # Create evaluation results
+    res1 = EvaluationResult(
+        id=uuid.uuid4(),
+        evaluation_run_id=run.id,
+        query_log_id=log1.id,
+        faithfulness_score=90,
+        relevance_score=80,
+        unsupported_claims=[],
+        reasoning="Good.",
+        created_at=datetime.now(timezone.utc)
+    )
+    res2 = EvaluationResult(
+        id=uuid.uuid4(),
+        evaluation_run_id=run.id,
+        query_log_id=log2.id,
+        faithfulness_score=60,
+        relevance_score=40,
+        unsupported_claims=["Unsupported claim"],
+        reasoning="Legacy errors.",
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(res1)
+    db.add(res2)
+    db.commit()
+
+    # Run the aggregation query
+    results = (
+        db.query(
+            func.coalesce(QueryLog.model_string, "Unknown (legacy)").label("model_string"),
+            func.count(EvaluationResult.id).label("query_count"),
+            func.avg(EvaluationResult.faithfulness_score).label("avg_faithfulness_score"),
+            func.avg(EvaluationResult.relevance_score).label("avg_relevance_score"),
+        )
+        .join(EvaluationResult, EvaluationResult.query_log_id == QueryLog.id)
+        .join(EvaluationRun, EvaluationResult.evaluation_run_id == EvaluationRun.id)
+        .filter(EvaluationRun.tenant_id == tenant_id)
+        .group_by(func.coalesce(QueryLog.model_string, "Unknown (legacy)"))
+        .all()
+    )
+
+    assert len(results) == 2
+    
+    # Map results to a dict for easy assertion
+    results_map = {r.model_string: r for r in results}
+    
+    assert "gpt-4o" in results_map
+    assert results_map["gpt-4o"].query_count == 1
+    assert results_map["gpt-4o"].avg_faithfulness_score == 90.0
+    assert results_map["gpt-4o"].avg_relevance_score == 80.0
+
+    assert "Unknown (legacy)" in results_map
+    assert results_map["Unknown (legacy)"].query_count == 1
+    assert results_map["Unknown (legacy)"].avg_faithfulness_score == 60.0
+    assert results_map["Unknown (legacy)"].avg_relevance_score == 40.0
+

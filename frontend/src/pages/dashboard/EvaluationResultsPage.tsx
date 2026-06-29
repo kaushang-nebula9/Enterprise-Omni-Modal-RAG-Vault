@@ -2,7 +2,156 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { evaluationService } from '../../services/evaluationService';
-import { ArrowLeft, Award, CheckCircle, AlertTriangle, HelpCircle, Calendar, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Award, CheckCircle, AlertTriangle, HelpCircle, Calendar, MessageSquare, ChevronDown } from 'lucide-react';
+import type { EvaluationResult } from '../../types/evaluation';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+const QueryResultCard: React.FC<{
+  result: EvaluationResult;
+  index: number;
+  getScoreColor: (score: number) => string;
+}> = ({ result, index, getScoreColor }) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const combinedScore = result.faithfulness_score + result.relevance_score;
+
+  return (
+    <div 
+      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col gap-4 relative overflow-hidden"
+    >
+      {/* Header & Toggle area */}
+      <div 
+        className="flex flex-wrap items-center justify-between gap-4 cursor-pointer select-none"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-400 font-sans">#{index + 1}</span>
+            <span className="text-xs font-semibold text-slate-400 font-sans">Query Result</span>
+          </div>
+          <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-md font-sans border ${
+            result.model_string === 'Unknown (legacy)' || !result.model_string
+              ? 'bg-amber-50/50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-900/20'
+              : 'bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/20'
+          }`}>
+            Model: {result.model_string || 'Unknown (legacy)'}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-1.5 border px-2.5 py-1 rounded-xl text-xs font-bold font-sans ${getScoreColor(result.faithfulness_score)}`}>
+            <span>Faithfulness:</span>
+            <span>{result.faithfulness_score}%</span>
+          </div>
+          
+          <div className={`flex items-center gap-1.5 border px-2.5 py-1 rounded-xl text-xs font-bold font-sans ${getScoreColor(result.relevance_score)}`}>
+            <span>Relevance:</span>
+            <span>{result.relevance_score}%</span>
+          </div>
+
+          <div className="text-xs font-semibold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-xl font-sans">
+            Combined: {combinedScore}/200
+          </div>
+
+          <div className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 ml-1">
+            <ChevronDown className={`w-4 h-4 transform transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          </div>
+        </div>
+      </div>
+
+      {/* Question (always visible as it's the identifier of the query) */}
+      <div 
+        className="border-t border-slate-100 dark:border-slate-800/80 pt-4 cursor-pointer"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">Question Asked</span>
+        <div className="bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-900 rounded-xl p-3.5 text-sm font-semibold text-slate-800 dark:text-slate-300 leading-relaxed font-sans italic mt-1.5">
+          "{result.question || 'N/A'}"
+        </div>
+      </div>
+
+      {/* Expandable Content (Answer, Unsupported Claims, Reasoning) */}
+      {isOpen && (
+        <div className="flex flex-col gap-4">
+          {/* Answer */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">Generated Answer</span>
+            <div className="bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-900 rounded-xl p-3.5 text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-sans max-h-60 overflow-y-auto">
+              {result.answer ? (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    table: ({ ...props }) => (
+                      <div className="my-2 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                        <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left border-collapse" {...props} />
+                      </div>
+                    ),
+                    thead: ({ ...props }) => (
+                      <thead className="bg-slate-50 dark:bg-slate-800/50" {...props} />
+                    ),
+                    tbody: ({ ...props }) => (
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-850" {...props} />
+                    ),
+                    tr: ({ ...props }) => (
+                      <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors duration-150" {...props} />
+                    ),
+                    th: ({ ...props }) => (
+                      <th className="px-3 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider" {...props} />
+                    ),
+                    td: ({ ...props }) => (
+                      <td className="px-3 py-2 text-sm text-slate-700 dark:text-slate-205" {...props} />
+                    ),
+                    p: ({ ...props }) => (
+                      <p className="mb-2 last:mb-0 leading-relaxed" {...props} />
+                    ),
+                    ul: ({ ...props }) => (
+                      <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />
+                    ),
+                    ol: ({ ...props }) => (
+                      <ol className="list-decimal pl-5 mb-2 space-y-1" {...props} />
+                    ),
+                    li: ({ ...props }) => (
+                      <li className="text-sm" {...props} />
+                    ),
+                  }}
+                >
+                  {result.answer}
+                </ReactMarkdown>
+              ) : (
+                'N/A'
+              )}
+            </div>
+          </div>
+
+          {/* Unsupported claims list */}
+          {result.unsupported_claims && result.unsupported_claims.length > 0 && (
+            <div className="bg-red-50/20 dark:bg-red-950/5 border border-red-100 dark:border-red-900/30 rounded-xl p-4 flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-red-650 dark:text-red-400">
+                <AlertTriangle className="w-4 h-4" />
+                <span className="text-xs font-bold uppercase tracking-wider font-sans">Claims Unsupported by Source Context ({result.unsupported_claims.length})</span>
+              </div>
+              <ul className="list-disc pl-5 flex flex-col gap-1">
+                {result.unsupported_claims.map((claim, idx) => (
+                  <li key={idx} className="text-xs text-red-650 dark:text-slate-400 leading-relaxed font-sans font-medium">
+                    {claim}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Reasoning */}
+          <div className="bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-900 rounded-xl p-4 flex flex-col gap-1.5">
+            <span className="text-xs font-bold text-indigo-500 uppercase tracking-wider font-sans">Judge Reasoning</span>
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-sans">
+              {result.reasoning}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const EvaluationResultsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -13,6 +162,16 @@ const EvaluationResultsPage: React.FC = () => {
     queryFn: () => evaluationService.getEvaluationDetails(id || ''),
     enabled: !!id,
   });
+
+  const { data: modelPerformance, isLoading: isModelPerfLoading } = useQuery({
+    queryKey: ['modelPerformance'],
+    queryFn: () => evaluationService.getEvaluationByModel(),
+  });
+
+  const sortedModelPerformance = React.useMemo(() => {
+    if (!modelPerformance) return [];
+    return [...modelPerformance].sort((a, b) => b.avg_faithfulness_score - a.avg_faithfulness_score);
+  }, [modelPerformance]);
 
   if (isLoading) {
     return (
@@ -95,7 +254,6 @@ const EvaluationResultsPage: React.FC = () => {
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-500 dark:text-emerald-400">Faithfulness (Factuality)</span>
-            <CheckCircle className="w-5 h-5 text-emerald-500" />
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-4xl font-bold font-sora text-slate-800 dark:text-slate-100">
@@ -110,7 +268,7 @@ const EvaluationResultsPage: React.FC = () => {
               ></div>
             </div>
           </div>
-          <p className="text-slate-500 dark:text-slate-450 text-[11px] leading-relaxed font-sans mt-1">
+          <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed font-sans mt-1">
             Measures if the generated answers make any claims that are not fully supported by the retrieved contexts. Higher means more factual.
           </p>
         </div>
@@ -119,7 +277,6 @@ const EvaluationResultsPage: React.FC = () => {
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Retrieval Relevance</span>
-            <HelpCircle className="w-5 h-5 text-indigo-500" />
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-4xl font-bold font-sora text-slate-800 dark:text-slate-100">
@@ -134,7 +291,7 @@ const EvaluationResultsPage: React.FC = () => {
               ></div>
             </div>
           </div>
-          <p className="text-slate-500 dark:text-slate-450 text-[11px] leading-relaxed font-sans mt-1">
+          <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed font-sans mt-1">
             Measures if the retrieved chunks are actually relevant and useful for answering the question. Higher means less noise.
           </p>
         </div>
@@ -166,11 +323,79 @@ const EvaluationResultsPage: React.FC = () => {
           </div>
           
           {run.completed_at && (
-            <div className="text-[10px] text-slate-400 dark:text-slate-500 font-sans border-t border-slate-100 dark:border-slate-800/80 pt-3">
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-sans border-t border-slate-100 dark:border-slate-800/80 pt-3">
               Completed in background: {formatDate(run.completed_at)}
             </div>
           )}
         </div>
+      </div>
+
+      {/* Performance by Model Section */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col gap-4">
+        <div className="flex flex-col gap-1 border-b border-slate-150 dark:border-slate-800 pb-3">
+          <h3 className="font-sora text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+            <Award className="w-5 h-5 text-indigo-500" />
+            Performance by Model (Cumulative)
+          </h3>
+          <p className="text-xs text-slate-400 font-sans">
+            Aggregate scores across all evaluation runs grouped by LLM model.
+          </p>
+        </div>
+
+        {isModelPerfLoading ? (
+          <div className="py-8 flex justify-center items-center">
+            <div className="w-6 h-6 border-2 border-indigo-200 border-t-indigo-650 rounded-full animate-spin font-sans"></div>
+          </div>
+        ) : !sortedModelPerformance || sortedModelPerformance.length === 0 ? (
+          <div className="text-center py-6 text-sm text-slate-500 dark:text-slate-400 font-sans">
+            No model performance data available.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-150 dark:border-slate-800 text-xs font-bold uppercase tracking-wider text-slate-400">
+                  <th className="py-3 px-4 font-sans">Model</th>
+                  <th className="py-3 px-4 text-center font-sans">Queries</th>
+                  <th className="py-3 px-4 text-center font-sans">Avg Faithfulness</th>
+                  <th className="py-3 px-4 text-center font-sans">Avg Relevance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                {sortedModelPerformance.map((row) => {
+                  const isLegacy = row.model_string === 'Unknown (legacy)';
+                  return (
+                    <tr key={row.model_string} className="transition-colors text-sm text-slate-700 dark:text-slate-300">
+                      <td className="py-3.5 px-4 font-semibold font-sans flex flex-col gap-1">
+                        <span className={isLegacy ? 'text-slate-400 italic' : 'text-slate-850 dark:text-slate-105'}>
+                          {row.model_string}
+                        </span>
+                        {isLegacy && (
+                          <span className="text-[10px] text-amber-500 font-normal leading-normal">
+                            ⚠️ Queries logged before model tracking was added
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-center font-sans text-slate-500 dark:text-slate-400">
+                        {row.query_count}
+                      </td>
+                      <td className="py-3.5 px-4 text-center font-semibold">
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getScoreColor(row.avg_faithfulness_score)}`}>
+                          {Math.round(row.avg_faithfulness_score)}%
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-center font-semibold">
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getScoreColor(row.avg_relevance_score)}`}>
+                          {Math.round(row.avg_relevance_score)}%
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Individual Query Results Section */}
@@ -193,83 +418,14 @@ const EvaluationResultsPage: React.FC = () => {
           </div>
         ) : (
           <div className="flex flex-col gap-6">
-            {results.map((result, index) => {
-              const combinedScore = result.faithfulness_score + result.relevance_score;
-              return (
-                <div 
-                  key={result.id}
-                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col gap-4 relative overflow-hidden"
-                >
-                  {/* Score badge headers */}
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-400 font-sans">#{index + 1}</span>
-                      <span className="text-xs font-semibold text-slate-400 font-sans">Query Result</span>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className={`flex items-center gap-1.5 border px-2.5 py-1 rounded-xl text-xs font-bold font-sans ${getScoreColor(result.faithfulness_score)}`}>
-                        <span>Faithfulness:</span>
-                        <span>{result.faithfulness_score}%</span>
-                      </div>
-                      
-                      <div className={`flex items-center gap-1.5 border px-2.5 py-1 rounded-xl text-xs font-bold font-sans ${getScoreColor(result.relevance_score)}`}>
-                        <span>Relevance:</span>
-                        <span>{result.relevance_score}%</span>
-                      </div>
-
-                      <div className="text-[10px] font-semibold text-slate-400 bg-slate-50 dark:bg-slate-850 px-2 py-1 rounded-xl font-sans">
-                        Combined: {combinedScore}/200
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Question and Answer */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 border-t border-slate-100 dark:border-slate-800/80 pt-4">
-                    {/* Question */}
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">Question Asked</span>
-                      <div className="bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-900 rounded-xl p-3.5 text-sm font-semibold text-slate-800 dark:text-slate-300 leading-relaxed font-sans italic">
-                        "{result.question || 'N/A'}"
-                      </div>
-                    </div>
-
-                    {/* Answer */}
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider font-sans">Generated Answer</span>
-                      <div className="bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-900 rounded-xl p-3.5 text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-sans whitespace-pre-wrap max-h-60 overflow-y-auto">
-                        {result.answer || 'N/A'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Unsupported claims list */}
-                  {result.unsupported_claims && result.unsupported_claims.length > 0 && (
-                    <div className="bg-red-50/20 dark:bg-red-950/5 border border-red-100 dark:border-red-900/30 rounded-xl p-4 flex flex-col gap-2">
-                      <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
-                        <AlertTriangle className="w-4 h-4" />
-                        <span className="text-xs font-bold uppercase tracking-wider font-sans">Claims Unsupported by Source Context ({result.unsupported_claims.length})</span>
-                      </div>
-                      <ul className="list-disc pl-5 flex flex-col gap-1">
-                        {result.unsupported_claims.map((claim, idx) => (
-                          <li key={idx} className="text-xs text-red-650 dark:text-slate-400 leading-relaxed font-sans font-medium">
-                            {claim}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Reasoning */}
-                  <div className="bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-900 rounded-xl p-4 flex flex-col gap-1.5 mt-1">
-                    <span className="text-xs font-bold text-indigo-500 uppercase tracking-wider font-sans">Judge Reasoning</span>
-                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-sans">
-                      {result.reasoning}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
+            {results.map((result, index) => (
+              <QueryResultCard
+                key={result.id}
+                result={result}
+                index={index}
+                getScoreColor={getScoreColor}
+              />
+            ))}
           </div>
         )}
       </div>

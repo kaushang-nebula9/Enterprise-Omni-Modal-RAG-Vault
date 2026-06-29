@@ -1,5 +1,5 @@
 import api from './api';
-import type { EvaluationRun, EvaluationDetail } from '../types/evaluation';
+import type { EvaluationRun, EvaluationDetail, ModelEvaluationBreakdown } from '../types/evaluation';
 
 export const evaluationService = {
   runEvaluation: async (payload: {
@@ -18,6 +18,11 @@ export const evaluationService = {
 
   getEvaluationDetails: async (id: string): Promise<EvaluationDetail> => {
     const response = await api.get(`/api/v1/evaluations/${id}`);
+    return response.data;
+  },
+
+  getEvaluationByModel: async (): Promise<ModelEvaluationBreakdown[]> => {
+    const response = await api.get('/api/v1/evaluations/by-model');
     return response.data;
   },
 };

@@ -38,7 +38,7 @@ const AdminDashboardPage: React.FC = () => {
   // Evaluation states
   const [isEvalModalOpen, setIsEvalModalOpen] = useState(false);
   const [evalScope, setEvalScope] = useState<'count' | 'date_range'>('count');
-  const [evalCount, setEvalCount] = useState<number>(50);
+  const [evalCount, setEvalCount] = useState<number>(10);
   const [evalStartDate, setEvalStartDate] = useState<string>(getPastDateString(6));
   const [evalEndDate, setEvalEndDate] = useState<string>(todayStr);
   const [isSubmittingEval, setIsSubmittingEval] = useState(false);
@@ -95,28 +95,19 @@ const AdminDashboardPage: React.FC = () => {
   const totalOpenRouterInput = usageData?.usage?.reduce((acc, curr) => acc + curr.openrouter_input_tokens, 0) || 0;
   const totalOpenRouterOutput = usageData?.usage?.reduce((acc, curr) => acc + curr.openrouter_output_tokens, 0) || 0;
 
-  const totalHaikuInput = usageData?.usage?.reduce((acc, curr) => acc + (curr.claude_haiku_input_tokens || 0), 0) || 0;
-  const totalHaikuOutput = usageData?.usage?.reduce((acc, curr) => acc + (curr.claude_haiku_output_tokens || 0), 0) || 0;
-  const totalSonnetInput = usageData?.usage?.reduce((acc, curr) => acc + (curr.claude_sonnet_input_tokens || 0), 0) || 0;
-  const totalSonnetOutput = usageData?.usage?.reduce((acc, curr) => acc + (curr.claude_sonnet_output_tokens || 0), 0) || 0;
-  const totalOpusInput = usageData?.usage?.reduce((acc, curr) => acc + (curr.claude_opus_input_tokens || 0), 0) || 0;
-  const totalOpusOutput = usageData?.usage?.reduce((acc, curr) => acc + (curr.claude_opus_output_tokens || 0), 0) || 0;
+  const claudeModelsConfig = [
+    { key: 'haiku', displayName: 'Haiku 4.5', inputKey: 'claude_haiku_input_tokens', outputKey: 'claude_haiku_output_tokens', inputRate: 1.0, outputRate: 5.0 },
+    { key: 'sonnet', displayName: 'Sonnet 4.6', inputKey: 'claude_sonnet_input_tokens', outputKey: 'claude_sonnet_output_tokens', inputRate: 3.0, outputRate: 15.0 },
+    { key: 'opus', displayName: 'Opus 4.8', inputKey: 'claude_opus_input_tokens', outputKey: 'claude_opus_output_tokens', inputRate: 5.0, outputRate: 25.0 },
+  ] as const;
 
-  const haikuCost = (totalHaikuInput * 1.0) / 1000000 + (totalHaikuOutput * 5.0) / 1000000;
-  const sonnetCost = (totalSonnetInput * 3.0) / 1000000 + (totalSonnetOutput * 15.0) / 1000000;
-  const opusCost = (totalOpusInput * 5.0) / 1000000 + (totalOpusOutput * 25.0) / 1000000;
-  const totalClaudeCost = haikuCost + sonnetCost + opusCost;
-
-  const totalLlamaInput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_llama_input_tokens || 0), 0) || 0;
-  const totalLlamaOutput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_llama_output_tokens || 0), 0) || 0;
-  const totalGemmaInput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_gemma_input_tokens || 0), 0) || 0;
-  const totalGemmaOutput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_gemma_output_tokens || 0), 0) || 0;
-  const totalNemotronInput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_nemotron_input_tokens || 0), 0) || 0;
-  const totalNemotronOutput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_nemotron_output_tokens || 0), 0) || 0;
-  const totalGptInput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_gpt_input_tokens || 0), 0) || 0;
-  const totalGptOutput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_gpt_output_tokens || 0), 0) || 0;
-  const totalCohereInput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_cohere_input_tokens || 0), 0) || 0;
-  const totalCohereOutput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_cohere_output_tokens || 0), 0) || 0;
+  const openRouterModelsConfig = [
+    { key: 'gpt-oss', displayName: 'GPT OSS 120B', inputKey: 'openrouter_gpt_input_tokens', outputKey: 'openrouter_gpt_output_tokens' },
+    { key: 'llama', displayName: 'Llama 3.3 70B', inputKey: 'openrouter_llama_input_tokens', outputKey: 'openrouter_llama_output_tokens' },
+    { key: 'gemma', displayName: 'Gemma 4 31B', inputKey: 'openrouter_gemma_input_tokens', outputKey: 'openrouter_gemma_output_tokens' },
+    { key: 'nemotron', displayName: 'Nemotron 3 Super', inputKey: 'openrouter_nemotron_input_tokens', outputKey: 'openrouter_nemotron_output_tokens' },
+    { key: 'cohere', displayName: 'Cohere: North Mini', inputKey: 'openrouter_cohere_input_tokens', outputKey: 'openrouter_cohere_output_tokens' },
+  ] as const;
 
   const calculateModelCost = (inputTokens: number, outputTokens: number, sub: string) => {
     const model = dbModels?.find(m => 
@@ -141,12 +132,34 @@ const AdminDashboardPage: React.FC = () => {
     return '(Free)';
   };
 
-  const llamaCost = calculateModelCost(totalLlamaInput, totalLlamaOutput, 'llama');
-  const gemmaCost = calculateModelCost(totalGemmaInput, totalGemmaOutput, 'gemma');
-  const nemotronCost = calculateModelCost(totalNemotronInput, totalNemotronOutput, 'nemotron');
-  const cohereCost = calculateModelCost(totalCohereInput, totalCohereOutput, 'cohere');
-  const gptCost = calculateModelCost(totalGptInput, totalGptOutput, 'gpt-oss');
-  const totalOpenRouterCost = llamaCost + gemmaCost + nemotronCost + cohereCost + gptCost;
+  const claudeModelCosts = claudeModelsConfig.map(cfg => {
+    const inputTokens = usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[cfg.inputKey as keyof typeof curr]) || 0), 0) || 0;
+    const outputTokens = usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[cfg.outputKey as keyof typeof curr]) || 0), 0) || 0;
+    const cost = (inputTokens * cfg.inputRate) / 1000000 + (outputTokens * cfg.outputRate) / 1000000;
+    return {
+      ...cfg,
+      inputTokens,
+      outputTokens,
+      cost,
+    };
+  });
+
+  const totalClaudeCost = claudeModelCosts.reduce((acc, m) => acc + m.cost, 0);
+
+  const openRouterModelCosts = openRouterModelsConfig.map(cfg => {
+    const inputTokens = usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[cfg.inputKey as keyof typeof curr]) || 0), 0) || 0;
+    const outputTokens = usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[cfg.outputKey as keyof typeof curr]) || 0), 0) || 0;
+    const cost = calculateModelCost(inputTokens, outputTokens, cfg.key);
+    return {
+      ...cfg,
+      inputTokens,
+      outputTokens,
+      totalTokens: inputTokens + outputTokens,
+      cost,
+    };
+  });
+
+  const totalOpenRouterCost = openRouterModelCosts.reduce((acc, m) => acc + m.cost, 0);
 
   const formatCost = (val: number): string => {
     if (val === 0) return '$0.00';
@@ -518,35 +531,16 @@ const AdminDashboardPage: React.FC = () => {
               </div> 
 
               <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 flex flex-col gap-3 mb-4">
-                {/* Haiku cost breakdown */}
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-800 dark:text-slate-400 flex items-center gap-1.5">
-                    Haiku 4.5
-                  </span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
-                    {formatCost(haikuCost)}
-                  </span>
-                </div>
-
-                {/* Sonnet cost breakdown */}
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-800 dark:text-slate-400 flex items-center gap-1.5">
-                    Sonnet 4.6
-                  </span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
-                    {formatCost(sonnetCost)}
-                  </span>
-                </div>
-
-                {/* Opus cost breakdown */}
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-800 dark:text-slate-400 flex items-center gap-1.5">
-                    Opus 4.8
-                  </span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
-                    {formatCost(opusCost)}
-                  </span>
-                </div>
+                {claudeModelCosts.map(m => (
+                  <div key={m.key} className="flex items-center justify-between text-sm">
+                    <span className="text-slate-800 dark:text-slate-400 flex items-center gap-1.5">
+                      {m.displayName}
+                    </span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {formatCost(m.cost)}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -571,7 +565,7 @@ const AdminDashboardPage: React.FC = () => {
 
               {!latestEval ? (
                 <div className="flex flex-col gap-2 mt-2">
-                  <span className="text-xl font-bold font-sora text-slate-400 dark:text-slate-500 font-sans">No evaluation run yet</span>
+                  <span className="text-xl font-bold text-slate-400 dark:text-slate-500 font-sans">No evaluation run yet</span>
                   <span className="text-xs text-slate-400 font-sans">Run an evaluation to measure faithfulness and relevance.</span>
                 </div>
               ) : (
@@ -642,72 +636,21 @@ const AdminDashboardPage: React.FC = () => {
 
                 {/* Breakdown Column (Grid of models) */}
                 <div className="border-t md:border-t-0 md:border-l border-slate-100 dark:border-slate-800/80 pt-4 md:pt-0 md:pl-6 flex flex-col gap-2">
-                  <span className="text-xs font-bold uppercase text-slate-450 dark:text-slate-500 tracking-wider">Model Breakdown</span>
+                  <span className="text-xs font-bold uppercase text-slate-450 dark:text-slate-500 tracking-wider">Breakdown</span>
                   
-                  {/* GPT OSS 120B */}
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-800 dark:text-slate-400">GPT OSS 120B</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400 dark:text-slate-550">
-                        {formatCompactNumber(totalGptInput + totalGptOutput)} tokens
-                      </span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">
-                        {formatCost(gptCost)} <span className="text-[10px] text-slate-400 font-normal">{getModelPriceLabel('gpt-oss')}</span>
-                      </span>
+                  {openRouterModelCosts.map(m => (
+                    <div key={m.key} className="flex items-center justify-between text-sm">
+                      <span className="text-slate-850 dark:text-slate-400">{m.displayName}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-400 dark:text-slate-550">
+                          {formatCompactNumber(m.totalTokens)} tokens
+                        </span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                          {formatCost(m.cost)} 
+                        </span>
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Llama 3.3 70B */}
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-850 dark:text-slate-450">Llama 3.3 70B</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400 dark:text-slate-550">
-                        {formatCompactNumber(totalLlamaInput + totalLlamaOutput)} tokens
-                      </span>
-                      <span className="font-semibold text-slate-400 dark:text-slate-550">
-                        {formatCost(llamaCost)} <span className="text-[10px] text-slate-400 font-normal">{getModelPriceLabel('llama')}</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Gemma 4 31B */}
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-850 dark:text-slate-450">Gemma 4 31B</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400 dark:text-slate-550">
-                        {formatCompactNumber(totalGemmaInput + totalGemmaOutput)} tokens
-                      </span>
-                      <span className="font-semibold text-slate-400 dark:text-slate-550">
-                        {formatCost(gemmaCost)} <span className="text-[10px] text-slate-400 font-normal">{getModelPriceLabel('gemma')}</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Nemotron 3 Super */}
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-850 dark:text-slate-450">Nemotron 3 Super</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400 dark:text-slate-550">
-                        {formatCompactNumber(totalNemotronInput + totalNemotronOutput)} tokens
-                      </span>
-                      <span className="font-semibold text-slate-400 dark:text-slate-550">
-                        {formatCost(nemotronCost)} <span className="text-[10px] text-slate-400 font-normal">{getModelPriceLabel('nemotron')}</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Cohere: North Mini */}
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-850 dark:text-slate-450">Cohere: North Mini</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-400 dark:text-slate-550">
-                        {formatCompactNumber(totalCohereInput + totalCohereOutput)} tokens
-                      </span>
-                      <span className="font-semibold text-slate-400 dark:text-slate-550">
-                        {formatCost(cohereCost)} <span className="text-[10px] text-slate-400 font-normal">{getModelPriceLabel('cohere')}</span>
-                      </span>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
 
@@ -945,8 +888,7 @@ const AdminDashboardPage: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between">
               <h4 className="font-sora text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                <Award className="w-5 h-5 text-indigo-500" />
-                Run LLM-as-Judge Evaluation
+                Run Evaluation
               </h4>
               <button 
                 onClick={() => setIsEvalModalOpen(false)}
@@ -956,7 +898,7 @@ const AdminDashboardPage: React.FC = () => {
               </button>
             </div>
 
-            <p className="text-slate-500 dark:text-slate-450 text-xs leading-relaxed font-sans">
+            <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed font-sans">
               Evaluate the quality of generated answers based on faithfulness (factuality against context) and retrieval relevance.
             </p>
 

@@ -480,6 +480,7 @@ async def send_query(
 
             full_answer = ""
             citations = []
+            actual_model_string = None
 
             async for event in generator:
                 if event["type"] == "token":
@@ -488,6 +489,7 @@ async def send_query(
                 elif event["type"] == "done":
                     full_answer = event["answer"]
                     citations = event["citations"]
+                    actual_model_string = event.get("model_string")
 
             # Store the assistant's response in the database after streaming completes
             assistant_message = QueryMessage(
@@ -522,6 +524,7 @@ async def send_query(
                 question=clean_display_content,
                 contexts=[cit["chunk_text"] for cit in citations],
                 answer=full_answer,
+                model_string=actual_model_string,
                 created_at=datetime.now(timezone.utc),
             )
             db.add(query_log)

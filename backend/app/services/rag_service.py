@@ -629,4 +629,5 @@ async def run_rag_pipeline(
         "type": "done",
         "answer": full_answer,
         "citations": citations,
+        "model_string": selected_model_string,
     }

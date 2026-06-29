@@ -37,6 +37,7 @@ class EvaluationResultResponse(BaseModel):
     created_at: datetime
     question: Optional[str] = None
     answer: Optional[str] = None
+    model_string: Optional[str] = None
 
     model_config = {
         "from_attributes": True
@@ -45,3 +46,13 @@ class EvaluationResultResponse(BaseModel):
 class EvaluationDetailResponse(BaseModel):
     run: EvaluationRunResponse
     results: List[EvaluationResultResponse]
+
+class ModelEvaluationBreakdown(BaseModel):
+    model_string: str
+    query_count: int
+    avg_faithfulness_score: float
+    avg_relevance_score: float
+
+    model_config = {
+        "from_attributes": True
+    }
