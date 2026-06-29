@@ -7,6 +7,7 @@ from app.models.user import User
 from app.models.role import Role
 from app.schemas.role import CreateRoleRequest, UpdateRoleRequest, RoleResponse, RoleTreeNode
 from app.services.role_service import check_role_cycle
+from app.services.audit_log_service import log_audit_event
 
 router = APIRouter()
 
@@ -159,6 +160,20 @@ def create_role(
     db.add(new_role)
     db.commit()
     db.refresh(new_role)
+
+    log_audit_event(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        actor_user_id=current_admin.id,
+        action="role.created",
+        description=f"Created role '{new_role.name}'",
+        metadata={
+            "role_id": str(new_role.id),
+            "name": new_role.name,
+            "parent_role_id": str(new_role.parent_role_id) if new_role.parent_role_id else None
+        }
+    )
+
     return new_role
 
 @router.patch("/{role_id}", response_model=RoleResponse)
@@ -208,10 +223,58 @@ def update_role(
     old_dept_id = role.department_id
     dept_changed = request.department_id is not None and request.department_id != old_dept_id
 
+    # Track parent changes
+    old_parent_id = role.parent_role_id
+    parent_changed = old_parent_id != request.parent_role_id
+    old_name = role.name
+
     role.name = request.name
     role.parent_role_id = request.parent_role_id
     role.department_id = request.department_id
     db.commit()
+
+    if parent_changed:
+        old_parent_name = "None"
+        if old_parent_id:
+            old_parent = db.query(Role).filter(Role.id == old_parent_id).first()
+            if old_parent:
+                old_parent_name = old_parent.name
+        new_parent_name = "None"
+        if role.parent_role_id:
+            new_parent = db.query(Role).filter(Role.id == role.parent_role_id).first()
+            if new_parent:
+                new_parent_name = new_parent.name
+        
+        log_audit_event(
+            db=db,
+            tenant_id=current_admin.tenant_id,
+            actor_user_id=current_admin.id,
+            action="role.parent_changed",
+            description=f"Changed parent of role '{role.name}' from '{old_parent_name}' to '{new_parent_name}'",
+            metadata={
+                "role_id": str(role.id),
+                "name": role.name,
+                "old_parent_role_id": str(old_parent_id) if old_parent_id else None,
+                "new_parent_role_id": str(role.parent_role_id) if role.parent_role_id else None,
+                "old_parent_name": old_parent_name,
+                "new_parent_name": new_parent_name
+            }
+        )
+    else:
+        log_audit_event(
+            db=db,
+            tenant_id=current_admin.tenant_id,
+            actor_user_id=current_admin.id,
+            action="role.updated",
+            description=f"Updated role '{role.name}'",
+            metadata={
+                "role_id": str(role.id),
+                "old_name": old_name,
+                "new_name": role.name,
+                "old_department_id": str(old_dept_id) if old_dept_id else None,
+                "new_department_id": str(role.department_id) if role.department_id else None
+            }
+        )
 
     if dept_changed and request.department_id:
         from app.models.department import Department
@@ -267,7 +330,20 @@ def delete_role(
             detail="Cannot delete a role that has users assigned to it. Please reassign those users first."
         )
 
+    role_name = role.name
+    role_id = role.id
+
     db.delete(role)
     db.commit()
+
+    log_audit_event(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        actor_user_id=current_admin.id,
+        action="role.deleted",
+        description=f"Deleted role '{role_name}'",
+        metadata={"role_id": str(role_id), "name": role_name}
+    )
+
     return {"message": "Role deleted successfully"}
 

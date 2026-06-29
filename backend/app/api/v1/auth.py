@@ -21,6 +21,7 @@ from app.models.user import User
 from app.models.tenant import Tenant
 from app.models.refresh_token import RefreshToken
 from app.models.invite_token import InviteToken
+from app.services.audit_log_service import log_audit_event
 from app.models.otp_verification import OTPVerification
 from app.models.role import Role
 from app.models.enums import OTPPurpose
@@ -594,7 +595,21 @@ def invite_member(
             invite_token=raw_token,
             organisation_name=current_admin.tenant.name
         )
-        
+
+        log_audit_event(
+            db=db,
+            tenant_id=current_admin.tenant_id,
+            actor_user_id=current_admin.id,
+            action="employee.invited",
+            description=f"Invited employee '{user.full_name}' ({user.email}) with role '{role.name}'",
+            metadata={
+                "user_id": str(user.id),
+                "email": user.email,
+                "role_id": str(role.id),
+                "role_name": role.name
+            }
+        )
+
         return {"message": "Invite sent successfully"}
     except HTTPException as he:
         # Re-raise HTTPException raised by email service

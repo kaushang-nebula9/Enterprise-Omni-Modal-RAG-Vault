@@ -416,7 +416,7 @@ export const RolesPermissionsPage: React.FC = () => {
             </div>
             <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate({ name: newRoleName, parent_role_id: newParentRoleId || null, department_id: newDepartmentId || null }); }} className="p-6 flex flex-col gap-4">
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-330">Role Name</label>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Role Name</label>
                 <input required autoFocus value={newRoleName} onChange={e=>setNewRoleName(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
               </div>
               <div className="space-y-1">

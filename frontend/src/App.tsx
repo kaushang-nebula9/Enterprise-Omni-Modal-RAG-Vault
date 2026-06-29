@@ -16,6 +16,7 @@ import { TeamManagementPage } from './pages/dashboard/TeamManagementPage';
 import { RolesPermissionsPage } from './pages/dashboard/RolesPermissionsPage';
 import { OrganisationSettingsPage } from './pages/dashboard/OrganisationSettingsPage';
 import { ProfileSettingsPage } from './pages/dashboard/ProfileSettingsPage';
+import { AuditLogPage } from './pages/dashboard/AuditLogPage';
 import DocumentsPage from './pages/dashboard/DocumentsPage';
 import ChatPage from './pages/dashboard/ChatPage';
 import YourDocumentsPage from './pages/dashboard/YourDocumentsPage';
@@ -59,6 +60,7 @@ const App: React.FC = () => {
           <Route path="team" element={<ProtectedAdminRoute><TeamManagementPage /></ProtectedAdminRoute>} />
           <Route path="roles" element={<ProtectedAdminRoute><RolesPermissionsPage /></ProtectedAdminRoute>} />
           <Route path="settings" element={<ProtectedAdminRoute><OrganisationSettingsPage /></ProtectedAdminRoute>} />
+          <Route path="audit-log" element={<ProtectedAdminRoute><AuditLogPage /></ProtectedAdminRoute>} />
           
           <Route path="chat" element={<ChatPage />} />
           <Route path="your-documents" element={<YourDocumentsPage />} />

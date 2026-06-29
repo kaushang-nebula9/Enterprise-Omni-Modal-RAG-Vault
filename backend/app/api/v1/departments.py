@@ -6,6 +6,7 @@ from app.core.dependencies import get_current_user, require_admin
 from app.models.user import User
 from app.models.department import Department
 from app.schemas.department import CreateDepartmentRequest, UpdateDepartmentRequest, DepartmentResponse
+from app.services.audit_log_service import log_audit_event
 
 router = APIRouter()
 
@@ -44,6 +45,16 @@ def create_department(
     db.add(dept)
     db.commit()
     db.refresh(dept)
+
+    log_audit_event(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        actor_user_id=current_admin.id,
+        action="department.created",
+        description=f"Created department '{dept.name}'",
+        metadata={"department_id": str(dept.id), "name": dept.name}
+    )
+
     return dept
 
 @router.patch("/{department_id}", response_model=DepartmentResponse)
@@ -75,9 +86,20 @@ def update_department(
             detail="A department with this name already exists"
         )
 
+    old_name = dept.name
     dept.name = request.name
     db.commit()
     db.refresh(dept)
+
+    log_audit_event(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        actor_user_id=current_admin.id,
+        action="department.updated",
+        description=f"Updated department name from '{old_name}' to '{dept.name}'",
+        metadata={"department_id": str(dept.id), "old_name": old_name, "new_name": dept.name}
+    )
+
     return dept
 
 @router.delete("/{department_id}")

@@ -451,6 +451,16 @@ async def send_query(
 
     if not resolved_model_id:
         from app.models.available_model import AvailableModel
+        if current_user.tenant and current_user.tenant.default_model_id:
+            tenant_default = db.query(AvailableModel).filter(
+                AvailableModel.id == current_user.tenant.default_model_id,
+                AvailableModel.is_active == True
+            ).first()
+            if tenant_default:
+                resolved_model_id = tenant_default.id
+
+    if not resolved_model_id:
+        from app.models.available_model import AvailableModel
         from app.models.enums import ModelProvider
         default_model = db.query(AvailableModel).filter(
             AvailableModel.is_active == True,

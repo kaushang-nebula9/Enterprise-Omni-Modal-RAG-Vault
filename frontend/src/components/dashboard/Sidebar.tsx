@@ -13,6 +13,7 @@ import {
   FileText,
   Trash2,
   Pin,
+  History,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { chatService } from '../../services/chatService';
@@ -34,6 +35,7 @@ const adminLinks = [
   { name: 'Team Management', icon: Users, path: '/dashboard/team' },
   { name: 'Roles and Permissions', icon: ShieldCheck, path: '/dashboard/roles' },
   { name: 'Organisation Settings', icon: Settings, path: '/dashboard/settings' },
+  { name: 'Audit Log', icon: History, path: '/dashboard/audit-log' },
 ];
 
 const memberLinks = [

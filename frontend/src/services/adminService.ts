@@ -95,6 +95,22 @@ export const adminService = {
   deleteModel: async (modelId: string): Promise<MessageResponse> => {
     const response = await api.delete(`/api/v1/admin/models/${modelId}`);
     return response.data;
+  },
+
+  getAuditLogs: async (params: {
+    limit?: number;
+    offset?: number;
+    action?: string;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<{
+    items: any[];
+    total: number;
+    limit: number;
+    offset: number;
+  }> => {
+    const response = await api.get('/api/v1/admin/audit-log', { params });
+    return response.data;
   }
 };
 

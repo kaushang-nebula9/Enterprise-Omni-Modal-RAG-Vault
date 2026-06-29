@@ -95,6 +95,7 @@ export const OrganisationSettingsPage: React.FC = () => {
   const [orgName, setOrgName] = useState('');
   const [orgWebsite, setOrgWebsite] = useState('');
   const [budgetLimit, setBudgetLimit] = useState('');
+  const [defaultModelId, setDefaultModelId] = useState('');
 
   const { data: orgData } = useQuery({
     queryKey: ['organisation'],
@@ -106,6 +107,7 @@ export const OrganisationSettingsPage: React.FC = () => {
       setOrgName(orgData.name);
       setOrgWebsite(orgData.website || '');
       setBudgetLimit(orgData.monthly_budget_limit != null ? orgData.monthly_budget_limit.toString() : '');
+      setDefaultModelId(orgData.default_model_id || '');
     }
   }, [orgData]);
 
@@ -118,6 +120,7 @@ export const OrganisationSettingsPage: React.FC = () => {
       setGeneralUpdateStatus({ type: 'success', msg: 'Organisation updated successfully' });
       setOrgName(data.name);
       setOrgWebsite(data.website || '');
+      setDefaultModelId(data.default_model_id || '');
       setTimeout(() => setGeneralUpdateStatus(null), 3000);
     },
     onError: (err: any) => {
@@ -139,7 +142,11 @@ export const OrganisationSettingsPage: React.FC = () => {
 
   const handleUpdateGeneral = (e: React.FormEvent) => {
     e.preventDefault();
-    updateGeneralMutation.mutate({ name: orgName, website: orgWebsite });
+    updateGeneralMutation.mutate({ 
+      name: orgName, 
+      website: orgWebsite,
+      default_model_id: defaultModelId === '' ? null : defaultModelId
+    });
   };
 
   const handleUpdateBudget = (e: React.FormEvent) => {
@@ -165,9 +172,12 @@ export const OrganisationSettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col gap-8 w-full h-full pb-12 text-slate-800 dark:text-slate-100">
+    <div className="flex flex-col gap-6 w-full h-full pb-12 text-slate-800 dark:text-slate-100">
       <div className="shrink-0">
         <h1 className="text-2xl font-semibold font-sora text-slate-800 dark:text-slate-100">Organisation Settings</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+            Manage your organisation's settings, including general information, monthly budget, and available LLM models for RAG chat generation.
+          </p>
       </div>
 
       <div className="flex flex-col gap-6">
@@ -193,6 +203,19 @@ export const OrganisationSettingsPage: React.FC = () => {
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Website</label>
                   <input type="url" value={orgWebsite} onChange={e=>setOrgWebsite(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Default Chat Model</label>
+                  <select
+                    value={defaultModelId}
+                    onChange={(e) => setDefaultModelId(e.target.value)}
+                    className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all cursor-pointer"
+                  >
+                    <option value="">System Default (Oldest Active Anthropic Model)</option>
+                    {modelsData?.filter(m => m.is_active).map(m => (
+                      <option key={m.id} value={m.id}>{m.display_name} ({m.model_string})</option>
+                    ))}
+                  </select>
                 </div>
                 <button type="submit" disabled={updateGeneralMutation.isPending} className="mt-2 w-fit px-6 bg-indigo-700 dark:bg-indigo-500 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50">
                   {updateGeneralMutation.isPending ? 'Saving...' : 'Save Changes'}

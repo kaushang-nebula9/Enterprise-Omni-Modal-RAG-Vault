@@ -13,4 +13,5 @@ from .available_model import AvailableModel
 from .usage_log import UsageLog
 from .query_log import QueryLog
 from .evaluation import EvaluationRun, EvaluationResult
+from .audit_log import AuditLog
 

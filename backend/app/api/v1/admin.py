@@ -1,5 +1,5 @@
 from venv import logger
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
 from sqlalchemy.orm import Session, joinedload
 from app.db.session import get_db
 from app.core.dependencies import require_admin
@@ -18,6 +18,10 @@ from app.schemas.admin import (
 )
 from app.schemas.auth import MessageResponse
 from app.services.billing_service import calculate_tenant_monthly_cost
+from app.services.audit_log_service import log_audit_event
+from app.models.audit_log import AuditLog
+from app.schemas.audit_log import AuditLogListResponse
+from datetime import datetime
 import re
 import random
 from uuid import UUID
@@ -79,6 +83,8 @@ def update_member(
 
     role_changed = False
     new_role = None
+    old_role_name = "unknown"
+    old_role_id = None
     if request.role_id is not None:
         new_role = db.query(Role).filter(
             Role.id == request.role_id,
@@ -87,6 +93,9 @@ def update_member(
         if not new_role:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role")
         role_changed = target_user.role_id != request.role_id
+        if role_changed:
+            old_role_id = target_user.role_id
+            old_role_name = target_user.role.name if target_user.role else "unknown"
         target_user.role_id = request.role_id
 
     if request.is_active is not None:
@@ -95,6 +104,23 @@ def update_member(
             db.query(RefreshToken).filter(RefreshToken.user_id == target_user.id).update({RefreshToken.is_revoked: True})
 
     db.commit()
+
+    if role_changed and new_role:
+        log_audit_event(
+            db=db,
+            tenant_id=current_admin.tenant_id,
+            actor_user_id=current_admin.id,
+            action="employee.role_changed",
+            description=f"Changed role of employee '{target_user.full_name}' ({target_user.email}) from '{old_role_name}' to '{new_role.name}'",
+            metadata={
+                "user_id": str(target_user.id),
+                "email": target_user.email,
+                "old_role_id": str(old_role_id) if old_role_id else None,
+                "new_role_id": str(new_role.id),
+                "old_role_name": old_role_name,
+                "new_role_name": new_role.name
+            }
+        )
 
     if role_changed and new_role:
         from app.services.notification_service import create_notification
@@ -179,7 +205,10 @@ def update_organisation(
         # Convert HttpUrl to string
         tenant.website = str(request.website)
 
+    budget_limit_changed = False
+    old_budget_limit = tenant.monthly_budget_limit
     if "monthly_budget_limit" in request.model_fields_set:
+        budget_limit_changed = old_budget_limit != request.monthly_budget_limit
         tenant.monthly_budget_limit = request.monthly_budget_limit
         # Trigger budget check task in background since limit was updated
         try:
@@ -190,8 +219,48 @@ def update_organisation(
         except Exception as task_exc:
             logger.error("Failed to trigger check_tenant_budgets_task after budget update: %s", task_exc)
 
+    default_model_changed = False
+    old_default_model_id = tenant.default_model_id
+    if "default_model_id" in request.model_fields_set:
+        if request.default_model_id is not None:
+            # Verify it exists and is active
+            model_exists = db.query(AvailableModel).filter(
+                AvailableModel.id == request.default_model_id,
+                AvailableModel.is_active == True
+            ).first()
+            if not model_exists:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or inactive default model")
+        default_model_changed = old_default_model_id != request.default_model_id
+        tenant.default_model_id = request.default_model_id
+
     db.commit()
     db.refresh(tenant)
+
+    if budget_limit_changed:
+        limit_desc = f"${tenant.monthly_budget_limit:.2f}" if tenant.monthly_budget_limit is not None else "no limit"
+        log_audit_event(
+            db=db,
+            tenant_id=tenant.id,
+            actor_user_id=current_admin.id,
+            action="budget_limit.updated",
+            description=f"Changed monthly budget limit to {limit_desc}",
+            metadata={"old_limit": old_budget_limit, "new_limit": tenant.monthly_budget_limit}
+        )
+
+    if default_model_changed:
+        model_name = "None"
+        if tenant.default_model_id:
+            model_exists = db.query(AvailableModel).filter(AvailableModel.id == tenant.default_model_id).first()
+            if model_exists:
+                model_name = model_exists.display_name
+        log_audit_event(
+            db=db,
+            tenant_id=tenant.id,
+            actor_user_id=current_admin.id,
+            action="default_model.updated",
+            description=f"Changed default model to {model_name}",
+            metadata={"old_model_id": str(old_default_model_id) if old_default_model_id else None, "new_model_id": str(tenant.default_model_id) if tenant.default_model_id else None}
+        )
 
     # Attach estimated usage before returning
     estimated_usage = calculate_tenant_monthly_cost(db, tenant.id)
@@ -583,6 +652,58 @@ def get_document_insights(
         distribution=distribution,
         recent_documents=recent_documents
     )
+
+
+@router.get("/audit-log", response_model=AuditLogListResponse)
+def get_audit_logs(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    action: str | None = Query(None),
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns a paginated list of audit logs for the admin's tenant.
+    Can be filtered by action type and date range.
+    """
+    query = db.query(AuditLog).filter(AuditLog.tenant_id == current_admin.tenant_id)
+
+    if action:
+        query = query.filter(AuditLog.action == action)
+
+    if start_date:
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        query = query.filter(AuditLog.created_at >= start_dt)
+
+    if end_date:
+        end_dt = datetime.combine(end_date, datetime.max.time())
+        query = query.filter(AuditLog.created_at <= end_dt)
+
+    total = query.count()
+
+    logs = query.options(joinedload(AuditLog.actor)).order_by(AuditLog.created_at.desc()).offset(offset).limit(limit).all()
+
+    items = [
+        {
+            "id": log.id,
+            "tenant_id": log.tenant_id,
+            "actor_user_id": log.actor_user_id,
+            "actor_name": log.actor.full_name if log.actor else "System",
+            "action": log.action,
+            "description": log.description,
+            "metadata": log.metadata_,
+            "created_at": log.created_at
+        } for log in logs
+    ]
+
+    return {
+        "items": items,
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
 
 
 

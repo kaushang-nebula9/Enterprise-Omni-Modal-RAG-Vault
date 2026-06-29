@@ -17,6 +17,7 @@ import {
   Plus, 
   ArrowRight,
   TrendingUp,
+  History,
 } from 'lucide-react';
 
 const AdminDashboardPage: React.FC = () => {
@@ -922,7 +923,7 @@ const AdminDashboardPage: React.FC = () => {
           Quick Actions
         </h3>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
           {/* Invite Employee Action */}
           <button 
             onClick={() => navigate('/dashboard/team', { state: { openInvite: true } })}
@@ -976,6 +977,20 @@ const AdminDashboardPage: React.FC = () => {
             <div className="flex flex-col gap-0.5">
               <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Create Department</span>
               <span className="text-[11px] text-slate-400 dark:text-slate-500">Group roles into categories</span>
+            </div>
+          </button>
+
+          {/* View Audit Log Action */}
+          <button 
+            onClick={() => navigate('/dashboard/audit-log')}
+            className="flex items-center gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600/80 p-5 rounded-xl text-left shadow-sm group hover:-translate-y-0.5 transition-all duration-200"
+          >
+            <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
+              <History className="w-5 h-5" />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Audit Log</span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">Track organisation state changes</span>
             </div>
           </button>
         </div>

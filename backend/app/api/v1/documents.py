@@ -14,6 +14,7 @@ from app.models.user import User
 from app.models.document import Document
 from app.models.document_access_policy import DocumentAccessPolicy
 from app.models.role import Role
+from app.services.audit_log_service import log_audit_event
 from app.models.enums import DocumentStatus, FileType, OwnerType, Visibility
 from app.schemas.document import (
     DocumentResponse,
@@ -593,6 +594,27 @@ def update_document_access(
 
     # Reload with updated policies
     updated_doc = _load_document_with_policies(db, document_id, current_admin.tenant_id)
+
+    role_names = []
+    if request.role_ids:
+        roles = db.query(Role).filter(Role.id.in_(request.role_ids)).all()
+        role_names = [r.name for r in roles]
+    roles_desc = ", ".join(role_names) if role_names else "none"
+
+    log_audit_event(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        actor_user_id=current_admin.id,
+        action="document.assigned_to_role",
+        description=f"Assigned document '{doc.filename}' to roles: {roles_desc}",
+        metadata={
+            "document_id": str(doc.id),
+            "filename": doc.filename,
+            "role_ids": [str(rid) for rid in request.role_ids],
+            "role_names": role_names
+        }
+    )
+
     return updated_doc
 
 @router.post("/{document_id}/assign-department", response_model=DocumentWithAccessResponse)
@@ -666,6 +688,20 @@ def assign_department(
         )
 
     db.commit()
+
+    log_audit_event(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        actor_user_id=current_admin.id,
+        action="document.assigned_to_department",
+        description=f"Assigned document '{doc.filename}' to department '{dept.name}'",
+        metadata={
+            "document_id": str(doc.id),
+            "filename": doc.filename,
+            "department_id": str(dept.id),
+            "department_name": dept.name
+        }
+    )
 
     # 5. Build the complete list of role_ids for Qdrant (all policies)
     all_policies = (

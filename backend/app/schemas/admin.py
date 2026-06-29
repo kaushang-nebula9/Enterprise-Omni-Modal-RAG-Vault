@@ -16,6 +16,7 @@ class UpdateOrganisationRequest(BaseModel):
     name: str | None = Field(None, min_length=2)
     website: HttpUrl | None = None
     monthly_budget_limit: Optional[float] = None
+    default_model_id: Optional[UUID] = None
 
 class TenantResponse(BaseModel):
     id: UUID
@@ -23,6 +24,7 @@ class TenantResponse(BaseModel):
     slug: str
     website: str | None = None
     monthly_budget_limit: Optional[float] = None
+    default_model_id: Optional[UUID] = None
     estimated_usage_this_month: Optional[float] = None
     created_at: datetime
 
