@@ -1,5 +1,5 @@
 import api from './api';
-import type { EvaluationRun, EvaluationDetail, ModelEvaluationBreakdown } from '../types/evaluation';
+import type { EvaluationRun, EvaluationDetail, ModelEvaluationBreakdown, EvaluationOverall, AllEvaluationResults } from '../types/evaluation';
 
 export const evaluationService = {
   runEvaluation: async (payload: {
@@ -23,6 +23,18 @@ export const evaluationService = {
 
   getEvaluationByModel: async (): Promise<ModelEvaluationBreakdown[]> => {
     const response = await api.get('/api/v1/evaluations/by-model');
+    return response.data;
+  },
+
+  getOverallEvaluation: async (): Promise<EvaluationOverall | null> => {
+    const response = await api.get('/api/v1/evaluations/overall');
+    return response.data;
+  },
+
+  getAllEvaluationResults: async (limit: number = 20, offset: number = 0): Promise<AllEvaluationResults> => {
+    const response = await api.get('/api/v1/evaluations/results/all', {
+      params: { limit, offset }
+    });
     return response.data;
   },
 };

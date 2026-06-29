@@ -56,3 +56,34 @@ class ModelEvaluationBreakdown(BaseModel):
     model_config = {
         "from_attributes": True
     }
+
+class EvaluationOverallResponse(BaseModel):
+    avg_faithfulness_score: Optional[float] = None
+    avg_relevance_score: Optional[float] = None
+    query_count: int
+
+    model_config = {
+        "from_attributes": True
+    }
+
+class AllEvaluationResultItem(BaseModel):
+    id: UUID
+    evaluation_run_id: UUID
+    query_log_id: UUID
+    faithfulness_score: int
+    relevance_score: int
+    unsupported_claims: List[str]
+    reasoning: str
+    created_at: datetime
+    question: Optional[str] = None
+    answer: Optional[str] = None
+    model_string: Optional[str] = None
+    run_created_at: datetime
+
+    model_config = {
+        "from_attributes": True
+    }
+
+class AllEvaluationResultsResponse(BaseModel):
+    results: List[AllEvaluationResultItem]
+    total_count: int

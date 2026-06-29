@@ -213,3 +213,218 @@ def test_evaluations_by_model(db):
     assert results_map["Unknown (legacy)"].avg_faithfulness_score == 60.0
     assert results_map["Unknown (legacy)"].avg_relevance_score == 40.0
 
+
+def test_evaluations_overall(db):
+    from sqlalchemy import func
+
+    # Setup tenant and user
+    tenant_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+
+    # Create two completed runs
+    run1 = EvaluationRun(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        requested_by_user_id=user_id,
+        status=EvaluationStatus.completed,
+        query_count=1,
+        created_at=datetime.now(timezone.utc) - timedelta(hours=2),
+    )
+    run2 = EvaluationRun(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        requested_by_user_id=user_id,
+        status=EvaluationStatus.completed,
+        query_count=1,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(run1)
+    db.add(run2)
+    db.commit()
+
+    # Log two queries
+    log1 = QueryLog(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        user_id=user_id,
+        question="Q1",
+        contexts=["C1"],
+        answer="A1",
+        created_at=datetime.now(timezone.utc)
+    )
+    log2 = QueryLog(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        user_id=user_id,
+        question="Q2",
+        contexts=["C2"],
+        answer="A2",
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(log1)
+    db.add(log2)
+    db.commit()
+
+    # Create evaluation results (one for run1, one for run2)
+    res1 = EvaluationResult(
+        id=uuid.uuid4(),
+        evaluation_run_id=run1.id,
+        query_log_id=log1.id,
+        faithfulness_score=100,
+        relevance_score=80,
+        unsupported_claims=[],
+        reasoning="Good 1.",
+        created_at=datetime.now(timezone.utc)
+    )
+    res2 = EvaluationResult(
+        id=uuid.uuid4(),
+        evaluation_run_id=run2.id,
+        query_log_id=log2.id,
+        faithfulness_score=50,
+        relevance_score=60,
+        unsupported_claims=[],
+        reasoning="Good 2.",
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(res1)
+    db.add(res2)
+    db.commit()
+
+    # Run the overall aggregation query
+    results = (
+        db.query(
+            func.avg(EvaluationResult.faithfulness_score).label("avg_faithfulness_score"),
+            func.avg(EvaluationResult.relevance_score).label("avg_relevance_score"),
+            func.count(EvaluationResult.id).label("query_count")
+        )
+        .join(EvaluationRun, EvaluationResult.evaluation_run_id == EvaluationRun.id)
+        .filter(
+            EvaluationRun.tenant_id == tenant_id,
+            EvaluationRun.status == EvaluationStatus.completed
+        )
+        .first()
+    )
+
+    assert results is not None
+    assert results.query_count == 2
+    assert results.avg_faithfulness_score == 75.0  # (100 + 50) / 2
+    assert results.avg_relevance_score == 70.0     # (80 + 60) / 2
+
+
+def test_all_evaluation_results(db):
+    from sqlalchemy import func
+
+    # Setup tenant and user
+    tenant_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+
+    # Create two completed runs
+    run1 = EvaluationRun(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        requested_by_user_id=user_id,
+        status=EvaluationStatus.completed,
+        query_count=1,
+        created_at=datetime.now(timezone.utc) - timedelta(hours=2),
+    )
+    run2 = EvaluationRun(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        requested_by_user_id=user_id,
+        status=EvaluationStatus.completed,
+        query_count=1,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(run1)
+    db.add(run2)
+    db.commit()
+
+    # Log two queries
+    log1 = QueryLog(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        user_id=user_id,
+        question="Q1",
+        contexts=["C1"],
+        answer="A1",
+        model_string="gpt-4o",
+        created_at=datetime.now(timezone.utc)
+    )
+    log2 = QueryLog(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        user_id=user_id,
+        question="Q2",
+        contexts=["C2"],
+        answer="A2",
+        model_string="claude-3",
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(log1)
+    db.add(log2)
+    db.commit()
+
+    # Create evaluation results (one for run1, one for run2)
+    res1 = EvaluationResult(
+        id=uuid.uuid4(),
+        evaluation_run_id=run1.id,
+        query_log_id=log1.id,
+        faithfulness_score=100,
+        relevance_score=80,
+        unsupported_claims=[],
+        reasoning="Good 1.",
+        created_at=datetime.now(timezone.utc)
+    )
+    res2 = EvaluationResult(
+        id=uuid.uuid4(),
+        evaluation_run_id=run2.id,
+        query_log_id=log2.id,
+        faithfulness_score=50,
+        relevance_score=60,
+        unsupported_claims=[],
+        reasoning="Good 2.",
+        created_at=datetime.now(timezone.utc)
+    )
+    db.add(res1)
+    db.add(res2)
+    db.commit()
+
+    # Query all evaluation results across all runs
+    query = (
+        db.query(
+            EvaluationResult.id,
+            EvaluationResult.evaluation_run_id,
+            EvaluationResult.query_log_id,
+            EvaluationResult.faithfulness_score,
+            EvaluationResult.relevance_score,
+            EvaluationResult.unsupported_claims,
+            EvaluationResult.reasoning,
+            EvaluationResult.created_at,
+            QueryLog.question,
+            QueryLog.answer,
+            QueryLog.model_string,
+            EvaluationRun.created_at.label("run_created_at")
+        )
+        .join(QueryLog, EvaluationResult.query_log_id == QueryLog.id)
+        .join(EvaluationRun, EvaluationResult.evaluation_run_id == EvaluationRun.id)
+        .filter(EvaluationRun.tenant_id == tenant_id)
+    )
+
+    total_count = query.count()
+    assert total_count == 2
+
+    # Sort worst-first by combined score
+    sorted_results = query.order_by((EvaluationResult.faithfulness_score + EvaluationResult.relevance_score).asc()).all()
+
+    # Worst one (res2) should be first
+    assert sorted_results[0].id == res2.id
+    assert sorted_results[0].faithfulness_score == 50
+    assert sorted_results[0].model_string == "claude-3"
+
+    # Best one (res1) should be second
+    assert sorted_results[1].id == res1.id
+    assert sorted_results[1].faithfulness_score == 100
+    assert sorted_results[1].model_string == "gpt-4o"
+
+
+

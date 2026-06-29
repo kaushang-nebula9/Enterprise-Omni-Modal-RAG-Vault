@@ -13,6 +13,9 @@ from app.schemas.evaluation import (
     EvaluationDetailResponse,
     EvaluationResultResponse,
     ModelEvaluationBreakdown,
+    EvaluationOverallResponse,
+    AllEvaluationResultItem,
+    AllEvaluationResultsResponse,
 )
 from app.tasks.evaluation_tasks import run_evaluation_task
 import uuid
@@ -87,6 +90,103 @@ def get_evaluations_by_model(
         .all()
     )
     return results
+
+@router.get("/results/all", response_model=AllEvaluationResultsResponse)
+def get_all_evaluation_results(
+    limit: int = 20,
+    offset: int = 0,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns every EvaluationResult row for the tenant across all evaluation runs.
+    """
+    # Base query
+    query = (
+        db.query(
+            EvaluationResult.id,
+            EvaluationResult.evaluation_run_id,
+            EvaluationResult.query_log_id,
+            EvaluationResult.faithfulness_score,
+            EvaluationResult.relevance_score,
+            EvaluationResult.unsupported_claims,
+            EvaluationResult.reasoning,
+            EvaluationResult.created_at,
+            QueryLog.question,
+            QueryLog.answer,
+            QueryLog.model_string,
+            EvaluationRun.created_at.label("run_created_at")
+        )
+        .join(QueryLog, EvaluationResult.query_log_id == QueryLog.id)
+        .join(EvaluationRun, EvaluationResult.evaluation_run_id == EvaluationRun.id)
+        .filter(EvaluationRun.tenant_id == current_admin.tenant_id)
+    )
+
+    total_count = query.count()
+
+    # Sort worst-first: combined score (faithfulness + relevance) ascending
+    sorted_query = query.order_by((EvaluationResult.faithfulness_score + EvaluationResult.relevance_score).asc())
+
+    db_results = sorted_query.limit(limit).offset(offset).all()
+
+    results = []
+    for r in db_results:
+        results.append(AllEvaluationResultItem(
+            id=r.id,
+            evaluation_run_id=r.evaluation_run_id,
+            query_log_id=r.query_log_id,
+            faithfulness_score=r.faithfulness_score,
+            relevance_score=r.relevance_score,
+            unsupported_claims=r.unsupported_claims,
+            reasoning=r.reasoning,
+            created_at=r.created_at,
+            question=r.question,
+            answer=r.answer,
+            model_string=r.model_string,
+            run_created_at=r.run_created_at
+        ))
+
+    return AllEvaluationResultsResponse(results=results, total_count=total_count)
+
+@router.get("/overall", response_model=Optional[EvaluationOverallResponse])
+def get_overall_evaluation(
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Computes average faithfulness_score and relevance_score across all EvaluationResult rows for the tenant.
+    """
+    # Check if there are any completed runs first
+    has_runs = db.query(EvaluationRun).filter(
+        EvaluationRun.tenant_id == current_admin.tenant_id,
+        EvaluationRun.status == EvaluationStatus.completed
+    ).first()
+    
+    if not has_runs:
+        return None
+
+    results = (
+        db.query(
+            func.avg(EvaluationResult.faithfulness_score).label("avg_faithfulness_score"),
+            func.avg(EvaluationResult.relevance_score).label("avg_relevance_score"),
+            func.count(EvaluationResult.id).label("query_count")
+        )
+        .join(EvaluationRun, EvaluationResult.evaluation_run_id == EvaluationRun.id)
+        .filter(
+            EvaluationRun.tenant_id == current_admin.tenant_id,
+            EvaluationRun.status == EvaluationStatus.completed
+        )
+        .first()
+    )
+    
+    if not results or results.query_count == 0:
+        return None
+        
+    return {
+        "avg_faithfulness_score": results.avg_faithfulness_score,
+        "avg_relevance_score": results.avg_relevance_score,
+        "query_count": results.query_count
+    }
 
 @router.get("/{id}", response_model=EvaluationDetailResponse)
 def get_evaluation_details(

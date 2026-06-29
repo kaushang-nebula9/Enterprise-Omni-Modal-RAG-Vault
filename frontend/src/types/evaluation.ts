@@ -26,6 +26,7 @@ export interface EvaluationResult {
   question?: string;
   answer?: string;
   model_string?: string;
+  run_created_at?: string;
 }
 
 export interface EvaluationDetail {
@@ -38,4 +39,15 @@ export interface ModelEvaluationBreakdown {
   query_count: number;
   avg_faithfulness_score: number;
   avg_relevance_score: number;
+}
+
+export interface EvaluationOverall {
+  avg_faithfulness_score?: number;
+  avg_relevance_score?: number;
+  query_count: number;
+}
+
+export interface AllEvaluationResults {
+  results: EvaluationResult[];
+  total_count: number;
 }

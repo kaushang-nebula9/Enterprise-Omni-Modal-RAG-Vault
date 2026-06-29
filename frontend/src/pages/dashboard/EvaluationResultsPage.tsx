@@ -1,8 +1,8 @@
 import React from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { evaluationService } from '../../services/evaluationService';
-import { ArrowLeft, Award, CheckCircle, AlertTriangle, HelpCircle, Calendar, MessageSquare, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Award, AlertTriangle, Calendar, MessageSquare, ChevronDown } from 'lucide-react';
 import type { EvaluationResult } from '../../types/evaluation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -36,6 +36,11 @@ const QueryResultCard: React.FC<{
           }`}>
             Model: {result.model_string || 'Unknown (legacy)'}
           </span>
+          {result.run_created_at && (
+            <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-md font-sans bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+              Run Date: {new Date(result.run_created_at).toLocaleDateString()}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -156,6 +161,12 @@ const QueryResultCard: React.FC<{
 const EvaluationResultsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const defaultViewMode = location.state?.defaultViewMode || 'run';
+  const [viewMode, setViewMode] = React.useState<'run' | 'all'>(defaultViewMode);
+  const [page, setPage] = React.useState(1);
+  const limit = 10;
 
   const { data: detail, isLoading, error } = useQuery({
     queryKey: ['evaluationDetails', id],
@@ -166,6 +177,18 @@ const EvaluationResultsPage: React.FC = () => {
   const { data: modelPerformance, isLoading: isModelPerfLoading } = useQuery({
     queryKey: ['modelPerformance'],
     queryFn: () => evaluationService.getEvaluationByModel(),
+  });
+
+  const { data: allResultsData, isLoading: isAllResultsLoading } = useQuery({
+    queryKey: ['allEvaluationResults', page, limit],
+    queryFn: () => evaluationService.getAllEvaluationResults(limit, (page - 1) * limit),
+    enabled: viewMode === 'all',
+  });
+
+  const { data: overallEval } = useQuery({
+    queryKey: ['overallEvaluation'],
+    queryFn: () => evaluationService.getOverallEvaluation(),
+    enabled: viewMode === 'all',
   });
 
   const sortedModelPerformance = React.useMemo(() => {
@@ -234,16 +257,44 @@ const EvaluationResultsPage: React.FC = () => {
                 Evaluation Report
               </h2>
               <span className="text-xs text-slate-400 font-sans">
-                Run ID: {run.id}
+                {viewMode === 'run' ? `Run ID: ${run.id}` : 'All evaluation runs across your vault'}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2">
-            <Calendar className="w-4 h-4 text-slate-400 dark:text-slate-500" />
-            <span className="text-xs font-semibold text-slate-650 dark:text-slate-200 font-sans">
-              Executed: {formatDate(run.created_at)}
-            </span>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* View Scope Toggle */}
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold">
+              <button
+                onClick={() => setViewMode('run')}
+                className={`px-3 py-1.5 rounded-md transition-colors cursor-pointer ${
+                  viewMode === 'run'
+                    ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
+              >
+                This Run
+              </button>
+              <button
+                onClick={() => setViewMode('all')}
+                className={`px-3 py-1.5 rounded-md transition-colors cursor-pointer ${
+                  viewMode === 'all'
+                    ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
+              >
+                All Evaluations
+              </button>
+            </div>
+
+            {viewMode === 'run' && (
+              <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-2">
+                <Calendar className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+                <span className="text-xs font-semibold text-slate-650 dark:text-slate-200 font-sans">
+                  Executed: {formatDate(run.created_at)}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -257,14 +308,20 @@ const EvaluationResultsPage: React.FC = () => {
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-4xl font-bold font-sora text-slate-800 dark:text-slate-100">
-              {run.avg_faithfulness_score !== null && run.avg_faithfulness_score !== undefined
-                ? `${Math.round(run.avg_faithfulness_score)}%`
-                : 'N/A'}
+              {viewMode === 'run'
+                ? (run.avg_faithfulness_score !== null && run.avg_faithfulness_score !== undefined
+                  ? `${Math.round(run.avg_faithfulness_score)}%`
+                  : 'N/A')
+                : (overallEval?.avg_faithfulness_score !== null && overallEval?.avg_faithfulness_score !== undefined
+                  ? `${Math.round(overallEval.avg_faithfulness_score)}%`
+                  : 'N/A')}
             </span>
             <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full mt-2 overflow-hidden">
               <div 
                 className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                style={{ width: `${run.avg_faithfulness_score || 0}%` }}
+                style={{
+                  width: `${(viewMode === 'run' ? run.avg_faithfulness_score : overallEval?.avg_faithfulness_score) || 0}%`
+                }}
               ></div>
             </div>
           </div>
@@ -280,14 +337,20 @@ const EvaluationResultsPage: React.FC = () => {
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-4xl font-bold font-sora text-slate-800 dark:text-slate-100">
-              {run.avg_relevance_score !== null && run.avg_relevance_score !== undefined
-                ? `${Math.round(run.avg_relevance_score)}%`
-                : 'N/A'}
+              {viewMode === 'run'
+                ? (run.avg_relevance_score !== null && run.avg_relevance_score !== undefined
+                  ? `${Math.round(run.avg_relevance_score)}%`
+                  : 'N/A')
+                : (overallEval?.avg_relevance_score !== null && overallEval?.avg_relevance_score !== undefined
+                  ? `${Math.round(overallEval.avg_relevance_score)}%`
+                  : 'N/A')}
             </span>
             <div className="w-full bg-slate-100 dark:bg-slate-800 h-2 rounded-full mt-2 overflow-hidden">
               <div 
                 className="bg-indigo-500 h-full rounded-full transition-all duration-500"
-                style={{ width: `${run.avg_relevance_score || 0}%` }}
+                style={{
+                  width: `${(viewMode === 'run' ? run.avg_relevance_score : overallEval?.avg_relevance_score) || 0}%`
+                }}
               ></div>
             </div>
           </div>
@@ -304,27 +367,39 @@ const EvaluationResultsPage: React.FC = () => {
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500 dark:text-slate-400 font-sans">Status</span>
                 <span className={`font-semibold capitalize ${
-                  run.status === 'completed' ? 'text-emerald-500' :
-                  run.status === 'running' ? 'text-amber-500' :
-                  'text-red-500'
-                }`}>{run.status}</span>
+                  viewMode === 'run'
+                    ? (run.status === 'completed' ? 'text-emerald-500' : run.status === 'running' ? 'text-amber-500' : 'text-red-500')
+                    : 'text-emerald-500'
+                }`}>
+                  {viewMode === 'run' ? run.status : 'All Runs'}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500 dark:text-slate-400 font-sans">Queries Evaluated</span>
-                <span className="font-semibold text-slate-850 dark:text-slate-100 font-sans">{run.query_count}</span>
+                <span className="font-semibold text-slate-850 dark:text-slate-100 font-sans">
+                  {viewMode === 'run' ? run.query_count : (overallEval?.query_count || 0)}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500 dark:text-slate-400 font-sans">Date Range Filter</span>
                 <span className="font-semibold text-slate-850 dark:text-slate-100 font-sans text-xs">
-                  {run.date_range_start ? `${new Date(run.date_range_start).toLocaleDateString()} to ${new Date(run.date_range_end || '').toLocaleDateString()}` : 'None (Latest count)'}
+                  {viewMode === 'run'
+                    ? (run.date_range_start ? `${new Date(run.date_range_start).toLocaleDateString()} to ${new Date(run.date_range_end || '').toLocaleDateString()}` : 'None (Latest count)')
+                    : 'All Time'}
                 </span>
               </div>
             </div>
           </div>
           
-          {run.completed_at && (
+          {viewMode === 'run' ? (
+            run.completed_at && (
+              <div className="text-xs text-slate-500 dark:text-slate-400 font-sans border-t border-slate-100 dark:border-slate-800/80 pt-3">
+                Completed in background: {formatDate(run.completed_at)}
+              </div>
+            )
+          ) : (
             <div className="text-xs text-slate-500 dark:text-slate-400 font-sans border-t border-slate-100 dark:border-slate-800/80 pt-3">
-              Completed in background: {formatDate(run.completed_at)}
+              Cumulative average across all evaluation runs
             </div>
           )}
         </div>
@@ -403,29 +478,75 @@ const EvaluationResultsPage: React.FC = () => {
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
           <h3 className="font-sora text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <MessageSquare className="w-5 h-5 text-indigo-500" />
-            Evaluated Queries ({results.length})
+            {viewMode === 'run' ? `Evaluated Queries (${results.length})` : `All Evaluated Queries (${allResultsData?.total_count || 0})`}
           </h3>
-          <span className="text-xs text-slate-405 dark:text-slate-500 font-sans">
-            Sorted by lowest combined score first (Worst Performing)
+          <span className="text-xs text-slate-400 dark:text-slate-500 font-sans">
+            Sorted by lowest combined score first
           </span>
         </div>
 
-        {results.length === 0 ? (
+        {viewMode === 'run' ? (
+          results.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-2">
+              <AlertTriangle className="w-8 h-8 text-slate-350 dark:text-slate-650" />
+              <span className="font-semibold text-slate-800 dark:text-slate-205 font-sans">No evaluated queries found</span>
+              <span className="text-xs text-slate-500 dark:text-slate-450 font-sans">Make sure there are queries logged in your vault before running evaluations.</span>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-6">
+              {results.map((result, index) => (
+                <QueryResultCard
+                  key={result.id}
+                  result={result}
+                  index={index}
+                  getScoreColor={getScoreColor}
+                />
+              ))}
+            </div>
+          )
+        ) : isAllResultsLoading ? (
+          <div className="py-12 flex justify-center items-center">
+            <div className="w-8 h-8 border-3 border-indigo-200 border-t-indigo-650 rounded-full animate-spin"></div>
+          </div>
+        ) : !allResultsData || allResultsData.results.length === 0 ? (
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-2">
             <AlertTriangle className="w-8 h-8 text-slate-350 dark:text-slate-650" />
             <span className="font-semibold text-slate-800 dark:text-slate-205 font-sans">No evaluated queries found</span>
-            <span className="text-xs text-slate-500 dark:text-slate-450 font-sans">Make sure there are queries logged in your vault before running evaluations.</span>
+            <span className="text-xs text-slate-500 dark:text-slate-450 font-sans">No evaluation results have been logged across any runs yet.</span>
           </div>
         ) : (
           <div className="flex flex-col gap-6">
-            {results.map((result, index) => (
+            {allResultsData.results.map((result, index) => (
               <QueryResultCard
                 key={result.id}
                 result={result}
-                index={index}
+                index={(page - 1) * limit + index}
                 getScoreColor={getScoreColor}
               />
             ))}
+
+            {/* Pagination Controls */}
+            {allResultsData.total_count > limit && (
+              <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 pt-4 mt-2">
+                <button
+                  onClick={() => setPage(p => Math.max(p - 1, 1))}
+                  disabled={page === 1}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-705 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  Previous
+                </button>
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-sans">
+                  Page {page} of {Math.ceil(allResultsData.total_count / limit)}
+                </span>
+                <button
+                  onClick={() => setPage(p => Math.min(p + 1, Math.ceil(allResultsData.total_count / limit)))}
+                  disabled={page >= Math.ceil(allResultsData.total_count / limit)}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-705 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

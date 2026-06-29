@@ -17,7 +17,6 @@ import {
   Plus, 
   ArrowRight,
   TrendingUp,
-  Award
 } from 'lucide-react';
 
 const AdminDashboardPage: React.FC = () => {
@@ -52,6 +51,13 @@ const AdminDashboardPage: React.FC = () => {
   const { data: latestEval, refetch: refetchLatestEval } = useQuery({
     queryKey: ['latestEvaluation'],
     queryFn: () => evaluationService.getLatestEvaluation(),
+  });
+
+  const [evalViewMode, setEvalViewMode] = useState<'latest' | 'overall'>('latest');
+
+  const { data: overallEval } = useQuery({
+    queryKey: ['overallEvaluation'],
+    queryFn: () => evaluationService.getOverallEvaluation(),
   });
 
   const handleRunEvaluation = async (e: React.FormEvent) => {
@@ -95,69 +101,95 @@ const AdminDashboardPage: React.FC = () => {
   const totalOpenRouterInput = usageData?.usage?.reduce((acc, curr) => acc + curr.openrouter_input_tokens, 0) || 0;
   const totalOpenRouterOutput = usageData?.usage?.reduce((acc, curr) => acc + curr.openrouter_output_tokens, 0) || 0;
 
-  const claudeModelsConfig = [
-    { key: 'haiku', displayName: 'Haiku 4.5', inputKey: 'claude_haiku_input_tokens', outputKey: 'claude_haiku_output_tokens', inputRate: 1.0, outputRate: 5.0 },
-    { key: 'sonnet', displayName: 'Sonnet 4.6', inputKey: 'claude_sonnet_input_tokens', outputKey: 'claude_sonnet_output_tokens', inputRate: 3.0, outputRate: 15.0 },
-    { key: 'opus', displayName: 'Opus 4.8', inputKey: 'claude_opus_input_tokens', outputKey: 'claude_opus_output_tokens', inputRate: 5.0, outputRate: 25.0 },
-  ] as const;
-
-  const openRouterModelsConfig = [
-    { key: 'gpt-oss', displayName: 'GPT OSS 120B', inputKey: 'openrouter_gpt_input_tokens', outputKey: 'openrouter_gpt_output_tokens' },
-    { key: 'llama', displayName: 'Llama 3.3 70B', inputKey: 'openrouter_llama_input_tokens', outputKey: 'openrouter_llama_output_tokens' },
-    { key: 'gemma', displayName: 'Gemma 4 31B', inputKey: 'openrouter_gemma_input_tokens', outputKey: 'openrouter_gemma_output_tokens' },
-    { key: 'nemotron', displayName: 'Nemotron 3 Super', inputKey: 'openrouter_nemotron_input_tokens', outputKey: 'openrouter_nemotron_output_tokens' },
-    { key: 'cohere', displayName: 'Cohere: North Mini', inputKey: 'openrouter_cohere_input_tokens', outputKey: 'openrouter_cohere_output_tokens' },
-  ] as const;
-
-  const calculateModelCost = (inputTokens: number, outputTokens: number, sub: string) => {
-    const model = dbModels?.find(m => 
-      m.provider === 'openrouter' && 
-      (m.model_string.toLowerCase().includes(sub) || m.display_name.toLowerCase().includes(sub))
-    );
-    const inputPrice = model?.input_price_per_million !== undefined && model?.input_price_per_million !== null ? Number(model.input_price_per_million) : 0;
-    const outputPrice = model?.output_price_per_million !== undefined && model?.output_price_per_million !== null ? Number(model.output_price_per_million) : 0;
-    return (inputTokens * inputPrice) / 1000000 + (outputTokens * outputPrice) / 1000000;
-  };
-
-  const getModelPriceLabel = (sub: string) => {
-    const model = dbModels?.find(m => 
-      m.provider === 'openrouter' && 
-      (m.model_string.toLowerCase().includes(sub) || m.display_name.toLowerCase().includes(sub))
-    );
-    const inputPrice = model?.input_price_per_million;
-    const outputPrice = model?.output_price_per_million;
-    if (inputPrice !== undefined && inputPrice !== null && outputPrice !== undefined && outputPrice !== null && (Number(inputPrice) > 0 || Number(outputPrice) > 0)) {
-      return `($${Number(inputPrice).toFixed(1)}/$${Number(outputPrice).toFixed(1)} per M)`;
-    }
-    return '(Free)';
-  };
-
-  const claudeModelCosts = claudeModelsConfig.map(cfg => {
-    const inputTokens = usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[cfg.inputKey as keyof typeof curr]) || 0), 0) || 0;
-    const outputTokens = usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[cfg.outputKey as keyof typeof curr]) || 0), 0) || 0;
-    const cost = (inputTokens * cfg.inputRate) / 1000000 + (outputTokens * cfg.outputRate) / 1000000;
-    return {
-      ...cfg,
-      inputTokens,
-      outputTokens,
-      cost,
-    };
-  });
+  // Dynamically map models from the database (via dbModels)
+  const claudeModelCosts = React.useMemo(() => {
+    if (!dbModels) return [];
+    return dbModels
+      .filter(m => m.provider === 'anthropic')
+      .map(m => {
+        const lower = m.model_string.toLowerCase();
+        let inputKey = '';
+        let outputKey = '';
+        
+        if (lower.includes('haiku')) {
+          inputKey = 'claude_haiku_input_tokens';
+          outputKey = 'claude_haiku_output_tokens';
+        } else if (lower.includes('sonnet')) {
+          inputKey = 'claude_sonnet_input_tokens';
+          outputKey = 'claude_sonnet_output_tokens';
+        } else if (lower.includes('opus')) {
+          inputKey = 'claude_opus_input_tokens';
+          outputKey = 'claude_opus_output_tokens';
+        }
+        
+        const inputTokens = inputKey ? (usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[inputKey as keyof typeof curr]) || 0), 0) || 0) : 0;
+        const outputTokens = outputKey ? (usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[outputKey as keyof typeof curr]) || 0), 0) || 0) : 0;
+        
+        const inputPrice = m.input_price_per_million !== undefined && m.input_price_per_million !== null ? Number(m.input_price_per_million) : 0;
+        const outputPrice = m.output_price_per_million !== undefined && m.output_price_per_million !== null ? Number(m.output_price_per_million) : 0;
+        const cost = (inputTokens * inputPrice) / 1000000 + (outputTokens * outputPrice) / 1000000;
+        
+        return {
+          key: m.model_string,
+          displayName: m.display_name,
+          inputTokens,
+          outputTokens,
+          cost,
+        };
+      });
+  }, [dbModels, usageData]);
 
   const totalClaudeCost = claudeModelCosts.reduce((acc, m) => acc + m.cost, 0);
 
-  const openRouterModelCosts = openRouterModelsConfig.map(cfg => {
-    const inputTokens = usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[cfg.inputKey as keyof typeof curr]) || 0), 0) || 0;
-    const outputTokens = usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[cfg.outputKey as keyof typeof curr]) || 0), 0) || 0;
-    const cost = calculateModelCost(inputTokens, outputTokens, cfg.key);
-    return {
-      ...cfg,
-      inputTokens,
-      outputTokens,
-      totalTokens: inputTokens + outputTokens,
-      cost,
-    };
-  });
+  const openRouterModelCosts = React.useMemo(() => {
+    if (!dbModels) return [];
+    return dbModels
+      .filter(m => m.provider === 'openrouter')
+      .map(m => {
+        const lower = m.model_string.toLowerCase();
+        let inputKey = '';
+        let outputKey = '';
+        
+        if (lower.includes('llama')) {
+          inputKey = 'openrouter_llama_input_tokens';
+          outputKey = 'openrouter_llama_output_tokens';
+        } else if (lower.includes('gemma')) {
+          inputKey = 'openrouter_gemma_input_tokens';
+          outputKey = 'openrouter_gemma_output_tokens';
+        } else if (lower.includes('nemotron')) {
+          inputKey = 'openrouter_nemotron_input_tokens';
+          outputKey = 'openrouter_nemotron_output_tokens';
+        } else if (lower.includes('gpt-oss')) {
+          inputKey = 'openrouter_gpt_input_tokens';
+          outputKey = 'openrouter_gpt_output_tokens';
+        } else if (lower.includes('cohere')) {
+          inputKey = 'openrouter_cohere_input_tokens';
+          outputKey = 'openrouter_cohere_output_tokens';
+        }
+        
+        const inputTokens = inputKey ? (usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[inputKey as keyof typeof curr]) || 0), 0) || 0) : 0;
+        const outputTokens = outputKey ? (usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[outputKey as keyof typeof curr]) || 0), 0) || 0) : 0;
+        
+        const inputPrice = m.input_price_per_million !== undefined && m.input_price_per_million !== null ? Number(m.input_price_per_million) : 0;
+        const outputPrice = m.output_price_per_million !== undefined && m.output_price_per_million !== null ? Number(m.output_price_per_million) : 0;
+        const cost = (inputTokens * inputPrice) / 1000000 + (outputTokens * outputPrice) / 1000000;
+        
+        let priceLabel = '(Free)';
+        if (inputPrice > 0 || outputPrice > 0) {
+          priceLabel = `($${inputPrice.toFixed(1)}/$${outputPrice.toFixed(1)} per M)`;
+        }
+        
+        return {
+          key: m.model_string,
+          displayName: m.display_name,
+          inputTokens,
+          outputTokens,
+          totalTokens: inputTokens + outputTokens,
+          cost,
+          priceLabel,
+        };
+      });
+  }, [dbModels, usageData]);
 
   const totalOpenRouterCost = openRouterModelCosts.reduce((acc, m) => acc + m.cost, 0);
 
@@ -551,56 +583,123 @@ const AdminDashboardPage: React.FC = () => {
               
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Answer Quality (LLM-as-Judge)</span>
-                {latestEval && (
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${
-                    latestEval.status === 'completed' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400' :
-                    latestEval.status === 'running' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 animate-pulse' :
-                    latestEval.status === 'failed' ? 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400' :
-                    'bg-slate-50 dark:bg-slate-850 text-slate-500'
-                  }`}>
-                    {latestEval.status}
-                  </span>
-                )}
+                <div className="flex items-center gap-3">
+                  {evalViewMode === 'latest' && latestEval && (
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${
+                      latestEval.status === 'completed' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400' :
+                      latestEval.status === 'running' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 animate-pulse' :
+                      latestEval.status === 'failed' ? 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400' :
+                      'bg-slate-50 dark:bg-slate-850 text-slate-505'
+                    }`}>
+                      {latestEval.status}
+                    </span>
+                  )}
+                  {evalViewMode === 'overall' && overallEval && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
+                      Cumulative
+                    </span>
+                  )}
+                  {/* View Toggle */}
+                  {(latestEval || overallEval) && (
+                    <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800">
+                      <button
+                        onClick={() => setEvalViewMode('latest')}
+                        className={`text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+                          evalViewMode === 'latest'
+                            ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        Latest Run
+                      </button>
+                      <button
+                        onClick={() => setEvalViewMode('overall')}
+                        className={`text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+                          evalViewMode === 'overall'
+                            ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        All Time
+                      </button>
+                    </div>
+                  )}
+
+                </div>
               </div>
 
-              {!latestEval ? (
-                <div className="flex flex-col gap-2 mt-2">
-                  <span className="text-xl font-bold text-slate-400 dark:text-slate-500 font-sans">No evaluation run yet</span>
-                  <span className="text-xs text-slate-400 font-sans">Run an evaluation to measure faithfulness and relevance.</span>
-                </div>
+              {evalViewMode === 'latest' ? (
+                !latestEval ? (
+                  <div className="flex flex-col gap-2 mt-2">
+                    <span className="text-xl font-bold text-slate-400 dark:text-slate-550 font-sans">No evaluation run yet</span>
+                    <span className="text-xs text-slate-400 font-sans">Run an evaluation to measure faithfulness and relevance.</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4 mt-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs text-slate-400 font-medium font-sans">Avg Faithfulness</span>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
+                          {latestEval.avg_faithfulness_score !== undefined && latestEval.avg_faithfulness_score !== null
+                            ? `${Math.round(latestEval.avg_faithfulness_score)}%`
+                            : 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs text-slate-400 font-medium font-sans">Avg Retrieval Relevance</span>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
+                          {latestEval.avg_relevance_score !== undefined && latestEval.avg_relevance_score !== null
+                            ? `${Math.round(latestEval.avg_relevance_score)}%`
+                            : 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
               ) : (
-                <div className="grid grid-cols-2 gap-4 mt-2">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs text-slate-400 font-medium font-sans">Avg Faithfulness</span>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
-                        {latestEval.avg_faithfulness_score !== undefined && latestEval.avg_faithfulness_score !== null
-                          ? `${Math.round(latestEval.avg_faithfulness_score)}%`
-                          : 'N/A'}
-                      </span>
+                !overallEval ? (
+                  <div className="flex flex-col gap-2 mt-2">
+                    <span className="text-xl font-bold text-slate-400 dark:text-slate-550 font-sans">No evaluation run yet</span>
+                    <span className="text-xs text-slate-400 font-sans">Run an evaluation to measure faithfulness and relevance.</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4 mt-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs text-slate-400 font-medium font-sans">Avg Faithfulness</span>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
+                          {overallEval.avg_faithfulness_score !== undefined && overallEval.avg_faithfulness_score !== null
+                            ? `${Math.round(overallEval.avg_faithfulness_score)}%`
+                            : 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs text-slate-400 font-medium font-sans">Avg Retrieval Relevance</span>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
+                          {overallEval.avg_relevance_score !== undefined && overallEval.avg_relevance_score !== null
+                            ? `${Math.round(overallEval.avg_relevance_score)}%`
+                            : 'N/A'}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs text-slate-400 font-medium font-sans">Avg Retrieval Relevance</span>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
-                        {latestEval.avg_relevance_score !== undefined && latestEval.avg_relevance_score !== null
-                          ? `${Math.round(latestEval.avg_relevance_score)}%`
-                          : 'N/A'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                )
               )}
 
               <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 flex items-center justify-between gap-4 mt-auto">
                 <span className="text-xs text-slate-450 dark:text-slate-500 font-sans">
-                  {latestEval ? `Last run: ${new Date(latestEval.created_at).toLocaleDateString()}` : 'Evaluate model outputs'}
+                  {evalViewMode === 'latest'
+                    ? (latestEval ? `Last run: ${new Date(latestEval.created_at).toLocaleDateString()} (${latestEval.query_count} queries)` : 'Evaluate model outputs')
+                    : (overallEval ? `All-time cumulative (${overallEval.query_count} queries)` : 'Evaluate model outputs')}
                 </span>
                 <div className="flex items-center gap-2">
                   {latestEval && (
                     <button
-                      onClick={() => navigate(`/dashboard/evaluations/${latestEval.id}`)}
+                      onClick={() => navigate(`/dashboard/evaluations/${latestEval.id}`, { state: { defaultViewMode: evalViewMode === 'overall' ? 'all' : 'run' } })}
                       className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline transition-all cursor-pointer font-sans"
                     >
                       View Details
@@ -646,7 +745,7 @@ const AdminDashboardPage: React.FC = () => {
                           {formatCompactNumber(m.totalTokens)} tokens
                         </span>
                         <span className="font-semibold text-slate-800 dark:text-slate-200">
-                          {formatCost(m.cost)} 
+                          {formatCost(m.cost)}
                         </span>
                       </div>
                     </div>
@@ -969,7 +1068,7 @@ const AdminDashboardPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsEvalModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-sm font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-850 transition-colors font-sans cursor-pointer"
+                  className="px-4 py-2 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-sm font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-sans cursor-pointer"
                 >
                   Cancel
                 </button>
