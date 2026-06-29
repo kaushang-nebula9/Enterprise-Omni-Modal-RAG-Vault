@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { adminService } from '../../services/adminService';
 import { 
   Calendar, 
-  Filter, 
   History, 
   ChevronLeft, 
   ChevronRight, 
