@@ -207,3 +207,19 @@ def test_check_tenant_budgets_task_notification(mock_session_local, db):
         
     notifications_after = db.query(Notification).all()
     assert len(notifications_after) == 1
+
+    # Now update the monthly budget limit from 10.00 to 12.00
+    tenant.monthly_budget_limit = 12.00
+    db.commit()
+
+    # Run the budget check task again with cost 14.00 (exceeds new limit 12.00)
+    with patch.object(db, "close", return_value=None):
+        with patch("app.tasks.billing_tasks.calculate_tenant_monthly_cost", return_value=14.00):
+            check_tenant_budgets_task()
+
+    # Check that a new notification has been created
+    notifications_final = db.query(Notification).order_by(Notification.created_at.asc()).all()
+    assert len(notifications_final) == 2
+    assert notifications_final[1].user_id == admin_user_id
+    assert notifications_final[1].type == NotificationType.budget_exceeded
+    assert "Limit: $12.00" in notifications_final[1].message

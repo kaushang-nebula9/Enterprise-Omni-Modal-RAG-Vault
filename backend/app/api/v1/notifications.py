@@ -58,24 +58,43 @@ async def stream_notifications(
     """
     SSE endpoint to keep connection open per user, push new notifications in real time.
     """
-    queue = register_connection(current_user.id)
-
     async def event_generator():
+        import redis.asyncio as aioredis
+        from app.core.config import settings
+
+        client = aioredis.from_url(settings.REDIS_URL)
+        pubsub = client.pubsub()
+        await pubsub.subscribe(f"notifications:{current_user.id}")
+        logger.info(f"User {current_user.id} subscribed to Redis notifications stream")
+
         try:
             while True:
                 if await request.is_disconnected():
                     break
                 try:
-                    payload = await asyncio.wait_for(queue.get(), timeout=15.0)
-                    yield f"data: {json.dumps(payload)}\n\n"
-                    queue.task_done()
+                    message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15.0)
+                    if message:
+                        data_str = message['data']
+                        if isinstance(data_str, bytes):
+                            data_str = data_str.decode('utf-8')
+                        yield f"data: {data_str}\n\n"
+                    else:
+                        yield ": keepalive\n\n"
                 except asyncio.TimeoutError:
-                    # Keep-alive comment
                     yield ": keepalive\n\n"
+                except Exception as e:
+                    logger.error(f"Error in SSE stream for user {current_user.id}: {e}")
+                    await asyncio.sleep(1.0)
         except asyncio.CancelledError:
             pass
         finally:
-            unregister_connection(current_user.id, queue)
+            try:
+                await pubsub.unsubscribe(f"notifications:{current_user.id}")
+                await pubsub.aclose()
+                await client.aclose()
+                logger.info(f"User {current_user.id} unsubscribed and closed Redis stream connection")
+            except Exception as e:
+                logger.error(f"Error during clean up of Redis SSE stream for user {current_user.id}: {e}")
 
     return StreamingResponse(
         event_generator(),

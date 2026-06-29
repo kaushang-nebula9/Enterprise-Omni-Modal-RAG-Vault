@@ -14,6 +14,9 @@ from app.models.role import Role
 from app.models.document import Document
 from app.models.department import Department
 from app.models.notification import Notification
+from app.models.tenant import Tenant
+from app.models.refresh_token import RefreshToken
+from app.models.invite_token import InviteToken
 from app.models.enums import FileType, DocumentStatus, OwnerType, Visibility, NotificationType
 from app.services.notification_service import create_notification, register_connection, unregister_connection
 

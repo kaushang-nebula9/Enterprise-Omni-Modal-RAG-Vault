@@ -180,6 +180,14 @@ def update_organisation(
 
     if "monthly_budget_limit" in request.model_fields_set:
         tenant.monthly_budget_limit = request.monthly_budget_limit
+        # Trigger budget check task in background since limit was updated
+        try:
+            import sys
+            if "pytest" not in sys.modules:
+                from app.tasks.billing_tasks import check_tenant_budgets_task
+                check_tenant_budgets_task.delay()
+        except Exception as task_exc:
+            logger.error("Failed to trigger check_tenant_budgets_task after budget update: %s", task_exc)
 
     db.commit()
     db.refresh(tenant)
@@ -394,7 +402,67 @@ def get_usage_summary(
                 (and_(UsageLog.provider == "anthropic", func.lower(UsageLog.model_string).like("%opus%")), UsageLog.output_tokens),
                 else_=0
             )
-        ).label("claude_opus_output_tokens")
+        ).label("claude_opus_output_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%llama%")), UsageLog.input_tokens),
+                else_=0
+            )
+        ).label("openrouter_llama_input_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%llama%")), UsageLog.output_tokens),
+                else_=0
+            )
+        ).label("openrouter_llama_output_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%gemma%")), UsageLog.input_tokens),
+                else_=0
+            )
+        ).label("openrouter_gemma_input_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%gemma%")), UsageLog.output_tokens),
+                else_=0
+            )
+        ).label("openrouter_gemma_output_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%nemotron%")), UsageLog.input_tokens),
+                else_=0
+            )
+        ).label("openrouter_nemotron_input_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%nemotron%")), UsageLog.output_tokens),
+                else_=0
+            )
+        ).label("openrouter_nemotron_output_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%gpt-oss%")), UsageLog.input_tokens),
+                else_=0
+            )
+        ).label("openrouter_gpt_input_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%gpt-oss%")), UsageLog.output_tokens),
+                else_=0
+            )
+        ).label("openrouter_gpt_output_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%cohere%") | func.lower(UsageLog.model_string).like("%north-mini-code%")), UsageLog.input_tokens),
+                else_=0
+            )
+        ).label("openrouter_cohere_input_tokens"),
+        func.sum(
+            case(
+                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%cohere%") | func.lower(UsageLog.model_string).like("%north-mini-code%")), UsageLog.output_tokens),
+                else_=0
+            )
+        ).label("openrouter_cohere_output_tokens")
     ).filter(
         UsageLog.tenant_id == current_admin.tenant_id,
         date_expr >= start_date,
@@ -429,7 +497,17 @@ def get_usage_summary(
                 claude_sonnet_input_tokens=int(row.claude_sonnet_input_tokens) if row.claude_sonnet_input_tokens is not None else 0,
                 claude_sonnet_output_tokens=int(row.claude_sonnet_output_tokens) if row.claude_sonnet_output_tokens is not None else 0,
                 claude_opus_input_tokens=int(row.claude_opus_input_tokens) if row.claude_opus_input_tokens is not None else 0,
-                claude_opus_output_tokens=int(row.claude_opus_output_tokens) if row.claude_opus_output_tokens is not None else 0
+                claude_opus_output_tokens=int(row.claude_opus_output_tokens) if row.claude_opus_output_tokens is not None else 0,
+                openrouter_llama_input_tokens=int(row.openrouter_llama_input_tokens) if row.openrouter_llama_input_tokens is not None else 0,
+                openrouter_llama_output_tokens=int(row.openrouter_llama_output_tokens) if row.openrouter_llama_output_tokens is not None else 0,
+                openrouter_gemma_input_tokens=int(row.openrouter_gemma_input_tokens) if row.openrouter_gemma_input_tokens is not None else 0,
+                openrouter_gemma_output_tokens=int(row.openrouter_gemma_output_tokens) if row.openrouter_gemma_output_tokens is not None else 0,
+                openrouter_nemotron_input_tokens=int(row.openrouter_nemotron_input_tokens) if row.openrouter_nemotron_input_tokens is not None else 0,
+                openrouter_nemotron_output_tokens=int(row.openrouter_nemotron_output_tokens) if row.openrouter_nemotron_output_tokens is not None else 0,
+                openrouter_gpt_input_tokens=int(row.openrouter_gpt_input_tokens) if row.openrouter_gpt_input_tokens is not None else 0,
+                openrouter_gpt_output_tokens=int(row.openrouter_gpt_output_tokens) if row.openrouter_gpt_output_tokens is not None else 0,
+                openrouter_cohere_input_tokens=int(row.openrouter_cohere_input_tokens) if row.openrouter_cohere_input_tokens is not None else 0,
+                openrouter_cohere_output_tokens=int(row.openrouter_cohere_output_tokens) if row.openrouter_cohere_output_tokens is not None else 0
             )
         )
 

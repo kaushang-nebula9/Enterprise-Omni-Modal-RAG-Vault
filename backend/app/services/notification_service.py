@@ -85,10 +85,21 @@ def create_notification(
     }
 
 
-    # Push to active SSE connections if they exist
+    # Push to active SSE connections if they exist (for backward compatibility / tests)
     if user_id in active_connections:
         logger.info(f"Pushing notification {notification.id} to {len(active_connections[user_id])} active SSE streams for user {user_id}")
         for queue in active_connections[user_id]:
             queue.put_nowait(payload)
+
+    # Publish to Redis pub/sub channel notifications:{user_id}
+    try:
+        import redis
+        import json
+        from app.core.config import settings
+        r = redis.from_url(settings.REDIS_URL)
+        r.publish(f"notifications:{user_id}", json.dumps(payload))
+        logger.info(f"Published notification {notification.id} to Redis channel notifications:{user_id}")
+    except Exception as e:
+        logger.error(f"Failed to publish notification to Redis pub/sub: {e}", exc_info=True)
 
     return notification

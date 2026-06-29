@@ -45,6 +45,16 @@ export interface UsageSummaryItem {
   claude_sonnet_output_tokens: number
   claude_opus_input_tokens: number
   claude_opus_output_tokens: number
+  openrouter_llama_input_tokens?: number
+  openrouter_llama_output_tokens?: number
+  openrouter_gemma_input_tokens?: number
+  openrouter_gemma_output_tokens?: number
+  openrouter_nemotron_input_tokens?: number
+  openrouter_nemotron_output_tokens?: number
+  openrouter_gpt_input_tokens?: number
+  openrouter_gpt_output_tokens?: number
+  openrouter_cohere_input_tokens?: number
+  openrouter_cohere_output_tokens?: number
 }
 
 export interface UsageSummaryResponse {

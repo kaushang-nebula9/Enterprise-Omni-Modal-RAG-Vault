@@ -84,6 +84,11 @@ const AdminDashboardPage: React.FC = () => {
     queryFn: adminService.getDocumentInsights,
   });
 
+  const { data: dbModels } = useQuery({
+    queryKey: ['adminModels'],
+    queryFn: adminService.getModels,
+  });
+
   // Aggregate totals for selected date range
   const totalClaudeInput = usageData?.usage?.reduce((acc, curr) => acc + curr.claude_input_tokens, 0) || 0;
   const totalClaudeOutput = usageData?.usage?.reduce((acc, curr) => acc + curr.claude_output_tokens, 0) || 0;
@@ -101,6 +106,47 @@ const AdminDashboardPage: React.FC = () => {
   const sonnetCost = (totalSonnetInput * 3.0) / 1000000 + (totalSonnetOutput * 15.0) / 1000000;
   const opusCost = (totalOpusInput * 5.0) / 1000000 + (totalOpusOutput * 25.0) / 1000000;
   const totalClaudeCost = haikuCost + sonnetCost + opusCost;
+
+  const totalLlamaInput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_llama_input_tokens || 0), 0) || 0;
+  const totalLlamaOutput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_llama_output_tokens || 0), 0) || 0;
+  const totalGemmaInput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_gemma_input_tokens || 0), 0) || 0;
+  const totalGemmaOutput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_gemma_output_tokens || 0), 0) || 0;
+  const totalNemotronInput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_nemotron_input_tokens || 0), 0) || 0;
+  const totalNemotronOutput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_nemotron_output_tokens || 0), 0) || 0;
+  const totalGptInput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_gpt_input_tokens || 0), 0) || 0;
+  const totalGptOutput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_gpt_output_tokens || 0), 0) || 0;
+  const totalCohereInput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_cohere_input_tokens || 0), 0) || 0;
+  const totalCohereOutput = usageData?.usage?.reduce((acc, curr) => acc + (curr.openrouter_cohere_output_tokens || 0), 0) || 0;
+
+  const calculateModelCost = (inputTokens: number, outputTokens: number, sub: string) => {
+    const model = dbModels?.find(m => 
+      m.provider === 'openrouter' && 
+      (m.model_string.toLowerCase().includes(sub) || m.display_name.toLowerCase().includes(sub))
+    );
+    const inputPrice = model?.input_price_per_million !== undefined && model?.input_price_per_million !== null ? Number(model.input_price_per_million) : 0;
+    const outputPrice = model?.output_price_per_million !== undefined && model?.output_price_per_million !== null ? Number(model.output_price_per_million) : 0;
+    return (inputTokens * inputPrice) / 1000000 + (outputTokens * outputPrice) / 1000000;
+  };
+
+  const getModelPriceLabel = (sub: string) => {
+    const model = dbModels?.find(m => 
+      m.provider === 'openrouter' && 
+      (m.model_string.toLowerCase().includes(sub) || m.display_name.toLowerCase().includes(sub))
+    );
+    const inputPrice = model?.input_price_per_million;
+    const outputPrice = model?.output_price_per_million;
+    if (inputPrice !== undefined && inputPrice !== null && outputPrice !== undefined && outputPrice !== null && (Number(inputPrice) > 0 || Number(outputPrice) > 0)) {
+      return `($${Number(inputPrice).toFixed(1)}/$${Number(outputPrice).toFixed(1)} per M)`;
+    }
+    return '(Free)';
+  };
+
+  const llamaCost = calculateModelCost(totalLlamaInput, totalLlamaOutput, 'llama');
+  const gemmaCost = calculateModelCost(totalGemmaInput, totalGemmaOutput, 'gemma');
+  const nemotronCost = calculateModelCost(totalNemotronInput, totalNemotronOutput, 'nemotron');
+  const cohereCost = calculateModelCost(totalCohereInput, totalCohereOutput, 'cohere');
+  const gptCost = calculateModelCost(totalGptInput, totalGptOutput, 'gpt-oss');
+  const totalOpenRouterCost = llamaCost + gemmaCost + nemotronCost + cohereCost + gptCost;
 
   const formatCost = (val: number): string => {
     if (val === 0) return '$0.00';
@@ -573,6 +619,105 @@ const AdminDashboardPage: React.FC = () => {
                     Run Evaluation
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* OpenRouter Cost Card */}
+          <div className="flex w-full lg:col-span-2">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between gap-4 group hover:shadow-md transition-shadow relative overflow-hidden w-full h-full">
+              
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400">OpenRouter Token Cost</span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-1">
+                {/* Total Cost Column */}
+                <div className="flex flex-col justify-center gap-1">
+                  <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
+                    {formatCost(totalOpenRouterCost)}
+                  </span>
+                  <span className="text-xs text-slate-400">Total estimated OpenRouter usage cost in range</span>
+                </div>
+
+                {/* Breakdown Column (Grid of models) */}
+                <div className="border-t md:border-t-0 md:border-l border-slate-100 dark:border-slate-800/80 pt-4 md:pt-0 md:pl-6 flex flex-col gap-2">
+                  <span className="text-xs font-bold uppercase text-slate-450 dark:text-slate-500 tracking-wider">Model Breakdown</span>
+                  
+                  {/* GPT OSS 120B */}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-800 dark:text-slate-400">GPT OSS 120B</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 dark:text-slate-550">
+                        {formatCompactNumber(totalGptInput + totalGptOutput)} tokens
+                      </span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        {formatCost(gptCost)} <span className="text-[10px] text-slate-400 font-normal">{getModelPriceLabel('gpt-oss')}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Llama 3.3 70B */}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-850 dark:text-slate-450">Llama 3.3 70B</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 dark:text-slate-550">
+                        {formatCompactNumber(totalLlamaInput + totalLlamaOutput)} tokens
+                      </span>
+                      <span className="font-semibold text-slate-400 dark:text-slate-550">
+                        {formatCost(llamaCost)} <span className="text-[10px] text-slate-400 font-normal">{getModelPriceLabel('llama')}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Gemma 4 31B */}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-850 dark:text-slate-450">Gemma 4 31B</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 dark:text-slate-550">
+                        {formatCompactNumber(totalGemmaInput + totalGemmaOutput)} tokens
+                      </span>
+                      <span className="font-semibold text-slate-400 dark:text-slate-550">
+                        {formatCost(gemmaCost)} <span className="text-[10px] text-slate-400 font-normal">{getModelPriceLabel('gemma')}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Nemotron 3 Super */}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-850 dark:text-slate-450">Nemotron 3 Super</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 dark:text-slate-550">
+                        {formatCompactNumber(totalNemotronInput + totalNemotronOutput)} tokens
+                      </span>
+                      <span className="font-semibold text-slate-400 dark:text-slate-550">
+                        {formatCost(nemotronCost)} <span className="text-[10px] text-slate-400 font-normal">{getModelPriceLabel('nemotron')}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Cohere: North Mini */}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-850 dark:text-slate-450">Cohere: North Mini</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 dark:text-slate-550">
+                        {formatCompactNumber(totalCohereInput + totalCohereOutput)} tokens
+                      </span>
+                      <span className="font-semibold text-slate-400 dark:text-slate-550">
+                        {formatCost(cohereCost)} <span className="text-[10px] text-slate-400 font-normal">{getModelPriceLabel('cohere')}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 flex items-center justify-between mt-auto">
+                <span className="text-xs text-slate-450 dark:text-slate-500 font-sans">
+                  Total OpenRouter Tokens: {formatCompactNumber(totalOpenRouterInput + totalOpenRouterOutput)}
+                </span>
+                <span className="text-xs text-slate-450 dark:text-slate-500 font-sans">
+                  Input: {formatCompactNumber(totalOpenRouterInput)} | Output: {formatCompactNumber(totalOpenRouterOutput)}
+                </span>
               </div>
             </div>
           </div>

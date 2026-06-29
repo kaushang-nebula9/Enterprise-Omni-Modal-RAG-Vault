@@ -66,6 +66,16 @@ class UsageSummaryItem(BaseModel):
     claude_sonnet_output_tokens: int
     claude_opus_input_tokens: int
     claude_opus_output_tokens: int
+    openrouter_llama_input_tokens: int = 0
+    openrouter_llama_output_tokens: int = 0
+    openrouter_gemma_input_tokens: int = 0
+    openrouter_gemma_output_tokens: int = 0
+    openrouter_nemotron_input_tokens: int = 0
+    openrouter_nemotron_output_tokens: int = 0
+    openrouter_gpt_input_tokens: int = 0
+    openrouter_gpt_output_tokens: int = 0
+    openrouter_cohere_input_tokens: int = 0
+    openrouter_cohere_output_tokens: int = 0
 
 class UsageSummaryResponse(BaseModel):
     usage: list[UsageSummaryItem]

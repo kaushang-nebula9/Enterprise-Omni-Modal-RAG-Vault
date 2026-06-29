@@ -587,6 +587,15 @@ async def run_rag_pipeline(
             )
             db.add(usage_log)
             db.commit()
+
+            # Trigger budget check task in background
+            try:
+                import sys
+                if "pytest" not in sys.modules:
+                    from app.tasks.billing_tasks import check_tenant_budgets_task
+                    check_tenant_budgets_task.delay()
+            except Exception as task_exc:
+                logger.error("Failed to trigger check_tenant_budgets_task: %s", task_exc)
         except Exception as db_exc:
             logger.error("Failed to save usage log to database: %s", db_exc)
             db.rollback()

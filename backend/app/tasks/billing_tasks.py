@@ -42,11 +42,13 @@ def check_tenant_budgets_task():
                     ).all()
                     
                     for admin in admins:
-                        # Check if this admin has already been notified about budget_exceeded this calendar month
+                        # Check if this admin has already been notified about budget_exceeded this calendar month for the CURRENT budget limit
+                        limit_str = f"Limit: ${tenant.monthly_budget_limit:.2f}"
                         already_notified = db.query(Notification).filter(
                             Notification.user_id == admin.id,
                             Notification.type == NotificationType.budget_exceeded,
-                            Notification.created_at >= start_of_month
+                            Notification.created_at >= start_of_month,
+                            Notification.message.like(f"%{limit_str}%")
                         ).first() is not None
                         
                         if not already_notified:

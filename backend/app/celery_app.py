@@ -25,7 +25,7 @@ celery_app.conf.update(
     redis_max_connections=5,
     beat_schedule={
         "check-tenant-budgets-hourly": {
-            "task": "app.tasks.billing_tasks.check_tenant_budgets_task",
+            "task": "check_tenant_budgets_task",
             "schedule": 3600.0,
         }
     }
