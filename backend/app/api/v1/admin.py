@@ -1,3 +1,4 @@
+from venv import logger
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session, joinedload
 from app.db.session import get_db

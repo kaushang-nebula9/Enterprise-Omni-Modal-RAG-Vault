@@ -622,6 +622,7 @@ const ChatPage: React.FC = () => {
     const controller = new AbortController()
     abortControllerRef.current = controller
 
+    const tempUserMsgId = `temp-${Date.now()}`
     const tempAssistantId = `temp-assistant-${Date.now()}`
 
     try {
@@ -646,7 +647,7 @@ const ChatPage: React.FC = () => {
 
       // Optimistically add user message
       const tempUserMsg: MessageResponse = {
-        id: `temp-${Date.now()}`,
+        id: tempUserMsgId,
         session_id: sid,
         role: 'user',
         content: text,
@@ -699,16 +700,20 @@ const ChatPage: React.FC = () => {
             queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
             resolve()
           },
-          (err) => {
+          (err, status) => {
             controller.signal.removeEventListener('abort', handleAbort)
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === tempAssistantId && msg.content === ''
-                  ? { ...msg, content: 'Error: Failed to get response.' }
-                  : msg
+            if (status !== 429) {
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === tempAssistantId && msg.content === ''
+                    ? { ...msg, content: 'Error: Failed to get response.' }
+                    : msg
+                )
               )
-            )
-            reject(new Error(err))
+            }
+            const errorObj: any = new Error(err)
+            errorObj.status = status
+            reject(errorObj)
           },
           docId,
           selectedModel?.id,
@@ -724,6 +729,11 @@ const ChatPage: React.FC = () => {
               : msg
           )
         )
+      } else if (err.status === 429) {
+        // Restore input and remove optimistic messages
+        setInputValue(text)
+        setError(err.message)
+        setMessages((prev) => prev.filter((msg) => msg.id !== tempUserMsgId && msg.id !== tempAssistantId))
       } else {
         setError(err.message || String(err))
       }

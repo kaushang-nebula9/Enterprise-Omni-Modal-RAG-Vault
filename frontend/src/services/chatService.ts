@@ -40,7 +40,7 @@ export const chatService = {
     content: string,
     onToken: (token: string) => void,
     onDone: (citations: CitationResponse[], messageId: string) => void,
-    onError: (error: string) => void,
+    onError: (error: string, status?: number) => void,
     documentId?: string,
     modelId?: string,
     signal?: AbortSignal
@@ -64,7 +64,16 @@ export const chatService = {
       .then(async (response) => {
         if (!response.ok) {
           const text = await response.text()
-          throw new Error(text || 'Failed to send query')
+          let errorMsg = 'Failed to send query'
+          try {
+            const parsed = text ? JSON.parse(text) : {}
+            errorMsg = parsed.detail || errorMsg
+          } catch (e) {
+            errorMsg = text || errorMsg
+          }
+          const error: any = new Error(errorMsg)
+          error.status = response.status
+          throw error
         }
 
         const reader = response.body?.getReader()
@@ -126,7 +135,7 @@ export const chatService = {
       })
       .catch((error) => {
         if (error.name === 'AbortError') return
-        onError(error.message || String(error))
+        onError(error.message || String(error), error.status)
       })
   },
 

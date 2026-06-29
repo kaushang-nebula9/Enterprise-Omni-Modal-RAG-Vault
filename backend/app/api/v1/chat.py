@@ -346,6 +346,31 @@ async def send_query(
     4. Stream response from RAG pipeline
     5. After streaming completes, store assistant message + citations and commit
     """
+    # Rate limit check (burst and sustained)
+    from app.services.rate_limit_service import check_and_increment_rate_limit
+    from app.core.config import settings
+
+    # Check burst limit
+    burst_ok = await check_and_increment_rate_limit(
+        user_id=str(current_user.id),
+        key_suffix="burst",
+        max_count=settings.CHAT_BURST_LIMIT,
+        window_seconds=settings.CHAT_BURST_WINDOW_SECONDS,
+    )
+    # Check sustained limit
+    sustained_ok = await check_and_increment_rate_limit(
+        user_id=str(current_user.id),
+        key_suffix="sustained",
+        max_count=settings.CHAT_SUSTAINED_LIMIT,
+        window_seconds=settings.CHAT_SUSTAINED_WINDOW_SECONDS,
+    )
+
+    if not burst_ok or not sustained_ok:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="You're sending messages too quickly. Please wait a moment and try again.",
+        )
+
     # Verify session belongs to this user
     session = (
         db.query(QuerySession)

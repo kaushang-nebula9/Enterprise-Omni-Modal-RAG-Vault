@@ -23,6 +23,11 @@ class Settings(BaseSettings):
 
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    CHAT_BURST_LIMIT: int = 3
+    CHAT_BURST_WINDOW_SECONDS: int = 10
+    CHAT_SUSTAINED_LIMIT: int = 10
+    CHAT_SUSTAINED_WINDOW_SECONDS: int = 60
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
