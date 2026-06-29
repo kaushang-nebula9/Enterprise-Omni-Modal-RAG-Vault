@@ -16,6 +16,7 @@ import {
   FileMusic,
   Search,
   Mic,
+  Square,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { chatService } from '../../services/chatService'
@@ -67,6 +68,9 @@ const ChatPage: React.FC = () => {
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [isSending, setIsSending] = useState(false)
+  const isSendingRef = useRef(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [expandedCitations, setExpandedCitations] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
@@ -590,105 +594,156 @@ const ChatPage: React.FC = () => {
   }, [sessionId, setSearchParams, queryClient])
 
   const handleSend = useCallback(async (content?: string) => {
+    if (isSendingRef.current) return
+    isSendingRef.current = true
+    setIsSending(true)
+
     const text = (content ?? inputValue).trim()
-    if (!text || isLoading || isStreaming) return
-
-    setError(null)
-
-    // Lazily create a session on the first message
-    const sid = await ensureSession()
-    if (!sid) return
-
-    let attachedFile = undefined
-    if (attachedDocument) {
-      attachedFile = {
-        name: attachedDocument.filename,
-        size: attachedDocument.file_size || 0
-      }
-    } else if (uploadedFile?.status === 'ready') {
-      attachedFile = {
-        name: uploadedFile.file.name,
-        size: uploadedFile.file.size
-      }
+    if (!text || isLoading || isStreaming) {
+      isSendingRef.current = false
+      setIsSending(false)
+      return
     }
 
-    // Optimistically add user message
-    const tempUserMsg: MessageResponse = {
-      id: `temp-${Date.now()}`,
-      session_id: sid,
-      role: 'user',
-      content: text,
-      created_at: new Date().toISOString(),
-      citations: [],
-      attached_file: attachedFile
-    }
-
-    const tempAssistantId = `temp-assistant-${Date.now()}`
-    const tempAssistantMsg: MessageResponse = {
-      id: tempAssistantId,
-      session_id: sid,
-      role: 'assistant',
-      content: '',
-      created_at: new Date().toISOString(),
-      citations: [],
-    }
-
-    setMessages((prev) => [...prev, tempUserMsg, tempAssistantMsg])
+    // Clear/lock the input as part of the same synchronous guarded action, not before the guard is set.
     setInputValue('')
-    
-    // Capture document IDs before resetting state
-    const docId = attachedDocument?.id || (uploadedFile?.status === 'ready' ? uploadedFile.id : undefined)
-    
-    setUploadedFile(null)
-    setAttachedDocument(null)
-    
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-    setIsLoading(true)
-    setIsStreaming(true)
+    const docId = attachedDocument?.id || (uploadedFile?.status === 'ready' ? uploadedFile.id : undefined)
+    const currentAttachedDocument = attachedDocument
+    const currentUploadedFile = uploadedFile
+    setUploadedFile(null)
+    setAttachedDocument(null)
 
-    chatService.sendQuery(
-      sid,
-      text,
-      (token) => {
-        setIsLoading(false)
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    const tempAssistantId = `temp-assistant-${Date.now()}`
+
+    try {
+      setError(null)
+
+      // Lazily create a session on the first message
+      const sid = await ensureSession()
+      if (!sid) return
+
+      let attachedFile = undefined
+      if (currentAttachedDocument) {
+        attachedFile = {
+          name: currentAttachedDocument.filename,
+          size: currentAttachedDocument.file_size || 0
+        }
+      } else if (currentUploadedFile?.status === 'ready') {
+        attachedFile = {
+          name: currentUploadedFile.file.name,
+          size: currentUploadedFile.file.size
+        }
+      }
+
+      // Optimistically add user message
+      const tempUserMsg: MessageResponse = {
+        id: `temp-${Date.now()}`,
+        session_id: sid,
+        role: 'user',
+        content: text,
+        created_at: new Date().toISOString(),
+        citations: [],
+        attached_file: attachedFile
+      }
+
+      const tempAssistantMsg: MessageResponse = {
+        id: tempAssistantId,
+        session_id: sid,
+        role: 'assistant',
+        content: '',
+        created_at: new Date().toISOString(),
+        citations: [],
+      }
+
+      setMessages((prev) => [...prev, tempUserMsg, tempAssistantMsg])
+      setIsLoading(true)
+      setIsStreaming(true)
+
+      await new Promise<void>((resolve, reject) => {
+        const handleAbort = () => {
+          reject(new Error('Aborted'))
+        }
+        controller.signal.addEventListener('abort', handleAbort)
+
+        chatService.sendQuery(
+          sid,
+          text,
+          (token) => {
+            setIsLoading(false)
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === tempAssistantId
+                  ? { ...msg, content: msg.content + token }
+                  : msg
+              )
+            )
+          },
+          (citations, messageId) => {
+            controller.signal.removeEventListener('abort', handleAbort)
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === tempAssistantId
+                  ? { ...msg, id: messageId, citations }
+                  : msg
+              )
+            )
+            queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
+            resolve()
+          },
+          (err) => {
+            controller.signal.removeEventListener('abort', handleAbort)
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === tempAssistantId && msg.content === ''
+                  ? { ...msg, content: 'Error: Failed to get response.' }
+                  : msg
+              )
+            )
+            reject(new Error(err))
+          },
+          docId,
+          selectedModel?.id,
+          controller.signal
+        )
+      })
+    } catch (err: any) {
+      if (err.message === 'Aborted') {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === tempAssistantId
-              ? { ...msg, content: msg.content + token }
+              ? { ...msg, content: msg.content.trim() ? msg.content : 'Response generation was interrupted.' }
               : msg
           )
         )
-      },
-      (citations, messageId) => {
-        setIsStreaming(false)
-        setIsLoading(false)
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === tempAssistantId
-              ? { ...msg, id: messageId, citations }
-              : msg
-          )
-        )
-        queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
-      },
-      (err) => {
-        setIsStreaming(false)
-        setIsLoading(false)
-        setError(err)
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === tempAssistantId && msg.content === ''
-              ? { ...msg, content: 'Error: Failed to get response.' }
-              : msg
-          )
-        )
-      },
-      docId,
-      selectedModel?.id
-    )
+      } else {
+        setError(err.message || String(err))
+      }
+    } finally {
+      isSendingRef.current = false
+      setIsSending(false)
+      setIsLoading(false)
+      setIsStreaming(false)
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null
+      }
+    }
   }, [inputValue, isLoading, isStreaming, ensureSession, uploadedFile, attachedDocument, queryClient, selectedModel])
+
+  const handleCancel = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+  }, [])
 
   const urlSessionId = searchParams.get('session')
   const autoQuery = searchParams.get('q')
@@ -774,6 +829,12 @@ const ChatPage: React.FC = () => {
     setIsLoading(true)
     setIsStreaming(true)
 
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     chatService.sendQuery(
       sid,
       text,
@@ -798,6 +859,9 @@ const ChatPage: React.FC = () => {
           )
         )
         queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null
+        }
       },
       (err) => {
         setIsStreaming(false)
@@ -810,9 +874,13 @@ const ChatPage: React.FC = () => {
               : msg
           )
         )
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null
+        }
       },
       undefined,
-      selectedModel?.id
+      selectedModel?.id,
+      controller.signal
     )
   }
 
@@ -1018,12 +1086,16 @@ const ChatPage: React.FC = () => {
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close()
       }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
     }
   }, [])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
+      if (isSending) return
       handleSend()
     }
   }
@@ -1043,8 +1115,8 @@ const ChatPage: React.FC = () => {
 
   const isAdmin = user?.role?.is_admin ?? false
   const isFileUploading = uploadedFile?.status === 'uploading'
-  // Send is disabled while the AI is replying OR a document is still being processed OR recording/transcribing is active
-  const isSendDisabled = !inputValue.trim() || isLoading || isStreaming || isFileUploading || isRecording || isTranscribing
+  // Send is disabled while the AI is replying OR a document is still being processed OR recording/transcribing is active OR a message is sending
+  const isSendDisabled = !inputValue.trim() || isLoading || isStreaming || isFileUploading || isRecording || isTranscribing || isSending
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
@@ -1562,7 +1634,7 @@ const ChatPage: React.FC = () => {
                           mirrorRef.current.scrollTop = e.currentTarget.scrollTop
                         }
                       }}
-                      disabled={isFileUploading || isLoading || isStreaming || isTranscribing}
+                      disabled={isFileUploading || isLoading || isStreaming || isTranscribing || isSending}
                       placeholder={
                         isFileUploading
                           ? "Please wait while the document is processed..."
@@ -1705,16 +1777,27 @@ const ChatPage: React.FC = () => {
                     )}
                   </button>
 
-                  {/* Send Button */}
-                  <button
-                    onClick={() => handleSend()}
-                    disabled={isSendDisabled}
-                    type="button"
-                    className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white disabled:opacity-50 transition-colors"
-                    title="Send message"
-                  >
-                    <SendHorizontal className="w-4 h-4" />
-                  </button>
+                  {/* Send or Cancel Button */}
+                  {isSending || isLoading || isStreaming ? (
+                    <button
+                      onClick={handleCancel}
+                      type="button"
+                      className="flex items-center justify-center w-8 h-8 rounded-lg bg-red-600 hover:bg-red-700 dark:bg-red-550 dark:hover:bg-red-600 text-white transition-colors"
+                      title="Cancel message generation"
+                    >
+                      <Square className="w-3.5 h-3.5 fill-current" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleSend()}
+                      disabled={isSendDisabled}
+                      type="button"
+                      className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white disabled:opacity-50 transition-colors"
+                      title="Send message"
+                    >
+                      <SendHorizontal className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

@@ -42,7 +42,8 @@ export const chatService = {
     onDone: (citations: CitationResponse[], messageId: string) => void,
     onError: (error: string) => void,
     documentId?: string,
-    modelId?: string
+    modelId?: string,
+    signal?: AbortSignal
   ): void => {
     const baseURL = api.defaults.baseURL || 'http://localhost:8000'
     const url = `${baseURL}/api/v1/chat/sessions/${sessionId}/query`
@@ -58,6 +59,7 @@ export const chatService = {
         model_id: modelId,
       }),
       credentials: 'include',
+      signal,
     })
       .then(async (response) => {
         if (!response.ok) {
@@ -123,6 +125,7 @@ export const chatService = {
         }
       })
       .catch((error) => {
+        if (error.name === 'AbortError') return
         onError(error.message || String(error))
       })
   },
