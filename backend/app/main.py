@@ -26,6 +26,7 @@ def startup_event():
 origins = [
     "http://localhost:5173",
     "http://localhost:5174",
+    "https://enterprise-omni-modal-rag-vault.vercel.app"
 ]
 
 app.add_middleware(
