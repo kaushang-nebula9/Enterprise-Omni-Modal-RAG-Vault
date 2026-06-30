@@ -483,3 +483,65 @@ async def test_rag_pipeline_reranking_fallback():
         # Verify it falls back to original order: Chunk 0, 1, 2, 3, 4 (since list was returned in that order)
         for idx, citation in enumerate(citations):
             assert citation["chunk_index"] == idx
+
+
+@pytest.mark.asyncio
+async def test_rag_pipeline_reranking_disabled():
+    """Verify that when ENABLE_CROSS_ENCODER_RERANKING is False, the pipeline returns RRF order and does not call _get_cross_encoder."""
+    user = MockUser()
+    db = MagicMock()
+
+    doc_pdf = MockDocument(FileType.pdf, "doc.pdf")
+    docs_query = db.query.return_value.outerjoin.return_value.filter.return_value
+    docs_query.distinct.return_value.all.return_value = [doc_pdf]
+
+    # 15 dummy hits
+    dummy_hits = []
+    for i in range(15):
+        dummy_hits.append(
+            {
+                "payload": {
+                    "document_id": str(doc_pdf.id),
+                    "chunk_text": f"Chunk {i}",
+                    "chunk_index": i,
+                },
+                "score": 0.1 * i,
+            }
+        )
+
+    def mock_embed_text(text):
+        return [0.1] * 1024
+
+    def mock_search_vectors(*args, **kwargs):
+        return list(dummy_hits)
+
+    mock_client = MockAnthropicClient()
+
+    with (
+        patch("app.services.embedding_service.embed_text", side_effect=mock_embed_text),
+        patch(
+            "app.services.rag_service.search_vectors", side_effect=mock_search_vectors
+        ),
+        patch("app.services.rag_service._get_cross_encoder") as mock_get_cross_encoder,
+        patch(
+            "app.services.rag_service._get_async_anthropic_client",
+            return_value=mock_client,
+        ),
+        patch("app.core.config.settings.ENABLE_CROSS_ENCODER_RERANKING", False),
+    ):
+        events = []
+        async for event in run_rag_pipeline("test query", user, db):
+            events.append(event)
+
+        # _get_cross_encoder should NOT be called
+        mock_get_cross_encoder.assert_not_called()
+
+        done_event = next(e for e in events if e["type"] == "done")
+        citations = done_event["citations"]
+
+        # Verify truncation to top 5
+        assert len(citations) == 5
+
+        # Verify it falls back to original order: Chunk 0, 1, 2, 3, 4 (since list was returned in that order)
+        for idx, citation in enumerate(citations):
+            assert citation["chunk_index"] == idx

@@ -28,7 +28,6 @@ from app.models.user import User
 from app.services import embedding_service
 from app.services.qdrant_service import search_vectors
 from app.services.storage_service import get_absolute_path
-from sentence_transformers import CrossEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -60,13 +59,17 @@ def _get_async_anthropic_client() -> AsyncAnthropic:
 # CrossEncoder model (ACTIVE)
 # ---------------------------------------------------------------------------
 
-_cross_encoder: CrossEncoder | None = None
+_cross_encoder: Optional["CrossEncoder"] = None  # noqa: F821
 
 
-def _get_cross_encoder() -> CrossEncoder:
+def _get_cross_encoder() -> "CrossEncoder":  # noqa: F821
     """Lazily load and cache the CrossEncoder model."""
     global _cross_encoder
+    if not settings.ENABLE_CROSS_ENCODER_RERANKING:
+        raise RuntimeError("Cross-encoder re-ranking is disabled via config.")
     if _cross_encoder is None:
+        from sentence_transformers import CrossEncoder
+
         logger.info("Loading CrossEncoder model: cross-encoder/ms-marco-MiniLM-L-6-v2")
         _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
     return _cross_encoder
@@ -211,6 +214,8 @@ async def _rerank_chunks(query: str, hits: list[dict], label: str = "") -> list[
     Falls back to the original (RRF-ranked) order if re-ranking fails.
     """
     if not hits:
+        return hits
+    if not settings.ENABLE_CROSS_ENCODER_RERANKING:
         return hits
     try:
         model = _get_cross_encoder()
