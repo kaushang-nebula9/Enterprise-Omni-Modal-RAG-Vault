@@ -10,19 +10,16 @@ if TYPE_CHECKING:
     from app.models.tenant import Tenant
     from app.models.user import User
 
+
 class QueryLog(Base):
     __tablename__ = "query_logs"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, 
-        ForeignKey("tenants.id", ondelete="CASCADE"), 
-        nullable=False
+        Uuid, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid,
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     question: Mapped[str] = mapped_column(Text, nullable=False)
     contexts: Mapped[List[str]] = mapped_column(JSONB, nullable=False)

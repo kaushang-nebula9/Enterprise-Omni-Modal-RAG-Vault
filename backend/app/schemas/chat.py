@@ -1,11 +1,13 @@
 """
 Pydantic schemas for the Chat / RAG query endpoints.
 """
+
 from pydantic import BaseModel, Field, model_validator
 from uuid import UUID
 from datetime import datetime
 from typing import Optional, Any
 from app.models.enums import ModelProvider
+
 
 class ModelResponse(BaseModel):
     id: UUID
@@ -34,6 +36,7 @@ class SessionResponse(BaseModel):
 
 class CreateSessionResponse(SessionResponse):
     """Alias used for session creation responses (identical fields)."""
+
     pass
 
 
@@ -82,19 +85,19 @@ class MessageResponse(BaseModel):
                 if hasattr(attached_doc, "filename"):
                     data["attached_file"] = {
                         "name": attached_doc.filename,
-                        "size": getattr(attached_doc, "file_size", 0) or 0
+                        "size": getattr(attached_doc, "file_size", 0) or 0,
                     }
                 elif isinstance(attached_doc, dict):
                     data["attached_file"] = {
                         "name": attached_doc.get("filename"),
-                        "size": attached_doc.get("file_size") or 0
+                        "size": attached_doc.get("file_size") or 0,
                     }
         else:
             attached_doc = getattr(data, "attached_document", None)
             if attached_doc is not None:
                 data.__dict__["attached_file"] = {
                     "name": attached_doc.filename,
-                    "size": attached_doc.file_size or 0
+                    "size": attached_doc.file_size or 0,
                 }
         return data
 
@@ -107,7 +110,6 @@ class QueryRequest(BaseModel):
     content: str = Field(..., min_length=1, strip_whitespace=True)
     document_id: Optional[UUID] = None
     model_id: Optional[UUID] = None
-
 
 
 class QueryResponse(BaseModel):

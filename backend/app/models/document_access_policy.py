@@ -10,35 +10,30 @@ if TYPE_CHECKING:
     from app.models.document import Document
     from app.models.role import Role
     from app.models.department import Department
-    
+
+
 class DocumentAccessPolicy(Base):
     __tablename__ = "document_access_policies"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     document_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, 
-        ForeignKey("documents.id", ondelete="CASCADE"), 
-        nullable=False
+        Uuid, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
     )
     role_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, 
-        ForeignKey("roles.id", ondelete="CASCADE"), 
-        nullable=False
+        Uuid, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False
     )
     granted_via: Mapped[str] = mapped_column(
         String, nullable=False, server_default="direct"
     )
     inherited_from_role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        Uuid,
-        ForeignKey("roles.id", ondelete="CASCADE"),
-        nullable=True
+        Uuid, ForeignKey("roles.id", ondelete="CASCADE"), nullable=True
     )
     granted_via_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        Uuid,
-        ForeignKey("departments.id", ondelete="CASCADE"),
-        nullable=True
+        Uuid, ForeignKey("departments.id", ondelete="CASCADE"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
     # Unique Constraint
     __table_args__ = (
@@ -46,8 +41,13 @@ class DocumentAccessPolicy(Base):
     )
 
     # Relationships
-    document: Mapped["Document"] = relationship("Document", back_populates="access_policies")
+    document: Mapped["Document"] = relationship(
+        "Document", back_populates="access_policies"
+    )
     role: Mapped["Role"] = relationship("Role", foreign_keys=[role_id])
-    inherited_from_role: Mapped[Optional["Role"]] = relationship("Role", foreign_keys=[inherited_from_role_id])
-    granted_via_department: Mapped[Optional["Department"]] = relationship("Department", foreign_keys=[granted_via_department_id])
-
+    inherited_from_role: Mapped[Optional["Role"]] = relationship(
+        "Role", foreign_keys=[inherited_from_role_id]
+    )
+    granted_via_department: Mapped[Optional["Department"]] = relationship(
+        "Department", foreign_keys=[granted_via_department_id]
+    )

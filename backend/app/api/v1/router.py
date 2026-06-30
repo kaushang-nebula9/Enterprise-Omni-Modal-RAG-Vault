@@ -15,8 +15,15 @@ api_router.include_router(roles_router, prefix="/roles", tags=["roles"])
 api_router.include_router(admin_router, prefix="/admin", tags=["admin"])
 api_router.include_router(documents_router, prefix="/documents", tags=["documents"])
 api_router.include_router(chat_router, prefix="/chat", tags=["chat"])
-api_router.include_router(personal_documents_router, prefix="/personal-documents", tags=["personal_documents"])
-api_router.include_router(departments_router, prefix="/departments", tags=["departments"])
-api_router.include_router(notifications_router, prefix="/notifications", tags=["notifications"])
-api_router.include_router(evaluations_router, prefix="/evaluations", tags=["evaluations"])
-
+api_router.include_router(
+    personal_documents_router, prefix="/personal-documents", tags=["personal_documents"]
+)
+api_router.include_router(
+    departments_router, prefix="/departments", tags=["departments"]
+)
+api_router.include_router(
+    notifications_router, prefix="/notifications", tags=["notifications"]
+)
+api_router.include_router(
+    evaluations_router, prefix="/evaluations", tags=["evaluations"]
+)

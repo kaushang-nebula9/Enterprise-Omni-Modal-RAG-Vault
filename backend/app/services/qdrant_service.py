@@ -1,6 +1,7 @@
 """
 Qdrant vector database service for managing tenant collections and document vectors.
 """
+
 import logging
 from typing import Optional
 from qdrant_client import QdrantClient
@@ -13,7 +14,6 @@ from qdrant_client.models import (
     MatchValue,
     MatchAny,
     FilterSelector,
-    SetPayload,
     SparseVectorParams,
     Modifier,
     Prefetch,
@@ -25,10 +25,13 @@ from fastembed import SparseTextEmbedding
 
 logger = logging.getLogger(__name__)
 
-VECTOR_SIZE = 1024  # BAAI/bge-large-en-v1.5 output dimension (sentence-transformers, active)
+VECTOR_SIZE = (
+    1024  # BAAI/bge-large-en-v1.5 output dimension (sentence-transformers, active)
+)
 # VECTOR_SIZE = 3072  # gemini-embedding-2-preview output dimension
 
 _sparse_model = None
+
 
 def get_sparse_model() -> SparseTextEmbedding:
     global _sparse_model
@@ -36,14 +39,12 @@ def get_sparse_model() -> SparseTextEmbedding:
         _sparse_model = SparseTextEmbedding("Qdrant/bm25")
     return _sparse_model
 
+
 def generate_sparse_vector(text: str) -> dict:
     model = get_sparse_model()
     embeddings = list(model.embed([text]))
     embedding = embeddings[0]
-    return {
-        "indices": embedding.indices.tolist(),
-        "values": embedding.values.tolist()
-    }
+    return {"indices": embedding.indices.tolist(), "values": embedding.values.tolist()}
 
 
 def _get_client() -> QdrantClient:
@@ -74,15 +75,12 @@ def get_or_create_tenant_collection(tenant_id: str) -> str:
                     distance=Distance.COSINE,
                 )
             },
-            sparse_vectors_config={
-                "sparse": SparseVectorParams(
-                    modifier=Modifier.IDF
-                )
-            }
+            sparse_vectors_config={"sparse": SparseVectorParams(modifier=Modifier.IDF)},
         )
-        
+
         # Create indexes for fields we use in Filters
         from qdrant_client.models import PayloadSchemaType
+
         client.create_payload_index(
             collection_name=collection_name,
             field_name="role_ids",
@@ -114,10 +112,7 @@ def upsert_vectors(collection_name: str, points: list[dict]) -> None:
     qdrant_points = [
         PointStruct(
             id=p["id"],
-            vector={
-                "dense": p["dense_vector"],
-                "sparse": p["sparse_vector"]
-            },
+            vector={"dense": p["dense_vector"], "sparse": p["sparse_vector"]},
             payload=p["payload"],
         )
         for p in points
@@ -162,10 +157,10 @@ def search_vectors(
     of the user's role_ids (MatchAny).
     """
     client = _get_client()
-    
+
     # Generate sparse vector for query
     sparse_query = generate_sparse_vector(query_text)
-    
+
     must_conditions = [
         FieldCondition(
             key="role_ids",
@@ -179,14 +174,14 @@ def search_vectors(
                 match=MatchValue(value=document_id),
             )
         )
-        
+
     role_filter = Filter(must=must_conditions)
-    
+
     results = client.query_points(
         collection_name=collection_name,
         prefetch=[
             Prefetch(query=query_vector, using="dense", filter=role_filter, limit=20),
-            Prefetch(query=sparse_query, using="sparse", filter=role_filter, limit=20)
+            Prefetch(query=sparse_query, using="sparse", filter=role_filter, limit=20),
         ],
         query=FusionQuery(fusion=Fusion.RRF),
         limit=limit,
@@ -195,7 +190,9 @@ def search_vectors(
     return [{"payload": hit.payload, "score": hit.score} for hit in results]
 
 
-def update_document_payload(collection_name: str, document_id: str, payload: dict) -> None:
+def update_document_payload(
+    collection_name: str, document_id: str, payload: dict
+) -> None:
     """
     Set/overwrite specific payload fields on all vectors matching the document_id.
     Used to update role_ids after access policy changes.

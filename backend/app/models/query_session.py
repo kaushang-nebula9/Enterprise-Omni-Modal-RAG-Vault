@@ -10,30 +10,30 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.tenant import Tenant
-    
+
 
 class QuerySession(Base):
     __tablename__ = "query_sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, 
-        ForeignKey("users.id", ondelete="CASCADE"), 
-        nullable=False
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, 
-        ForeignKey("tenants.id", ondelete="CASCADE"), 
-        nullable=False
+        Uuid, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str | None] = mapped_column(String, nullable=True)
-    is_pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false", default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    is_pinned: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", default=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), 
-        server_default=func.now(), 
-        onupdate=func.now(), 
-        nullable=False
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
     # Relationships

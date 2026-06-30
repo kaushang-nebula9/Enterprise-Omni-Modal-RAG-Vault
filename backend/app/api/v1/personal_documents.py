@@ -30,7 +30,12 @@ EXTENSION_TO_FILE_TYPE: dict[str, FileType] = {
     ".m4a": FileType.audio,
 }
 
-@router.post("/upload", response_model=DocumentWithAccessResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/upload",
+    response_model=DocumentWithAccessResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def upload_personal_document(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
@@ -76,13 +81,12 @@ def upload_personal_document(
 
     doc = (
         db.query(Document)
-        .options(
-            joinedload(Document.access_policies)
-        )
+        .options(joinedload(Document.access_policies))
         .filter(Document.id == document_id)
         .first()
     )
     return doc
+
 
 @router.get("", response_model=list[DocumentWithAccessResponse])
 def get_personal_documents(
@@ -92,9 +96,7 @@ def get_personal_documents(
     """Return all personal documents for the current user."""
     docs = (
         db.query(Document)
-        .options(
-            joinedload(Document.access_policies)
-        )
+        .options(joinedload(Document.access_policies))
         .filter(
             Document.tenant_id == current_user.tenant_id,
             Document.uploaded_by == current_user.id,
@@ -104,6 +106,7 @@ def get_personal_documents(
     )
     return docs
 
+
 @router.get("/{document_id}/download")
 def download_personal_document(
     document_id: uuid.UUID,
@@ -111,14 +114,20 @@ def download_personal_document(
     db: Session = Depends(get_db),
 ):
     """Serve a personal document file as a download response."""
-    doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.tenant_id == current_user.tenant_id,
-        Document.uploaded_by == current_user.id,
-        Document.owner_type == OwnerType.private,
-    ).first()
+    doc = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.tenant_id == current_user.tenant_id,
+            Document.uploaded_by == current_user.id,
+            Document.owner_type == OwnerType.private,
+        )
+        .first()
+    )
     if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
+        )
 
     absolute_path = get_absolute_path(doc.file_path)
     return FileResponse(
@@ -127,6 +136,7 @@ def download_personal_document(
         headers={"Content-Disposition": f'attachment; filename="{doc.filename}"'},
     )
 
+
 @router.delete("/{document_id}")
 def delete_personal_document(
     document_id: uuid.UUID,
@@ -134,20 +144,28 @@ def delete_personal_document(
     db: Session = Depends(get_db),
 ):
     """Delete a personal document."""
-    doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.tenant_id == current_user.tenant_id,
-        Document.uploaded_by == current_user.id,
-        Document.owner_type == OwnerType.private,
-    ).first()
+    doc = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.tenant_id == current_user.tenant_id,
+            Document.uploaded_by == current_user.id,
+            Document.owner_type == OwnerType.private,
+        )
+        .first()
+    )
     if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
+        )
 
     if doc.status == DocumentStatus.ready and doc.file_type != FileType.excel:
         try:
             delete_document_vectors(doc.qdrant_collection, str(doc.id))
         except Exception as exc:
-            logger.warning("Failed to delete Qdrant vectors for document %s: %s", document_id, exc)
+            logger.warning(
+                "Failed to delete Qdrant vectors for document %s: %s", document_id, exc
+            )
 
     if doc.file_path:
         delete_file(doc.file_path)

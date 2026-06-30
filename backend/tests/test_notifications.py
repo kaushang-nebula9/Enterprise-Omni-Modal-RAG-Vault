@@ -1,30 +1,28 @@
 import sys
 import os
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
 import uuid
-import asyncio
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
-from app.models.user import User
-from app.models.role import Role
-from app.models.document import Document
-from app.models.department import Department
 from app.models.notification import Notification
-from app.models.tenant import Tenant
-from app.models.refresh_token import RefreshToken
-from app.models.invite_token import InviteToken
-from app.models.enums import FileType, DocumentStatus, OwnerType, Visibility, NotificationType
-from app.services.notification_service import create_notification, register_connection, unregister_connection
+from app.models.enums import NotificationType
+from app.services.notification_service import (
+    create_notification,
+    register_connection,
+    unregister_connection,
+)
 
 # Use in-memory SQLite database for testing
 DATABASE_URL = "sqlite:///:memory:"
 
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
+
 
 @compiles(JSONB, "sqlite")
 def compile_jsonb_sqlite(element, compiler, **kw):
@@ -43,13 +41,14 @@ def db_fixture():
         session.close()
         Base.metadata.drop_all(bind=engine)
 
+
 def test_notification_model_and_service(db):
     user_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
-    
+
     # 1. Register queue connection
     queue = register_connection(user_id)
-    
+
     # 2. Trigger notification
     notif = create_notification(
         db=db,
@@ -58,21 +57,21 @@ def test_notification_model_and_service(db):
         type=NotificationType.role_assigned,
         message="You have been assigned the role: Test",
     )
-    
+
     assert notif.id is not None
     assert notif.is_read is False
-    
+
     # Query check
     db_notif = db.query(Notification).filter(Notification.id == notif.id).first()
     assert db_notif is not None
     assert db_notif.message == "You have been assigned the role: Test"
-    
+
     # SSE Queue check
     assert not queue.empty()
     payload = queue.get_nowait()
     assert payload["id"] == str(notif.id)
     assert payload["message"] == "You have been assigned the role: Test"
     assert payload["type"] == "role_assigned"
-    
+
     # Cleanup connection
     unregister_connection(user_id, queue)

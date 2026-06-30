@@ -6,6 +6,7 @@ Handles:
   - Full RAG pipeline: embed query → Qdrant search → Excel pipeline → LLM answer
 
 """
+
 import asyncio
 import logging
 import threading
@@ -22,7 +23,7 @@ from anthropic import Anthropic, AsyncAnthropic
 from app.core.config import settings
 from app.models.document import Document
 from app.models.document_access_policy import DocumentAccessPolicy
-from app.models.enums import FileType, DocumentStatus, Visibility
+from app.models.enums import FileType, DocumentStatus
 from app.models.user import User
 from app.services import embedding_service
 from app.services.qdrant_service import search_vectors
@@ -125,9 +126,7 @@ def execute_excel_query(
             model="claude-haiku-4-5-20251001",
             max_tokens=8192,
             temperature=0.1,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
+            messages=[{"role": "user", "content": prompt}],
         )
         code = (message.content[0].text or "").strip()
 
@@ -146,19 +145,22 @@ def execute_excel_query(
 
         # Build restricted globals — only allow df and safe builtins
         from RestrictedPython.Guards import guarded_iter_unpack_sequence
-        from RestrictedPython.Eval import default_guarded_getitem, default_guarded_getiter
+        from RestrictedPython.Eval import (
+            default_guarded_getitem,
+            default_guarded_getiter,
+        )
 
         restricted_globals = dict(safe_globals)
         restricted_globals["_getattr_"] = getattr
         restricted_globals["_getitem_"] = default_guarded_getitem
         restricted_globals["_getiter_"] = default_guarded_getiter
         restricted_globals["_iter_unpack_sequence_"] = guarded_iter_unpack_sequence
-        
+
         # We use a pass-through write guard because full_write_guard wraps the object
         # and breaks Pandas dataframe item assignments (df['a'] = 1)
         restricted_globals["_write_"] = lambda x: x
         restricted_globals["pd"] = pd
-        
+
         restricted_locals: dict = {"df": df}
 
         # Execution with a 10-second timeout (threading approach for Windows)
@@ -203,6 +205,7 @@ Answer the user's question based ONLY on the provided context below.
 If the answer cannot be found in the context, say "I could not find relevant information in the available documents."
 Do not make up information. Be concise and accurate."""
 
+
 async def _rerank_chunks(query: str, hits: list[dict], label: str = "") -> list[dict]:
     """
     Re-ranks a list of Qdrant hits against the query using the CrossEncoder.
@@ -212,13 +215,19 @@ async def _rerank_chunks(query: str, hits: list[dict], label: str = "") -> list[
         return hits
     try:
         model = _get_cross_encoder()
-        pairs = [(query, hit.get("payload", {}).get("chunk_text") or "") for hit in hits]
+        pairs = [
+            (query, hit.get("payload", {}).get("chunk_text") or "") for hit in hits
+        ]
         scores = await asyncio.to_thread(model.predict, pairs)
         for hit, score in zip(hits, scores):
             hit["cross_encoder_score"] = float(score)
         hits.sort(key=lambda x: x.get("cross_encoder_score", -999999.0), reverse=True)
     except Exception as exc:
-        logger.error("CrossEncoder re-ranking failed%s: %s", f" for {label}" if label else "", exc)
+        logger.error(
+            "CrossEncoder re-ranking failed%s: %s",
+            f" for {label}" if label else "",
+            exc,
+        )
         # Fall back to original RRF-ranked order (already the order in `hits`)
     return hits
 
@@ -248,9 +257,15 @@ async def _run_excel_query(doc: Document, query: str) -> Optional[dict]:
         return None
     try:
         abs_path = get_absolute_path(doc.file_path)
-        result = await asyncio.to_thread(execute_excel_query, abs_path, doc.excel_schema, query)
+        result = await asyncio.to_thread(
+            execute_excel_query, abs_path, doc.excel_schema, query
+        )
         if result is not None:
-            return {"filename": doc.filename, "document_id": str(doc.id), "result": result}
+            return {
+                "filename": doc.filename,
+                "document_id": str(doc.id),
+                "result": result,
+            }
     except Exception as exc:
         logger.warning("Excel query failed for %s: %s", doc.filename, exc)
     return None
@@ -276,7 +291,11 @@ async def _run_qdrant_search(
             document_id=document_id,
         )
     except Exception as exc:
-        logger.error("Qdrant search failed%s: %s", f" for document {document_id}" if document_id else "", exc)
+        logger.error(
+            "Qdrant search failed%s: %s",
+            f" for document {document_id}" if document_id else "",
+            exc,
+        )
         return []
 
 
@@ -298,21 +317,35 @@ async def _resolve_compare_document(
     doc_in_db = compare_id_to_doc.get(did_str)
 
     if not doc_in_db:
-        return f"Source: Unknown Document ({did_str})\n[Note: This document was not found in the database.]", []
+        return (
+            f"Source: Unknown Document ({did_str})\n[Note: This document was not found in the database.]",
+            [],
+        )
 
     filename = doc_in_db.filename
-    authorized_doc = next((d for d in all_authorized_docs if str(d.id) == did_str), None)
+    authorized_doc = next(
+        (d for d in all_authorized_docs if str(d.id) == did_str), None
+    )
 
     if not authorized_doc:
-        return f"Source: {filename}\n[Note: This document has no available content or is still processing.]", []
+        return (
+            f"Source: {filename}\n[Note: This document has no available content or is still processing.]",
+            [],
+        )
 
     if authorized_doc.file_type == FileType.excel:
         if not authorized_doc.excel_schema:
-            return f"Source: {filename}\n[Note: This Excel document has no defined schema.]", []
+            return (
+                f"Source: {filename}\n[Note: This Excel document has no defined schema.]",
+                [],
+            )
         result = await _run_excel_query(authorized_doc, query)
         if result is not None:
             return f"Source: {filename}\nQuery: {query}\nResult: {result['result']}", []
-        return f"Source: {filename}\n[Note: No data results were retrieved from this Excel document.]", []
+        return (
+            f"Source: {filename}\n[Note: No data results were retrieved from this Excel document.]",
+            [],
+        )
 
     # Non-Excel: Qdrant search scoped to this one document, then re-rank and keep top 6.
     collection_name = authorized_doc.qdrant_collection or f"tenant_{tenant_id}"
@@ -325,14 +358,18 @@ async def _resolve_compare_document(
         limit=15,
     )
     doc_results = [
-        hit for hit in doc_results
+        hit
+        for hit in doc_results
         if hit.get("payload", {}).get("document_id") == did_str
     ]
     doc_results = await _rerank_chunks(query, doc_results, label=filename)
     doc_results = doc_results[:6]
 
     if not doc_results:
-        return f"Source: {filename}\n[Note: This document has no ready or indexed chunks.]", []
+        return (
+            f"Source: {filename}\n[Note: This document has no ready or indexed chunks.]",
+            [],
+        )
 
     lines = [_format_chunk_context(filename, hit) for hit in doc_results]
     return "\n---\n".join(lines), doc_results
@@ -369,14 +406,16 @@ async def run_rag_pipeline(
     # Fetch documents accessible via role-based access policies or uploaded by the user
     docs_query = (
         db.query(Document)
-        .outerjoin(DocumentAccessPolicy, Document.id == DocumentAccessPolicy.document_id)
+        .outerjoin(
+            DocumentAccessPolicy, Document.id == DocumentAccessPolicy.document_id
+        )
         .filter(
             Document.tenant_id == user.tenant_id,
             Document.status == DocumentStatus.ready,
             or_(
                 DocumentAccessPolicy.role_id == user.role_id,
                 Document.uploaded_by == user.id,
-            )
+            ),
         )
     )
 
@@ -391,13 +430,17 @@ async def run_rag_pipeline(
     non_excel_exist = any(d.file_type != FileType.excel for d in all_authorized_docs)
 
     # Build a lookup of document_id -> filename
-    doc_id_to_filename: dict[str, str] = {str(doc.id): doc.filename for doc in all_authorized_docs}
+    doc_id_to_filename: dict[str, str] = {
+        str(doc.id): doc.filename for doc in all_authorized_docs
+    }
 
     context_parts: list[str] = []
     qdrant_results: list[dict] = []
 
     if is_compare_mode and compare_document_ids:
-        compare_docs_db = db.query(Document).filter(Document.id.in_(compare_document_ids)).all()
+        compare_docs_db = (
+            db.query(Document).filter(Document.id.in_(compare_document_ids)).all()
+        )
         compare_id_to_doc = {str(d.id): d for d in compare_docs_db}
 
         # Make sure compare docs are in doc_id_to_filename so citation lookups work
@@ -408,8 +451,13 @@ async def run_rag_pipeline(
         resolutions = await asyncio.gather(
             *[
                 _resolve_compare_document(
-                    did_uuid, query, query_vector, tenant_id, search_role_ids,
-                    compare_id_to_doc, all_authorized_docs,
+                    did_uuid,
+                    query,
+                    query_vector,
+                    tenant_id,
+                    search_role_ids,
+                    compare_id_to_doc,
+                    all_authorized_docs,
                 )
                 for did_uuid in compare_document_ids
             ],
@@ -418,8 +466,14 @@ async def run_rag_pipeline(
 
         for did_uuid, resolution in zip(compare_document_ids, resolutions):
             if isinstance(resolution, BaseException):
-                logger.error("Compare resolution failed for document %s: %s", did_uuid, resolution)
-                context_parts.append(f"Source: Unknown Document ({did_uuid})\n[Note: Failed to retrieve content for this document.]")
+                logger.error(
+                    "Compare resolution failed for document %s: %s",
+                    did_uuid,
+                    resolution,
+                )
+                context_parts.append(
+                    f"Source: Unknown Document ({did_uuid})\n[Note: Failed to retrieve content for this document.]"
+                )
                 context_parts.append("---")
                 continue
             context_text, contributed_hits = resolution
@@ -427,7 +481,9 @@ async def run_rag_pipeline(
             context_parts.append("---")
             qdrant_results.extend(contributed_hits)
 
-        context_block = "\n".join(context_parts) if context_parts else "No relevant context found."
+        context_block = (
+            "\n".join(context_parts) if context_parts else "No relevant context found."
+        )
 
     else:
         # Standard search/retrieval path: run Qdrant search and Excel pipeline concurrently.
@@ -455,6 +511,7 @@ async def run_rag_pipeline(
 
         excel_docs_to_run = [doc for doc in excel_docs if doc.excel_schema]
         if excel_docs_to_run:
+
             async def run_excel():
                 sub_results = await asyncio.gather(
                     *[_run_excel_query(doc, query) for doc in excel_docs_to_run]
@@ -477,7 +534,8 @@ async def run_rag_pipeline(
 
         # Filter out any orphaned Qdrant vectors (e.g. from deleted documents)
         qdrant_results = [
-            hit for hit in qdrant_results
+            hit
+            for hit in qdrant_results
             if hit.get("payload", {}).get("document_id") in doc_id_to_filename
         ]
 
@@ -490,17 +548,23 @@ async def run_rag_pipeline(
         if qdrant_results:
             context_parts.append("[Document Chunks]")
             for hit in qdrant_results:
-                filename = doc_id_to_filename.get(hit.get("payload", {}).get("document_id", ""), "Unknown")
+                filename = doc_id_to_filename.get(
+                    hit.get("payload", {}).get("document_id", ""), "Unknown"
+                )
                 context_parts.append(_format_chunk_context(filename, hit))
                 context_parts.append("---")
 
         if excel_results:
             context_parts.append("[Excel Data Results]")
             for er in excel_results:
-                context_parts.append(f"Source: {er['filename']}\nQuery: {query}\nResult: {er['result']}")
+                context_parts.append(
+                    f"Source: {er['filename']}\nQuery: {query}\nResult: {er['result']}"
+                )
                 context_parts.append("---")
 
-        context_block = "\n".join(context_parts) if context_parts else "No relevant context found."
+        context_block = (
+            "\n".join(context_parts) if context_parts else "No relevant context found."
+        )
 
     # Call LLM for the final answer (using Anthropic Claude Streaming)
     final_prompt = f"""Context:
@@ -523,7 +587,10 @@ async def run_rag_pipeline(
 
     if model_id:
         from app.models.available_model import AvailableModel
-        db_model = db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
+
+        db_model = (
+            db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
+        )
         if db_model:
             selected_model_string = db_model.model_string
             selected_provider = db_model.provider
@@ -538,9 +605,7 @@ async def run_rag_pipeline(
                 "model": selected_model_string,
                 "max_tokens": 8192,
                 "system": system_prompt,
-                "messages": [
-                    {"role": "user", "content": final_prompt}
-                ]
+                "messages": [{"role": "user", "content": final_prompt}],
             }
             # Omit temperature if model is Opus (deprecated)
             if "opus" not in selected_model_string.lower():
@@ -551,19 +616,18 @@ async def run_rag_pipeline(
                     if event.type == "text":
                         full_answer_list.append(event.text)
                         yield {"type": "token", "content": event.text}
-                
+
                 final_msg = await stream.get_final_message()
                 if getattr(final_msg, "usage", None):
                     input_tokens = getattr(final_msg.usage, "input_tokens", 0)
                     output_tokens = getattr(final_msg.usage, "output_tokens", 0)
         elif selected_provider == "openrouter":
             from app.services.openrouter_service import stream_openrouter_completion
+
             async for chunk_type, data in stream_openrouter_completion(
                 model_string=selected_model_string,
                 system_prompt=system_prompt,
-                messages=[
-                    {"role": "user", "content": final_prompt}
-                ]
+                messages=[{"role": "user", "content": final_prompt}],
             ):
                 if chunk_type == "text":
                     full_answer_list.append(data)
@@ -577,13 +641,14 @@ async def run_rag_pipeline(
         # Save UsageLog row
         try:
             from app.models.usage_log import UsageLog
+
             usage_log = UsageLog(
                 tenant_id=user.tenant_id,
                 user_id=user.id,
                 provider=selected_provider,
                 model_string=selected_model_string,
                 input_tokens=input_tokens,
-                output_tokens=output_tokens
+                output_tokens=output_tokens,
             )
             db.add(usage_log)
             db.commit()
@@ -591,24 +656,33 @@ async def run_rag_pipeline(
             # Trigger budget check task in background
             try:
                 import sys
+
                 if "pytest" not in sys.modules:
                     from app.tasks.billing_tasks import check_tenant_budgets_task
+
                     check_tenant_budgets_task.delay()
             except Exception as task_exc:
-                logger.error("Failed to trigger check_tenant_budgets_task: %s", task_exc)
+                logger.error(
+                    "Failed to trigger check_tenant_budgets_task: %s", task_exc
+                )
         except Exception as db_exc:
             logger.error("Failed to save usage log to database: %s", db_exc)
             db.rollback()
     except Exception as exc:
-        logger.error("%s streaming answer generation failed: %s", selected_provider, exc)
-        error_msg = "I encountered an error while generating an answer. Please try again."
+        logger.error(
+            "%s streaming answer generation failed: %s", selected_provider, exc
+        )
+        error_msg = (
+            "I encountered an error while generating an answer. Please try again."
+        )
         full_answer_list.append(error_msg)
         yield {"type": "token", "content": error_msg}
 
-
     full_answer = "".join(full_answer_list).strip()
     if not full_answer:
-        full_answer = "I could not generate an answer. Please try rephrasing your question."
+        full_answer = (
+            "I could not generate an answer. Please try rephrasing your question."
+        )
         yield {"type": "token", "content": full_answer}
 
     # Build citations list
@@ -616,14 +690,16 @@ async def run_rag_pipeline(
     for hit in qdrant_results:
         payload = hit.get("payload", {})
         doc_id = payload.get("document_id", "")
-        citations.append({
-            "document_id": doc_id,
-            "filename": doc_id_to_filename.get(doc_id, "Unknown"),
-            "chunk_text": payload.get("chunk_text", ""),
-            "page_number": payload.get("page_number"),
-            "slide_number": payload.get("slide_number"),
-            "chunk_index": payload.get("chunk_index", 0),
-        })
+        citations.append(
+            {
+                "document_id": doc_id,
+                "filename": doc_id_to_filename.get(doc_id, "Unknown"),
+                "chunk_text": payload.get("chunk_text", ""),
+                "page_number": payload.get("page_number"),
+                "slide_number": payload.get("slide_number"),
+                "chunk_index": payload.get("chunk_index", 0),
+            }
+        )
 
     yield {
         "type": "done",

@@ -14,7 +14,7 @@ from app.schemas.admin import (
     UpdateMemberRequest,
     UpdateOrganisationRequest,
     TenantResponse,
-    UsageSummaryResponse
+    UsageSummaryResponse,
 )
 from app.schemas.auth import MessageResponse
 from app.services.billing_service import calculate_tenant_monthly_cost
@@ -28,70 +28,94 @@ from uuid import UUID
 
 router = APIRouter()
 
+
 @router.get("/stats", response_model=AdminStatsResponse)
 def get_admin_stats(
-    current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    current_admin: User = Depends(require_admin), db: Session = Depends(get_db)
 ):
     """Returns total documents, members, and custom roles for the admin's tenant."""
-    total_documents = db.query(Document).filter(Document.tenant_id == current_admin.tenant_id).count()
-    total_members = db.query(User).filter(User.tenant_id == current_admin.tenant_id).count()
+    total_documents = (
+        db.query(Document).filter(Document.tenant_id == current_admin.tenant_id).count()
+    )
+    total_members = (
+        db.query(User).filter(User.tenant_id == current_admin.tenant_id).count()
+    )
     # Excluding default roles (Admin, Member) from the roles count
-    total_roles = db.query(Role).filter(
-        Role.tenant_id == current_admin.tenant_id,
-        Role.is_default == False
-    ).count()
+    total_roles = (
+        db.query(Role)
+        .filter(Role.tenant_id == current_admin.tenant_id, Role.is_default == False)
+        .count()
+    )
 
     return AdminStatsResponse(
         total_documents=total_documents,
         total_members=total_members,
-        total_roles=total_roles
+        total_roles=total_roles,
     )
+
 
 @router.get("/members", response_model=list[UserResponse])
 def get_admin_members(
-    current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    current_admin: User = Depends(require_admin), db: Session = Depends(get_db)
 ):
     """Returns all users belonging to the admin's tenant."""
-    users = db.query(User).options(joinedload(User.role).joinedload(Role.department)).filter(
-        User.tenant_id == current_admin.tenant_id
-    ).all()
+    users = (
+        db.query(User)
+        .options(joinedload(User.role).joinedload(Role.department))
+        .filter(User.tenant_id == current_admin.tenant_id)
+        .all()
+    )
     return users
+
 
 @router.patch("/members/{user_id}", response_model=UserResponse)
 def update_member(
     user_id: UUID,
     request: UpdateMemberRequest,
     current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Update a member's role or active status."""
-    target_user = db.query(User).options(joinedload(User.role).joinedload(Role.department)).filter(
-        User.id == user_id,
-        User.tenant_id == current_admin.tenant_id
-    ).first()
+    target_user = (
+        db.query(User)
+        .options(joinedload(User.role).joinedload(Role.department))
+        .filter(User.id == user_id, User.tenant_id == current_admin.tenant_id)
+        .first()
+    )
 
     if not target_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     if target_user.id == current_admin.id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot modify your own account from here")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot modify your own account from here",
+        )
 
     if target_user.role.is_admin:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot modify another admin's account")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot modify another admin's account",
+        )
 
     role_changed = False
     new_role = None
     old_role_name = "unknown"
     old_role_id = None
     if request.role_id is not None:
-        new_role = db.query(Role).filter(
-            Role.id == request.role_id,
-            Role.tenant_id == current_admin.tenant_id
-        ).first()
+        new_role = (
+            db.query(Role)
+            .filter(
+                Role.id == request.role_id, Role.tenant_id == current_admin.tenant_id
+            )
+            .first()
+        )
         if not new_role:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role"
+            )
         role_changed = target_user.role_id != request.role_id
         if role_changed:
             old_role_id = target_user.role_id
@@ -101,7 +125,9 @@ def update_member(
     if request.is_active is not None:
         target_user.is_active = request.is_active
         if not request.is_active:
-            db.query(RefreshToken).filter(RefreshToken.user_id == target_user.id).update({RefreshToken.is_revoked: True})
+            db.query(RefreshToken).filter(
+                RefreshToken.user_id == target_user.id
+            ).update({RefreshToken.is_revoked: True})
 
     db.commit()
 
@@ -118,82 +144,104 @@ def update_member(
                 "old_role_id": str(old_role_id) if old_role_id else None,
                 "new_role_id": str(new_role.id),
                 "old_role_name": old_role_name,
-                "new_role_name": new_role.name
-            }
+                "new_role_name": new_role.name,
+            },
         )
 
     if role_changed and new_role:
         from app.services.notification_service import create_notification
         from app.models.enums import NotificationType
+
         create_notification(
             db=db,
             user_id=target_user.id,
             tenant_id=target_user.tenant_id,
             type=NotificationType.role_assigned,
             message=f"You have been assigned the role: {new_role.name}",
-            related_role_id=new_role.id
+            related_role_id=new_role.id,
         )
 
     db.refresh(target_user)
     # Re-fetch to ensure role relationship is eager-loaded
-    target_user = db.query(User).options(joinedload(User.role)).filter(User.id == target_user.id).first()
+    target_user = (
+        db.query(User)
+        .options(joinedload(User.role))
+        .filter(User.id == target_user.id)
+        .first()
+    )
     return target_user
+
 
 @router.delete("/members/{user_id}", response_model=MessageResponse)
 def delete_member(
     user_id: UUID,
     current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Delete a user record."""
-    target_user = db.query(User).options(joinedload(User.role)).filter(
-        User.id == user_id,
-        User.tenant_id == current_admin.tenant_id
-    ).first()
+    target_user = (
+        db.query(User)
+        .options(joinedload(User.role))
+        .filter(User.id == user_id, User.tenant_id == current_admin.tenant_id)
+        .first()
+    )
 
     if not target_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     if target_user.id == current_admin.id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot delete your own account")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own account",
+        )
 
     if target_user.role.is_admin:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot delete another admin's account")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete another admin's account",
+        )
 
     db.delete(target_user)
     db.commit()
 
     return MessageResponse(message="Member removed successfully")
 
+
 @router.get("/organisation", response_model=TenantResponse)
 def get_organisation(
-    current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    current_admin: User = Depends(require_admin), db: Session = Depends(get_db)
 ):
     """Returns the tenant details."""
     tenant = db.query(Tenant).filter(Tenant.id == current_admin.tenant_id).first()
     if not tenant:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
+        )
+
     # Calculate estimated usage dynamically
     estimated_usage = calculate_tenant_monthly_cost(db, tenant.id)
     tenant.estimated_usage_this_month = estimated_usage
     return tenant
 
+
 @router.patch("/organisation", response_model=TenantResponse)
 def update_organisation(
     request: UpdateOrganisationRequest,
     current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Update the tenant's name, website, and/or monthly budget limit."""
     tenant = db.query(Tenant).filter(Tenant.id == current_admin.tenant_id).first()
     if not tenant:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
+        )
 
     if request.name is not None:
         tenant.name = request.name
-        base_slug = re.sub(r'[^a-z0-9\-]', '', request.name.lower().replace(" ", "-"))
+        base_slug = re.sub(r"[^a-z0-9\-]", "", request.name.lower().replace(" ", "-"))
         slug = base_slug or "tenant"
         # Only check unique if it changed
         if slug != tenant.slug:
@@ -213,23 +261,35 @@ def update_organisation(
         # Trigger budget check task in background since limit was updated
         try:
             import sys
+
             if "pytest" not in sys.modules:
                 from app.tasks.billing_tasks import check_tenant_budgets_task
+
                 check_tenant_budgets_task.delay()
         except Exception as task_exc:
-            logger.error("Failed to trigger check_tenant_budgets_task after budget update: %s", task_exc)
+            logger.error(
+                "Failed to trigger check_tenant_budgets_task after budget update: %s",
+                task_exc,
+            )
 
     default_model_changed = False
     old_default_model_id = tenant.default_model_id
     if "default_model_id" in request.model_fields_set:
         if request.default_model_id is not None:
             # Verify it exists and is active
-            model_exists = db.query(AvailableModel).filter(
-                AvailableModel.id == request.default_model_id,
-                AvailableModel.is_active == True
-            ).first()
+            model_exists = (
+                db.query(AvailableModel)
+                .filter(
+                    AvailableModel.id == request.default_model_id,
+                    AvailableModel.is_active == True,
+                )
+                .first()
+            )
             if not model_exists:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or inactive default model")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid or inactive default model",
+                )
         default_model_changed = old_default_model_id != request.default_model_id
         tenant.default_model_id = request.default_model_id
 
@@ -237,20 +297,31 @@ def update_organisation(
     db.refresh(tenant)
 
     if budget_limit_changed:
-        limit_desc = f"${tenant.monthly_budget_limit:.2f}" if tenant.monthly_budget_limit is not None else "no limit"
+        limit_desc = (
+            f"${tenant.monthly_budget_limit:.2f}"
+            if tenant.monthly_budget_limit is not None
+            else "no limit"
+        )
         log_audit_event(
             db=db,
             tenant_id=tenant.id,
             actor_user_id=current_admin.id,
             action="budget_limit.updated",
             description=f"Changed monthly budget limit to {limit_desc}",
-            metadata={"old_limit": old_budget_limit, "new_limit": tenant.monthly_budget_limit}
+            metadata={
+                "old_limit": old_budget_limit,
+                "new_limit": tenant.monthly_budget_limit,
+            },
         )
 
     if default_model_changed:
         model_name = "None"
         if tenant.default_model_id:
-            model_exists = db.query(AvailableModel).filter(AvailableModel.id == tenant.default_model_id).first()
+            model_exists = (
+                db.query(AvailableModel)
+                .filter(AvailableModel.id == tenant.default_model_id)
+                .first()
+            )
             if model_exists:
                 model_name = model_exists.display_name
         log_audit_event(
@@ -259,7 +330,14 @@ def update_organisation(
             actor_user_id=current_admin.id,
             action="default_model.updated",
             description=f"Changed default model to {model_name}",
-            metadata={"old_model_id": str(old_default_model_id) if old_default_model_id else None, "new_model_id": str(tenant.default_model_id) if tenant.default_model_id else None}
+            metadata={
+                "old_model_id": str(old_default_model_id)
+                if old_default_model_id
+                else None,
+                "new_model_id": str(tenant.default_model_id)
+                if tenant.default_model_id
+                else None,
+            },
         )
 
     # Attach estimated usage before returning
@@ -267,16 +345,19 @@ def update_organisation(
     tenant.estimated_usage_this_month = estimated_usage
     return tenant
 
+
 @router.delete("/organisation", response_model=MessageResponse)
 def delete_organisation(
     response: Response,
     current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Deletes the entire tenant record and cascades all related data."""
     tenant = db.query(Tenant).filter(Tenant.id == current_admin.tenant_id).first()
     if not tenant:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found"
+        )
 
     db.delete(tenant)
     db.commit()
@@ -292,10 +373,10 @@ from app.models.available_model import AvailableModel
 from app.schemas.chat import ModelResponse
 from app.schemas.admin import ModelCreateRequest, ModelUpdateRequest
 
+
 @router.get("/models", response_model=list[ModelResponse])
 def admin_get_models(
-    current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    current_admin: User = Depends(require_admin), db: Session = Depends(get_db)
 ):
     """
     Returns all models (active and inactive) for management.
@@ -303,11 +384,14 @@ def admin_get_models(
     models = db.query(AvailableModel).order_by(AvailableModel.created_at.asc()).all()
     return models
 
-@router.post("/models", response_model=ModelResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/models", response_model=ModelResponse, status_code=status.HTTP_201_CREATED
+)
 def admin_create_model(
     request: ModelCreateRequest,
     current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Create a new available model configuration.
@@ -318,26 +402,29 @@ def admin_create_model(
         model_string=request.model_string,
         is_active=request.is_active,
         input_price_per_million=request.input_price_per_million,
-        output_price_per_million=request.output_price_per_million
+        output_price_per_million=request.output_price_per_million,
     )
     db.add(new_model)
     db.commit()
     db.refresh(new_model)
     return new_model
 
+
 @router.patch("/models/{model_id}", response_model=ModelResponse)
 def admin_update_model(
     model_id: UUID,
     request: ModelUpdateRequest,
     current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Update an available model configuration.
     """
     db_model = db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
     if not db_model:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Model not found"
+        )
 
     if request.display_name is not None:
         db_model.display_name = request.display_name
@@ -356,18 +443,21 @@ def admin_update_model(
     db.refresh(db_model)
     return db_model
 
+
 @router.delete("/models/{model_id}", response_model=MessageResponse)
 def admin_delete_model(
     model_id: UUID,
     current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Delete an available model configuration.
     """
     db_model = db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
     if not db_model:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Model not found"
+        )
 
     db.delete(db_model)
     db.commit()
@@ -376,7 +466,6 @@ def admin_delete_model(
 
 from datetime import date, timedelta
 from sqlalchemy import cast, Date, func, case, and_
-from sqlalchemy.orm import joinedload
 from app.models.usage_log import UsageLog
 from app.models.department import Department
 from app.schemas.admin import (
@@ -384,8 +473,9 @@ from app.schemas.admin import (
     DashboardOverviewResponse,
     DocumentInsightsResponse,
     DocumentTypeCount,
-    RecentDocumentItem
+    RecentDocumentItem,
 )
+
 
 @router.get("/usage", response_model=UsageSummaryResponse)
 def get_usage_summary(
@@ -393,7 +483,7 @@ def get_usage_summary(
     end_date: date | None = None,
     provider: str | None = None,
     current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Returns daily aggregates of token usage and request count for the admin's tenant.
@@ -414,139 +504,221 @@ def get_usage_summary(
         func.count(UsageLog.id).label("request_count"),
         func.sum(UsageLog.input_tokens + UsageLog.output_tokens).label("total_tokens"),
         func.sum(
-            case(
-                (UsageLog.provider == "anthropic", UsageLog.input_tokens),
-                else_=0
-            )
+            case((UsageLog.provider == "anthropic", UsageLog.input_tokens), else_=0)
         ).label("claude_input_tokens"),
         func.sum(
-            case(
-                (UsageLog.provider == "anthropic", UsageLog.output_tokens),
-                else_=0
-            )
+            case((UsageLog.provider == "anthropic", UsageLog.output_tokens), else_=0)
         ).label("claude_output_tokens"),
         func.sum(
-            case(
-                (UsageLog.provider == "openrouter", UsageLog.input_tokens),
-                else_=0
-            )
+            case((UsageLog.provider == "openrouter", UsageLog.input_tokens), else_=0)
         ).label("openrouter_input_tokens"),
         func.sum(
-            case(
-                (UsageLog.provider == "openrouter", UsageLog.output_tokens),
-                else_=0
-            )
+            case((UsageLog.provider == "openrouter", UsageLog.output_tokens), else_=0)
         ).label("openrouter_output_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "anthropic", func.lower(UsageLog.model_string).like("%haiku%")), UsageLog.input_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "anthropic",
+                        func.lower(UsageLog.model_string).like("%haiku%"),
+                    ),
+                    UsageLog.input_tokens,
+                ),
+                else_=0,
             )
         ).label("claude_haiku_input_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "anthropic", func.lower(UsageLog.model_string).like("%haiku%")), UsageLog.output_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "anthropic",
+                        func.lower(UsageLog.model_string).like("%haiku%"),
+                    ),
+                    UsageLog.output_tokens,
+                ),
+                else_=0,
             )
         ).label("claude_haiku_output_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "anthropic", func.lower(UsageLog.model_string).like("%sonnet%")), UsageLog.input_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "anthropic",
+                        func.lower(UsageLog.model_string).like("%sonnet%"),
+                    ),
+                    UsageLog.input_tokens,
+                ),
+                else_=0,
             )
         ).label("claude_sonnet_input_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "anthropic", func.lower(UsageLog.model_string).like("%sonnet%")), UsageLog.output_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "anthropic",
+                        func.lower(UsageLog.model_string).like("%sonnet%"),
+                    ),
+                    UsageLog.output_tokens,
+                ),
+                else_=0,
             )
         ).label("claude_sonnet_output_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "anthropic", func.lower(UsageLog.model_string).like("%opus%")), UsageLog.input_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "anthropic",
+                        func.lower(UsageLog.model_string).like("%opus%"),
+                    ),
+                    UsageLog.input_tokens,
+                ),
+                else_=0,
             )
         ).label("claude_opus_input_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "anthropic", func.lower(UsageLog.model_string).like("%opus%")), UsageLog.output_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "anthropic",
+                        func.lower(UsageLog.model_string).like("%opus%"),
+                    ),
+                    UsageLog.output_tokens,
+                ),
+                else_=0,
             )
         ).label("claude_opus_output_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%llama%")), UsageLog.input_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "openrouter",
+                        func.lower(UsageLog.model_string).like("%llama%"),
+                    ),
+                    UsageLog.input_tokens,
+                ),
+                else_=0,
             )
         ).label("openrouter_llama_input_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%llama%")), UsageLog.output_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "openrouter",
+                        func.lower(UsageLog.model_string).like("%llama%"),
+                    ),
+                    UsageLog.output_tokens,
+                ),
+                else_=0,
             )
         ).label("openrouter_llama_output_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%gemma%")), UsageLog.input_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "openrouter",
+                        func.lower(UsageLog.model_string).like("%gemma%"),
+                    ),
+                    UsageLog.input_tokens,
+                ),
+                else_=0,
             )
         ).label("openrouter_gemma_input_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%gemma%")), UsageLog.output_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "openrouter",
+                        func.lower(UsageLog.model_string).like("%gemma%"),
+                    ),
+                    UsageLog.output_tokens,
+                ),
+                else_=0,
             )
         ).label("openrouter_gemma_output_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%nemotron%")), UsageLog.input_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "openrouter",
+                        func.lower(UsageLog.model_string).like("%nemotron%"),
+                    ),
+                    UsageLog.input_tokens,
+                ),
+                else_=0,
             )
         ).label("openrouter_nemotron_input_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%nemotron%")), UsageLog.output_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "openrouter",
+                        func.lower(UsageLog.model_string).like("%nemotron%"),
+                    ),
+                    UsageLog.output_tokens,
+                ),
+                else_=0,
             )
         ).label("openrouter_nemotron_output_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%gpt-oss%")), UsageLog.input_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "openrouter",
+                        func.lower(UsageLog.model_string).like("%gpt-oss%"),
+                    ),
+                    UsageLog.input_tokens,
+                ),
+                else_=0,
             )
         ).label("openrouter_gpt_input_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%gpt-oss%")), UsageLog.output_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "openrouter",
+                        func.lower(UsageLog.model_string).like("%gpt-oss%"),
+                    ),
+                    UsageLog.output_tokens,
+                ),
+                else_=0,
             )
         ).label("openrouter_gpt_output_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%cohere%") | func.lower(UsageLog.model_string).like("%north-mini-code%")), UsageLog.input_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "openrouter",
+                        func.lower(UsageLog.model_string).like("%cohere%")
+                        | func.lower(UsageLog.model_string).like("%north-mini-code%"),
+                    ),
+                    UsageLog.input_tokens,
+                ),
+                else_=0,
             )
         ).label("openrouter_cohere_input_tokens"),
         func.sum(
             case(
-                (and_(UsageLog.provider == "openrouter", func.lower(UsageLog.model_string).like("%cohere%") | func.lower(UsageLog.model_string).like("%north-mini-code%")), UsageLog.output_tokens),
-                else_=0
+                (
+                    and_(
+                        UsageLog.provider == "openrouter",
+                        func.lower(UsageLog.model_string).like("%cohere%")
+                        | func.lower(UsageLog.model_string).like("%north-mini-code%"),
+                    ),
+                    UsageLog.output_tokens,
+                ),
+                else_=0,
             )
-        ).label("openrouter_cohere_output_tokens")
+        ).label("openrouter_cohere_output_tokens"),
     ).filter(
         UsageLog.tenant_id == current_admin.tenant_id,
         date_expr >= start_date,
-        date_expr <= end_date
+        date_expr <= end_date,
     )
 
     if provider:
         query = query.filter(UsageLog.provider == provider)
 
-    results = query.group_by(
-        date_expr
-    ).order_by(
-        date_expr.asc()
-    ).all()
+    results = query.group_by(date_expr).order_by(date_expr.asc()).all()
 
     usage_items = []
     for row in results:
@@ -557,27 +729,73 @@ def get_usage_summary(
             UsageSummaryItem(
                 date=day_val,
                 request_count=row.request_count,
-                total_tokens=int(row.total_tokens) if row.total_tokens is not None else 0,
-                claude_input_tokens=int(row.claude_input_tokens) if row.claude_input_tokens is not None else 0,
-                claude_output_tokens=int(row.claude_output_tokens) if row.claude_output_tokens is not None else 0,
-                openrouter_input_tokens=int(row.openrouter_input_tokens) if row.openrouter_input_tokens is not None else 0,
-                openrouter_output_tokens=int(row.openrouter_output_tokens) if row.openrouter_output_tokens is not None else 0,
-                claude_haiku_input_tokens=int(row.claude_haiku_input_tokens) if row.claude_haiku_input_tokens is not None else 0,
-                claude_haiku_output_tokens=int(row.claude_haiku_output_tokens) if row.claude_haiku_output_tokens is not None else 0,
-                claude_sonnet_input_tokens=int(row.claude_sonnet_input_tokens) if row.claude_sonnet_input_tokens is not None else 0,
-                claude_sonnet_output_tokens=int(row.claude_sonnet_output_tokens) if row.claude_sonnet_output_tokens is not None else 0,
-                claude_opus_input_tokens=int(row.claude_opus_input_tokens) if row.claude_opus_input_tokens is not None else 0,
-                claude_opus_output_tokens=int(row.claude_opus_output_tokens) if row.claude_opus_output_tokens is not None else 0,
-                openrouter_llama_input_tokens=int(row.openrouter_llama_input_tokens) if row.openrouter_llama_input_tokens is not None else 0,
-                openrouter_llama_output_tokens=int(row.openrouter_llama_output_tokens) if row.openrouter_llama_output_tokens is not None else 0,
-                openrouter_gemma_input_tokens=int(row.openrouter_gemma_input_tokens) if row.openrouter_gemma_input_tokens is not None else 0,
-                openrouter_gemma_output_tokens=int(row.openrouter_gemma_output_tokens) if row.openrouter_gemma_output_tokens is not None else 0,
-                openrouter_nemotron_input_tokens=int(row.openrouter_nemotron_input_tokens) if row.openrouter_nemotron_input_tokens is not None else 0,
-                openrouter_nemotron_output_tokens=int(row.openrouter_nemotron_output_tokens) if row.openrouter_nemotron_output_tokens is not None else 0,
-                openrouter_gpt_input_tokens=int(row.openrouter_gpt_input_tokens) if row.openrouter_gpt_input_tokens is not None else 0,
-                openrouter_gpt_output_tokens=int(row.openrouter_gpt_output_tokens) if row.openrouter_gpt_output_tokens is not None else 0,
-                openrouter_cohere_input_tokens=int(row.openrouter_cohere_input_tokens) if row.openrouter_cohere_input_tokens is not None else 0,
-                openrouter_cohere_output_tokens=int(row.openrouter_cohere_output_tokens) if row.openrouter_cohere_output_tokens is not None else 0
+                total_tokens=int(row.total_tokens)
+                if row.total_tokens is not None
+                else 0,
+                claude_input_tokens=int(row.claude_input_tokens)
+                if row.claude_input_tokens is not None
+                else 0,
+                claude_output_tokens=int(row.claude_output_tokens)
+                if row.claude_output_tokens is not None
+                else 0,
+                openrouter_input_tokens=int(row.openrouter_input_tokens)
+                if row.openrouter_input_tokens is not None
+                else 0,
+                openrouter_output_tokens=int(row.openrouter_output_tokens)
+                if row.openrouter_output_tokens is not None
+                else 0,
+                claude_haiku_input_tokens=int(row.claude_haiku_input_tokens)
+                if row.claude_haiku_input_tokens is not None
+                else 0,
+                claude_haiku_output_tokens=int(row.claude_haiku_output_tokens)
+                if row.claude_haiku_output_tokens is not None
+                else 0,
+                claude_sonnet_input_tokens=int(row.claude_sonnet_input_tokens)
+                if row.claude_sonnet_input_tokens is not None
+                else 0,
+                claude_sonnet_output_tokens=int(row.claude_sonnet_output_tokens)
+                if row.claude_sonnet_output_tokens is not None
+                else 0,
+                claude_opus_input_tokens=int(row.claude_opus_input_tokens)
+                if row.claude_opus_input_tokens is not None
+                else 0,
+                claude_opus_output_tokens=int(row.claude_opus_output_tokens)
+                if row.claude_opus_output_tokens is not None
+                else 0,
+                openrouter_llama_input_tokens=int(row.openrouter_llama_input_tokens)
+                if row.openrouter_llama_input_tokens is not None
+                else 0,
+                openrouter_llama_output_tokens=int(row.openrouter_llama_output_tokens)
+                if row.openrouter_llama_output_tokens is not None
+                else 0,
+                openrouter_gemma_input_tokens=int(row.openrouter_gemma_input_tokens)
+                if row.openrouter_gemma_input_tokens is not None
+                else 0,
+                openrouter_gemma_output_tokens=int(row.openrouter_gemma_output_tokens)
+                if row.openrouter_gemma_output_tokens is not None
+                else 0,
+                openrouter_nemotron_input_tokens=int(
+                    row.openrouter_nemotron_input_tokens
+                )
+                if row.openrouter_nemotron_input_tokens is not None
+                else 0,
+                openrouter_nemotron_output_tokens=int(
+                    row.openrouter_nemotron_output_tokens
+                )
+                if row.openrouter_nemotron_output_tokens is not None
+                else 0,
+                openrouter_gpt_input_tokens=int(row.openrouter_gpt_input_tokens)
+                if row.openrouter_gpt_input_tokens is not None
+                else 0,
+                openrouter_gpt_output_tokens=int(row.openrouter_gpt_output_tokens)
+                if row.openrouter_gpt_output_tokens is not None
+                else 0,
+                openrouter_cohere_input_tokens=int(row.openrouter_cohere_input_tokens)
+                if row.openrouter_cohere_input_tokens is not None
+                else 0,
+                openrouter_cohere_output_tokens=int(row.openrouter_cohere_output_tokens)
+                if row.openrouter_cohere_output_tokens is not None
+                else 0,
             )
         )
 
@@ -586,42 +804,48 @@ def get_usage_summary(
 
 @router.get("/dashboard-overview", response_model=DashboardOverviewResponse)
 def get_dashboard_overview(
-    current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    current_admin: User = Depends(require_admin), db: Session = Depends(get_db)
 ):
     """
     Returns counts for departments, documents, roles, and members for the admin's tenant.
     """
-    department_count = db.query(Department).filter(Department.tenant_id == current_admin.tenant_id).count()
-    document_count = db.query(Document).filter(Document.tenant_id == current_admin.tenant_id).count()
-    role_count = db.query(Role).filter(Role.tenant_id == current_admin.tenant_id).count()
-    member_count = db.query(User).filter(User.tenant_id == current_admin.tenant_id).count()
+    department_count = (
+        db.query(Department)
+        .filter(Department.tenant_id == current_admin.tenant_id)
+        .count()
+    )
+    document_count = (
+        db.query(Document).filter(Document.tenant_id == current_admin.tenant_id).count()
+    )
+    role_count = (
+        db.query(Role).filter(Role.tenant_id == current_admin.tenant_id).count()
+    )
+    member_count = (
+        db.query(User).filter(User.tenant_id == current_admin.tenant_id).count()
+    )
 
     return DashboardOverviewResponse(
         department_count=department_count,
         document_count=document_count,
         role_count=role_count,
-        member_count=member_count
+        member_count=member_count,
     )
 
 
 @router.get("/document-insights", response_model=DocumentInsightsResponse)
 def get_document_insights(
-    current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    current_admin: User = Depends(require_admin), db: Session = Depends(get_db)
 ):
     """
     Returns document type distribution and details of the 3 most recently uploaded documents.
     """
     # 1. Distribution
-    dist_raw = db.query(
-        Document.file_type,
-        func.count(Document.id).label("count")
-    ).filter(
-        Document.tenant_id == current_admin.tenant_id
-    ).group_by(
-        Document.file_type
-    ).all()
+    dist_raw = (
+        db.query(Document.file_type, func.count(Document.id).label("count"))
+        .filter(Document.tenant_id == current_admin.tenant_id)
+        .group_by(Document.file_type)
+        .all()
+    )
 
     distribution = [
         DocumentTypeCount(file_type=row.file_type.value, count=row.count)
@@ -629,13 +853,14 @@ def get_document_insights(
     ]
 
     # 2. Recent documents
-    recent_raw = db.query(Document).options(
-        joinedload(Document.uploader)
-    ).filter(
-        Document.tenant_id == current_admin.tenant_id
-    ).order_by(
-        Document.uploaded_at.desc()
-    ).limit(3).all()
+    recent_raw = (
+        db.query(Document)
+        .options(joinedload(Document.uploader))
+        .filter(Document.tenant_id == current_admin.tenant_id)
+        .order_by(Document.uploaded_at.desc())
+        .limit(3)
+        .all()
+    )
 
     recent_documents = [
         RecentDocumentItem(
@@ -643,14 +868,13 @@ def get_document_insights(
             file_type=doc.file_type.value,
             uploaded_by=doc.uploader.full_name if doc.uploader else "Unknown",
             uploaded_at=doc.uploaded_at,
-            status=doc.status.value
+            status=doc.status.value,
         )
         for doc in recent_raw
     ]
 
     return DocumentInsightsResponse(
-        distribution=distribution,
-        recent_documents=recent_documents
+        distribution=distribution, recent_documents=recent_documents
     )
 
 
@@ -662,7 +886,7 @@ def get_audit_logs(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None),
     current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Returns a paginated list of audit logs for the admin's tenant.
@@ -683,7 +907,13 @@ def get_audit_logs(
 
     total = query.count()
 
-    logs = query.options(joinedload(AuditLog.actor)).order_by(AuditLog.created_at.desc()).offset(offset).limit(limit).all()
+    logs = (
+        query.options(joinedload(AuditLog.actor))
+        .order_by(AuditLog.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
     items = [
         {
@@ -694,16 +924,9 @@ def get_audit_logs(
             "action": log.action,
             "description": log.description,
             "metadata": log.metadata_,
-            "created_at": log.created_at
-        } for log in logs
+            "created_at": log.created_at,
+        }
+        for log in logs
     ]
 
-    return {
-        "items": items,
-        "total": total,
-        "limit": limit,
-        "offset": offset
-    }
-
-
-
+    return {"items": items, "total": total, "limit": limit, "offset": offset}

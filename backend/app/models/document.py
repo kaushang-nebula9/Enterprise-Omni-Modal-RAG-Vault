@@ -6,10 +6,14 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.enums import (
-    file_type_enum, FileType,
-    owner_type_enum, OwnerType,
-    visibility_enum, Visibility,
-    document_status_enum, DocumentStatus,
+    file_type_enum,
+    FileType,
+    owner_type_enum,
+    OwnerType,
+    visibility_enum,
+    Visibility,
+    document_status_enum,
+    DocumentStatus,
 )
 
 if TYPE_CHECKING:
@@ -17,19 +21,16 @@ if TYPE_CHECKING:
     from app.models.user import User
     from app.models.document_access_policy import DocumentAccessPolicy
     from app.models.query_citation import QueryCitation
-    
+
+
 class Document(Base):
     __tablename__ = "documents"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, 
-        ForeignKey("tenants.id", ondelete="CASCADE"), 
-        nullable=False
+        Uuid, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     uploaded_by: Mapped[uuid.UUID] = mapped_column(
-        Uuid, 
-        ForeignKey("users.id", ondelete="CASCADE"), 
-        nullable=False
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     filename: Mapped[str] = mapped_column(String, nullable=False)
     file_type: Mapped[FileType] = mapped_column(file_type_enum, nullable=False)
@@ -41,22 +42,28 @@ class Document(Base):
         document_status_enum,
         nullable=False,
         default=DocumentStatus.pending,
-        server_default="pending"
+        server_default="pending",
     )
     file_path: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     excel_schema: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), 
-        server_default=func.now(), 
-        onupdate=func.now(), 
-        nullable=False
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
     # Relationships
     tenant: Mapped["Tenant"] = relationship("Tenant", back_populates="documents")
     uploader: Mapped["User"] = relationship("User", back_populates="documents")
-    access_policies: Mapped[list["DocumentAccessPolicy"]] = relationship("DocumentAccessPolicy", back_populates="document", cascade="all, delete-orphan")
-    citations: Mapped[list["QueryCitation"]] = relationship("QueryCitation", back_populates="document", cascade="all, delete-orphan")
+    access_policies: Mapped[list["DocumentAccessPolicy"]] = relationship(
+        "DocumentAccessPolicy", back_populates="document", cascade="all, delete-orphan"
+    )
+    citations: Mapped[list["QueryCitation"]] = relationship(
+        "QueryCitation", back_populates="document", cascade="all, delete-orphan"
+    )

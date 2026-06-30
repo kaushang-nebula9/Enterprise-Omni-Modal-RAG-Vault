@@ -2,6 +2,7 @@
 Document processing pipeline: extracts text, chunks it, generates embeddings,
 and stores vectors in Qdrant.
 """
+
 import os
 import uuid
 import logging
@@ -14,13 +15,12 @@ import pymupdf  # alias for fitz (PyMuPDF)
 import docx as python_docx
 from docx.oxml.ns import qn
 import pandas as pd
-from pptx import Presentation
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sqlalchemy.orm import Session
 
 from app.models.document import Document
 from app.models.document_access_policy import DocumentAccessPolicy
-from app.models.enums import DocumentStatus, FileType, Visibility
+from app.models.enums import DocumentStatus, FileType
 from app.services import embedding_service, qdrant_service
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ CHUNK_OVERLAP = 200
 # ---------------------------------------------------------------------------
 # Image description helper (used by both PDF, DOCX, and PPTX pipelines)
 # ---------------------------------------------------------------------------
+
 
 def describe_slide_image(image_path: str) -> str:
     """
@@ -65,9 +66,9 @@ def describe_slide_image(image_path: str) -> str:
         with open(image_path, "rb") as f:
             image_bytes = f.read()
         b64_image = base64.b64encode(image_bytes).decode("utf-8")
-        
+
         system_prompt = "If the image is a chart or a graph, then give exact values and analyze the data in a structured format."
-        
+
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=4096,
@@ -87,22 +88,27 @@ def describe_slide_image(image_path: str) -> str:
                         },
                         {
                             "type": "text",
-                            "text": "Describe this image in detail. Be specific about data, trends, and key takeaways."
-                        }
+                            "text": "Describe this image in detail. Be specific about data, trends, and key takeaways.",
+                        },
                     ],
                 }
-            ]
+            ],
         )
         response_text = message.content[0].text
         return response_text.strip()
     except Exception as exc:
-        logger.error("describe_slide_image (Claude): failed to describe image '%s': %s", image_path, exc)
+        logger.error(
+            "describe_slide_image (Claude): failed to describe image '%s': %s",
+            image_path,
+            exc,
+        )
         return ""
 
 
 # ---------------------------------------------------------------------------
 # Text extractors
 # ---------------------------------------------------------------------------
+
 
 def extract_text_from_pdf(file_path: str, document_id: str) -> list[dict]:
     """
@@ -123,13 +129,9 @@ def extract_text_from_pdf(file_path: str, document_id: str) -> list[dict]:
 
         # ── 1. Extract Markdown via pymupdf4llm ──────────────────────────────
         page_markdown = pymupdf4llm.to_markdown(doc, pages=[page_index])
-        print("#################")
-        print(f"PDF PAGE {page_index + 1} - PyMuPDF4LLM extracted Markdown: ", page_markdown, "\n")
 
         # ── 2. Embedded image discovery ───────────────────────────────────────
         image_list = page.get_images(full=True)
-        print("#################")
-        print(f"PDF PAGE {page_index + 1} - Number of embedded images found: ", len(image_list), "\n")
 
         image_descriptions: list[str] = []
 
@@ -144,49 +146,26 @@ def extract_text_from_pdf(file_path: str, document_id: str) -> list[dict]:
 
                 # Skip tiny decorative images
                 if pix.width < 100 or pix.height < 100:
-                    print("#################")
-                    print(
-                        f"PDF PAGE {page_index + 1} - Skipping small decorative image (too small): ",
-                        pix.width,
-                        "x",
-                        pix.height,
-                        "\n",
-                    )
                     continue
 
                 # Save to /tmp for Gemini Vision
-                temp_image_path = f"/tmp/{document_id}_page{page_index}_img{img_index}.png"
-                pix.save(temp_image_path)
-
-                print("#################")
-                print(
-                    f"PDF PAGE {page_index + 1} - Sending image to Gemini Vision: ",
-                    temp_image_path,
-                    "\n",
+                temp_image_path = (
+                    f"/tmp/{document_id}_page{page_index}_img{img_index}.png"
                 )
+                pix.save(temp_image_path)
 
                 try:
                     image_description = describe_slide_image(temp_image_path)
-                    print("#################")
-                    print(
-                        f"PDF PAGE {page_index + 1} - Gemini Vision description: ",
-                        image_description,
-                        "\n",
-                    )
                     if image_description:
-                        image_descriptions.append(f"[Visual Content: {image_description}]")
+                        image_descriptions.append(
+                            f"[Visual Content: {image_description}]"
+                        )
                 except Exception as vision_exc:
                     logger.error(
                         "PDF PAGE %d - Gemini Vision call failed for image %d: %s",
                         page_index + 1,
                         img_index,
                         vision_exc,
-                    )
-                    print("#################")
-                    print(
-                        f"PDF PAGE {page_index + 1} - Gemini Vision call failed for image {img_index}: ",
-                        vision_exc,
-                        "\n",
                     )
                 finally:
                     # Always clean up temp file
@@ -200,19 +179,10 @@ def extract_text_from_pdf(file_path: str, document_id: str) -> list[dict]:
                     xref,
                     img_exc,
                 )
-                print("#################")
-                print(
-                    f"PDF PAGE {page_index + 1} - Failed to process image xref {xref}: ",
-                    img_exc,
-                    "\n",
-                )
 
         # ── 3. Merge Markdown + image descriptions ────────────────────────────
         parts = [page_markdown] + [f"\n\n{desc}" for desc in image_descriptions]
         merged_content = "".join(parts)
-
-        print("#################")
-        print(f"PDF PAGE {page_index + 1} - Final merged content: ", merged_content, "\n")
 
         # ── 4. Skip empty pages ───────────────────────────────────────────────
         if not merged_content.strip():
@@ -223,9 +193,6 @@ def extract_text_from_pdf(file_path: str, document_id: str) -> list[dict]:
         results.append({"text": merged_content, "page_number": page_index + 1})
 
     doc.close()
-
-    print("#################")
-    print("PDF EXTRACTION COMPLETE - Total pages extracted: ", len(results), "\n")
 
     return results
 
@@ -243,9 +210,6 @@ def extract_text_from_docx(file_path: str, document_id: str) -> str:
     doc = python_docx.Document(file_path)
 
     # ── 1. Text and table extraction (document order) ─────────────────────────
-    print("#################")
-    print("DOCX EXTRACTION - Starting text and table extraction\n")
-
     text_parts: list[str] = []
 
     heading_prefix_map = {
@@ -291,29 +255,18 @@ def extract_text_from_docx(file_path: str, document_id: str) -> str:
 
     extracted_text_and_tables = "\n\n".join(text_parts)
 
-    print("#################")
-    print("DOCX EXTRACTION - Extracted text and tables: ", extracted_text_and_tables, "\n")
-
     # ── 2. Image extraction from ZIP archive ──────────────────────────────────
-    print("#################")
-    print("DOCX EXTRACTION - Opening ZIP archive to find media files\n")
-
     image_descriptions: list[str] = []
     image_extensions = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 
     with zipfile.ZipFile(file_path, "r") as z:
         media_files = [f for f in z.namelist() if f.startswith("word/media/")]
 
-    print("#################")
-    print("DOCX EXTRACTION - Media files found in word/media/: ", media_files, "\n")
-
     with zipfile.ZipFile(file_path, "r") as z:
         for index, media_file in enumerate(media_files):
             ext = os.path.splitext(media_file)[1].lower()
 
             if ext not in image_extensions:
-                print("#################")
-                print("DOCX EXTRACTION - Skipping non-image media file: ", media_file, "\n")
                 continue
 
             temp_image_path = f"/tmp/{document_id}_img_{index}{ext}"
@@ -323,28 +276,17 @@ def extract_text_from_docx(file_path: str, document_id: str) -> str:
                     with open(temp_image_path, "wb") as tmp_f:
                         tmp_f.write(img_data.read())
 
-                print("#################")
-                print("DOCX EXTRACTION - Sending image to Gemini Vision: ", temp_image_path, "\n")
-
                 try:
                     image_description = describe_slide_image(temp_image_path)
-                    print("#################")
-                    print("DOCX EXTRACTION - Gemini Vision description: ", image_description, "\n")
                     if image_description:
-                        image_descriptions.append(f"[Visual Content: {image_description}]")
+                        image_descriptions.append(
+                            f"[Visual Content: {image_description}]"
+                        )
                 except Exception as vision_exc:
                     logger.error(
                         "DOCX EXTRACTION - Gemini Vision call failed for '%s': %s",
                         media_file,
                         vision_exc,
-                    )
-                    print("#################")
-                    print(
-                        "DOCX EXTRACTION - Gemini Vision call failed for: ",
-                        media_file,
-                        " Error: ",
-                        vision_exc,
-                        "\n",
                     )
             except Exception as extract_exc:
                 logger.error(
@@ -352,24 +294,15 @@ def extract_text_from_docx(file_path: str, document_id: str) -> str:
                     media_file,
                     extract_exc,
                 )
-                print("#################")
-                print(
-                    "DOCX EXTRACTION - Failed to extract media file: ",
-                    media_file,
-                    " Error: ",
-                    extract_exc,
-                    "\n",
-                )
             finally:
                 if os.path.exists(temp_image_path):
                     os.remove(temp_image_path)
 
     # ── 3. Merge text + tables + image descriptions ────────────────────────────
-    all_parts = [extracted_text_and_tables] + [f"\n\n{desc}" for desc in image_descriptions]
+    all_parts = [extracted_text_and_tables] + [
+        f"\n\n{desc}" for desc in image_descriptions
+    ]
     final_merged_content = "".join(all_parts)
-
-    print("#################")
-    print("DOCX EXTRACTION - Final merged content (text + tables + images): ", final_merged_content, "\n")
 
     return final_merged_content
 
@@ -380,22 +313,21 @@ def extract_text_from_txt(file_path: str) -> str:
         return f.read()
 
 
-
 def extract_excel_schema(file_path: str) -> dict:
     """
     Read an Excel file with pandas and return a schema dict containing:
     columns, dtypes, shape, and 3 sample rows.
     """
     df = pd.read_excel(file_path, engine="openpyxl")
-    
+
     total_rows = int(df.shape[0])
     total_cols = int(df.shape[1])
-    
+
     # Use pandas to_json which correctly maps NaNs/NaTs to valid JSON 'null',
     # then load it back as a dict to be safely stored in the JSONB column.
     sample_json = df.head(3).to_json(orient="records", date_format="iso")
     sample_records = json.loads(sample_json)
-    
+
     return {
         "columns": df.columns.tolist(),
         "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
@@ -407,6 +339,7 @@ def extract_excel_schema(file_path: str) -> dict:
 # ---------------------------------------------------------------------------
 # Text chunker
 # ---------------------------------------------------------------------------
+
 
 def chunk_text(text: str) -> list[str]:
     """
@@ -425,6 +358,7 @@ def chunk_text(text: str) -> list[str]:
 # Main pipeline
 # ---------------------------------------------------------------------------
 
+
 def process_document(document_id: str, db: Session) -> None:
     """
     Main ingestion pipeline for a document.
@@ -435,9 +369,9 @@ def process_document(document_id: str, db: Session) -> None:
     4. Chunks, embeds, and upserts into Qdrant (except Excel).
     5. Sets status → ready on success, or → failed on any exception.
     """
-    document: Document | None = db.query(Document).filter(
-        Document.id == document_id
-    ).first()
+    document: Document | None = (
+        db.query(Document).filter(Document.id == document_id).first()
+    )
 
     if not document:
         logger.error("process_document: document %s not found", document_id)
@@ -470,6 +404,7 @@ def process_document(document_id: str, db: Session) -> None:
         collection_name = qdrant_service.get_or_create_tenant_collection(tenant_id)
 
         from app.services.storage_service import get_absolute_path
+
         abs_file_path = get_absolute_path(document.file_path)
 
         points: list[dict] = []
@@ -477,9 +412,6 @@ def process_document(document_id: str, db: Session) -> None:
         content_sample = ""
 
         if file_type == FileType.pdf:
-            print("#################")
-            print("Starting PDF pipeline for document: ", document.filename, "\n")
-
             pages = extract_text_from_pdf(abs_file_path, doc_id)
             combined_text = "\n".join(page["text"] for page in pages)
             content_sample = combined_text[:2000]
@@ -488,59 +420,56 @@ def process_document(document_id: str, db: Session) -> None:
                 for chunk in chunks:
                     vector = embedding_service.embed_text(chunk)
                     sparse_vector = qdrant_service.generate_sparse_vector(chunk)
-                    print("#################")
-                    print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
-                    points.append({
-                        "id": str(uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")),
-                        "dense_vector": vector,
-                        "sparse_vector": sparse_vector,
-                        "payload": {
-                            "document_id": doc_id,
-                            "tenant_id": tenant_id,
-                            "role_ids": role_ids,
-                            "file_type": "pdf",
-                            "chunk_index": chunk_index,
-                            "page_number": page["page_number"],
-                            "chunk_text": chunk,
-                        },
-                    })
+                    points.append(
+                        {
+                            "id": str(
+                                uuid.uuid5(
+                                    NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}"
+                                )
+                            ),
+                            "dense_vector": vector,
+                            "sparse_vector": sparse_vector,
+                            "payload": {
+                                "document_id": doc_id,
+                                "tenant_id": tenant_id,
+                                "role_ids": role_ids,
+                                "file_type": "pdf",
+                                "chunk_index": chunk_index,
+                                "page_number": page["page_number"],
+                                "chunk_text": chunk,
+                            },
+                        }
+                    )
                     chunk_index += 1
 
             total_chunk_count = chunk_index
-            print("#################")
-            print("PDF pipeline complete - Total chunks embedded and stored in Qdrant: ", total_chunk_count, "\n")
 
         elif file_type == FileType.docx:
-            print("#################")
-            print("Starting DOCX pipeline for document: ", document.filename, "\n")
-
             full_text = extract_text_from_docx(abs_file_path, doc_id)
             content_sample = full_text[:2000]
             chunks = chunk_text(full_text)
             for chunk in chunks:
                 vector = embedding_service.embed_text(chunk)
                 sparse_vector = qdrant_service.generate_sparse_vector(chunk)
-                print("#################")
-                print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
-                points.append({
-                    "id": str(uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")),
-                    "dense_vector": vector,
-                    "sparse_vector": sparse_vector,
-                    "payload": {
-                        "document_id": doc_id,
-                        "tenant_id": tenant_id,
-                        "role_ids": role_ids,
-                        "file_type": "docx",
-                        "chunk_index": chunk_index,
-                        "page_number": None,
-                        "chunk_text": chunk,
-                    },
-                })
+                points.append(
+                    {
+                        "id": str(
+                            uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")
+                        ),
+                        "dense_vector": vector,
+                        "sparse_vector": sparse_vector,
+                        "payload": {
+                            "document_id": doc_id,
+                            "tenant_id": tenant_id,
+                            "role_ids": role_ids,
+                            "file_type": "docx",
+                            "chunk_index": chunk_index,
+                            "page_number": None,
+                            "chunk_text": chunk,
+                        },
+                    }
+                )
                 chunk_index += 1
-
-            total_chunk_count = chunk_index
-            print("#################")
-            print("DOCX pipeline complete - Total chunks embedded and stored in Qdrant: ", total_chunk_count, "\n")
 
         elif file_type == FileType.text:
             full_text = extract_text_from_txt(abs_file_path)
@@ -549,22 +478,25 @@ def process_document(document_id: str, db: Session) -> None:
             for chunk in chunks:
                 vector = embedding_service.embed_text(chunk)
                 sparse_vector = qdrant_service.generate_sparse_vector(chunk)
-                print("#################")
-                print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
-                points.append({
-                    "id": str(uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")),
-                    "dense_vector": vector,
-                    "sparse_vector": sparse_vector,
-                    "payload": {
-                        "document_id": doc_id,
-                        "tenant_id": tenant_id,
-                        "role_ids": role_ids,
-                        "file_type": "text",
-                        "chunk_index": chunk_index,
-                        "page_number": None,
-                        "chunk_text": chunk,
-                    },
-                })
+
+                points.append(
+                    {
+                        "id": str(
+                            uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")
+                        ),
+                        "dense_vector": vector,
+                        "sparse_vector": sparse_vector,
+                        "payload": {
+                            "document_id": doc_id,
+                            "tenant_id": tenant_id,
+                            "role_ids": role_ids,
+                            "file_type": "text",
+                            "chunk_index": chunk_index,
+                            "page_number": None,
+                            "chunk_text": chunk,
+                        },
+                    }
+                )
                 chunk_index += 1
 
         elif file_type == FileType.pptx:
@@ -574,23 +506,26 @@ def process_document(document_id: str, db: Session) -> None:
             for slide in slides:
                 vector = slide["vector"]
                 sparse_vector = qdrant_service.generate_sparse_vector(slide["text"])
-                print("#################")
-                print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
-                points.append({
-                    "id": str(uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")),
-                    "dense_vector": vector,
-                    "sparse_vector": sparse_vector,
-                    "payload": {
-                        "document_id": doc_id,
-                        "tenant_id": tenant_id,
-                        "role_ids": role_ids,
-                        "file_type": "pptx",
-                        "chunk_index": chunk_index,
-                        "slide_number": slide["slide_number"],
-                        "slide_title": slide["slide_title"],
-                        "chunk_text": slide["text"],
-                    },
-                })
+
+                points.append(
+                    {
+                        "id": str(
+                            uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")
+                        ),
+                        "dense_vector": vector,
+                        "sparse_vector": sparse_vector,
+                        "payload": {
+                            "document_id": doc_id,
+                            "tenant_id": tenant_id,
+                            "role_ids": role_ids,
+                            "file_type": "pptx",
+                            "chunk_index": chunk_index,
+                            "slide_number": slide["slide_number"],
+                            "slide_title": slide["slide_title"],
+                            "chunk_text": slide["text"],
+                        },
+                    }
+                )
                 chunk_index += 1
 
         elif file_type == FileType.audio:
@@ -600,22 +535,24 @@ def process_document(document_id: str, db: Session) -> None:
             for chunk in chunks:
                 vector = embedding_service.embed_text(chunk)
                 sparse_vector = qdrant_service.generate_sparse_vector(chunk)
-                print("#################")
-                print("Generated sparse vector for chunk, non-zero terms: ", len(sparse_vector["indices"]), "\n")
-                points.append({
-                    "id": str(uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")),
-                    "dense_vector": vector,
-                    "sparse_vector": sparse_vector,
-                    "payload": {
-                        "document_id": doc_id,
-                        "tenant_id": tenant_id,
-                        "role_ids": role_ids,
-                        "file_type": "audio",
-                        "chunk_index": chunk_index,
-                        "page_number": None,
-                        "chunk_text": chunk,
-                    },
-                })
+                points.append(
+                    {
+                        "id": str(
+                            uuid.uuid5(NAMESPACE_DOC, f"{doc_id}_chunk_{chunk_index}")
+                        ),
+                        "dense_vector": vector,
+                        "sparse_vector": sparse_vector,
+                        "payload": {
+                            "document_id": doc_id,
+                            "tenant_id": tenant_id,
+                            "role_ids": role_ids,
+                            "file_type": "audio",
+                            "chunk_index": chunk_index,
+                            "page_number": None,
+                            "chunk_text": chunk,
+                        },
+                    }
+                )
                 chunk_index += 1
 
         elif file_type == FileType.excel:
@@ -627,17 +564,20 @@ def process_document(document_id: str, db: Session) -> None:
 
             # Generate and save description for Excel
             try:
-                excel_sample = f"Columns: {schema['columns']}. Sample data: {schema['sample']}"
+                excel_sample = (
+                    f"Columns: {schema['columns']}. Sample data: {schema['sample']}"
+                )
                 description = embedding_service.generate_document_description(
                     excel_sample, document.file_type.value
                 )
                 if description is not None:
                     document.description = description
                     db.commit()
-                    print("#################")
-                    print("Generated document description: ", description, "\n")
             except Exception as desc_exc:
-                logger.error("Failed to generate and save document description for Excel: %s", desc_exc)
+                logger.error(
+                    "Failed to generate and save document description for Excel: %s",
+                    desc_exc,
+                )
 
             logger.info("Excel document %s processed (schema only, no vectors)", doc_id)
             return
@@ -659,10 +599,10 @@ def process_document(document_id: str, db: Session) -> None:
                 if description is not None:
                     document.description = description
                     db.commit()
-                    print("#################")
-                    print("Generated document description: ", description, "\n")
         except Exception as desc_exc:
-            logger.error("Failed to generate and save document description: %s", desc_exc)
+            logger.error(
+                "Failed to generate and save document description: %s", desc_exc
+            )
 
         logger.info(
             "Document %s processed: %d chunks upserted into %s",
@@ -672,10 +612,11 @@ def process_document(document_id: str, db: Session) -> None:
         )
 
     except Exception as exc:
-        logger.error("Failed to process document %s: %s", document_id, exc, exc_info=True)
+        logger.error(
+            "Failed to process document %s: %s", document_id, exc, exc_info=True
+        )
         try:
             document.status = DocumentStatus.failed
             db.commit()
         except Exception:
             db.rollback()
-

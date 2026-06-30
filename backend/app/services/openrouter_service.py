@@ -6,6 +6,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 async def stream_openrouter_completion(
     model_string: str,
     system_prompt: str,
@@ -31,7 +32,7 @@ async def stream_openrouter_completion(
     formatted_messages = []
     if system_prompt:
         formatted_messages.append({"role": "system", "content": system_prompt})
-    
+
     # Add conversation/messages
     formatted_messages.extend(messages)
 
@@ -44,7 +45,9 @@ async def stream_openrouter_completion(
     }
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        async with client.stream("POST", url, headers=headers, json=payload) as response:
+        async with client.stream(
+            "POST", url, headers=headers, json=payload
+        ) as response:
             if response.status_code != 200:
                 error_body = await response.aread()
                 logger.error(
@@ -59,7 +62,7 @@ async def stream_openrouter_completion(
                 if not line:
                     continue
                 if line.startswith("data: "):
-                    data_str = line[len("data: "):]
+                    data_str = line[len("data: ") :]
                     if data_str == "[DONE]":
                         break
                     try:
@@ -77,4 +80,3 @@ async def stream_openrouter_completion(
                     except json.JSONDecodeError:
                         # Sometimes OpenRouter sends metadata comments or empty lines, ignore parse errors
                         logger.debug("Non-JSON line in SSE stream: %s", line)
-

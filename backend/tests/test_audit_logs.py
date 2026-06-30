@@ -1,5 +1,6 @@
 import sys
 import os
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
@@ -20,9 +21,11 @@ DATABASE_URL = "sqlite:///:memory:"
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
+
 @compiles(JSONB, "sqlite")
 def compile_jsonb_sqlite(element, compiler, **kw):
     return "JSON"
+
 
 @pytest.fixture(name="db")
 def db_fixture():
@@ -30,7 +33,7 @@ def db_fixture():
     Base.metadata.create_all(bind=engine)
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = TestingSessionLocal()
-    
+
     # Create required parent rows for ForeignKey constraints
     tenant = Tenant(id=uuid.uuid4(), name="Test Tenant", slug="test-tenant")
     role = Role(id=uuid.uuid4(), tenant_id=tenant.id, name="Admin", is_admin=True)
@@ -41,24 +44,25 @@ def db_fixture():
         full_name="Test Admin",
         hashed_password="hash",
         role_id=role.id,
-        is_active=True
+        is_active=True,
     )
     session.add_all([tenant, role, user])
     session.commit()
-    
+
     session.tenant = tenant
     session.user = user
-    
+
     try:
         yield session
     finally:
         session.close()
         Base.metadata.drop_all(bind=engine)
 
+
 def test_log_audit_event(db):
     tenant = db.tenant
     user = db.user
-    
+
     # 1. Log audit event
     log = log_audit_event(
         db=db,
@@ -66,9 +70,9 @@ def test_log_audit_event(db):
         actor_user_id=user.id,
         action="role.created",
         description="Created role 'Manager'",
-        metadata={"role_name": "Manager"}
+        metadata={"role_name": "Manager"},
     )
-    
+
     assert log.id is not None
     assert log.tenant_id == tenant.id
     assert log.actor_user_id == user.id
@@ -76,7 +80,7 @@ def test_log_audit_event(db):
     assert log.description == "Created role 'Manager'"
     assert log.metadata_ == {"role_name": "Manager"}
     assert log.created_at is not None
-    
+
     # 2. Query from database
     db_log = db.query(AuditLog).filter(AuditLog.id == log.id).first()
     assert db_log is not None

@@ -34,6 +34,7 @@ class DocumentWithAccessResponse(DocumentResponse):
     Extends DocumentResponse with a list of RoleResponse objects derived
     from the document's access_policies relationship (policy.role).
     """
+
     access_policies: list[RoleResponse] = []
 
     model_config = {"from_attributes": True}
@@ -56,7 +57,9 @@ class DocumentWithAccessResponse(DocumentResponse):
                 [p.role for p in policies if p.role is not None],
             )
             # We override access_policies with the resolved roles
-            data.__dict__["access_policies"] = [p.role for p in policies if p.role is not None]
+            data.__dict__["access_policies"] = [
+                p.role for p in policies if p.role is not None
+            ]
         return data
 
 
@@ -64,6 +67,6 @@ class UpdateDocumentAccessRequest(BaseModel):
     role_ids: list[UUID] = Field(..., min_length=1)
     unchecked_ancestor_ids: list[UUID] | None = None
 
+
 class AssignDepartmentRequest(BaseModel):
     department_id: UUID
-

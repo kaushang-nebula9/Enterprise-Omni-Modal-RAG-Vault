@@ -14,25 +14,6 @@ from app.core.config import settings
 from app.db.base import Base
 
 # Import all models here so that Alembic can detect them via Base.metadata
-from app.models.tenant import Tenant
-from app.models.user import User
-from app.models.document import Document
-from app.models.document_access_policy import DocumentAccessPolicy
-from app.models.query_session import QuerySession
-from app.models.query_message import QueryMessage
-from app.models.query_citation import QueryCitation
-from app.models.refresh_token import RefreshToken
-from app.models.invite_token import InviteToken
-from app.models.otp_verification import OTPVerification
-from app.models.role import Role
-from app.models.department import Department
-from app.models.notification import Notification
-from app.models.available_model import AvailableModel
-from app.models.usage_log import UsageLog
-from app.models.query_log import QueryLog
-from app.models.evaluation import EvaluationRun, EvaluationResult
-
-
 
 
 # this is the Alembic Config object, which provides
@@ -94,9 +75,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()

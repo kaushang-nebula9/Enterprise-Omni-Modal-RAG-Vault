@@ -5,16 +5,21 @@ from app.db.session import get_db
 from app.core.dependencies import get_current_user, require_admin
 from app.models.user import User
 from app.models.role import Role
-from app.schemas.role import CreateRoleRequest, UpdateRoleRequest, RoleResponse, RoleTreeNode
+from app.schemas.role import (
+    CreateRoleRequest,
+    UpdateRoleRequest,
+    RoleResponse,
+    RoleTreeNode,
+)
 from app.services.role_service import check_role_cycle
 from app.services.audit_log_service import log_audit_event
 
 router = APIRouter()
 
+
 @router.get("", response_model=list[RoleResponse])
 def get_roles(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """Protected route to get all roles belonging to the current user's tenant."""
     roles = db.query(Role).filter(Role.tenant_id == current_user.tenant_id).all()
@@ -23,8 +28,7 @@ def get_roles(
 
 @router.get("/tree", response_model=list[RoleTreeNode])
 def get_roles_tree(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     """
     Return all roles for the tenant as a nested tree structure.
@@ -100,15 +104,17 @@ def _validate_parent_role(
 ) -> None:
     """Validate that the parent role exists and belongs to the same tenant."""
     if parent_role_id is not None:
-        parent_role = db.query(Role).filter(
-            Role.id == parent_role_id,
-            Role.tenant_id == tenant_id
-        ).first()
+        parent_role = (
+            db.query(Role)
+            .filter(Role.id == parent_role_id, Role.tenant_id == tenant_id)
+            .first()
+        )
         if not parent_role:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Parent role not found in this organisation"
+                detail="Parent role not found in this organisation",
             )
+
 
 def _validate_department(
     department_id: uuid.UUID | None,
@@ -118,31 +124,35 @@ def _validate_department(
     """Validate that the department exists and belongs to the same tenant."""
     if department_id is not None:
         from app.models.department import Department
-        dept = db.query(Department).filter(
-            Department.id == department_id,
-            Department.tenant_id == tenant_id
-        ).first()
+
+        dept = (
+            db.query(Department)
+            .filter(Department.id == department_id, Department.tenant_id == tenant_id)
+            .first()
+        )
         if not dept:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Department not found in this organisation"
+                detail="Department not found in this organisation",
             )
+
 
 @router.post("", response_model=RoleResponse, status_code=status.HTTP_201_CREATED)
 def create_role(
     request: CreateRoleRequest,
     current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Protected route (admin only) to create a custom role."""
-    existing_role = db.query(Role).filter(
-        Role.tenant_id == current_admin.tenant_id,
-        Role.name == request.name
-    ).first()
+    existing_role = (
+        db.query(Role)
+        .filter(Role.tenant_id == current_admin.tenant_id, Role.name == request.name)
+        .first()
+    )
     if existing_role:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A role with this name already exists"
+            detail="A role with this name already exists",
         )
 
     # Validate parent_role_id and department_id if provided
@@ -170,40 +180,47 @@ def create_role(
         metadata={
             "role_id": str(new_role.id),
             "name": new_role.name,
-            "parent_role_id": str(new_role.parent_role_id) if new_role.parent_role_id else None
-        }
+            "parent_role_id": str(new_role.parent_role_id)
+            if new_role.parent_role_id
+            else None,
+        },
     )
 
     return new_role
+
 
 @router.patch("/{role_id}", response_model=RoleResponse)
 def update_role(
     role_id: uuid.UUID,
     request: UpdateRoleRequest,
     current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Protected route (admin only) to update a role's name and parent."""
-    role = db.query(Role).filter(
-        Role.id == role_id,
-        Role.tenant_id == current_admin.tenant_id
-    ).first()
+    role = (
+        db.query(Role)
+        .filter(Role.id == role_id, Role.tenant_id == current_admin.tenant_id)
+        .first()
+    )
     if not role:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Role not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Role not found"
         )
 
     # Check uniqueness of the new name
-    duplicate_role = db.query(Role).filter(
-        Role.tenant_id == current_admin.tenant_id,
-        Role.name == request.name,
-        Role.id != role_id
-    ).first()
+    duplicate_role = (
+        db.query(Role)
+        .filter(
+            Role.tenant_id == current_admin.tenant_id,
+            Role.name == request.name,
+            Role.id != role_id,
+        )
+        .first()
+    )
     if duplicate_role:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A role with this name already exists"
+            detail="A role with this name already exists",
         )
 
     # Validate parent_role_id and department_id if provided
@@ -216,12 +233,14 @@ def update_role(
         if check_role_cycle(role_id, request.parent_role_id, db):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot set this parent role — it would create a circular hierarchy"
+                detail="Cannot set this parent role — it would create a circular hierarchy",
             )
 
     # Track department changes
     old_dept_id = role.department_id
-    dept_changed = request.department_id is not None and request.department_id != old_dept_id
+    dept_changed = (
+        request.department_id is not None and request.department_id != old_dept_id
+    )
 
     # Track parent changes
     old_parent_id = role.parent_role_id
@@ -244,7 +263,7 @@ def update_role(
             new_parent = db.query(Role).filter(Role.id == role.parent_role_id).first()
             if new_parent:
                 new_parent_name = new_parent.name
-        
+
         log_audit_event(
             db=db,
             tenant_id=current_admin.tenant_id,
@@ -255,10 +274,12 @@ def update_role(
                 "role_id": str(role.id),
                 "name": role.name,
                 "old_parent_role_id": str(old_parent_id) if old_parent_id else None,
-                "new_parent_role_id": str(role.parent_role_id) if role.parent_role_id else None,
+                "new_parent_role_id": str(role.parent_role_id)
+                if role.parent_role_id
+                else None,
                 "old_parent_name": old_parent_name,
-                "new_parent_name": new_parent_name
-            }
+                "new_parent_name": new_parent_name,
+            },
         )
     else:
         log_audit_event(
@@ -272,18 +293,22 @@ def update_role(
                 "old_name": old_name,
                 "new_name": role.name,
                 "old_department_id": str(old_dept_id) if old_dept_id else None,
-                "new_department_id": str(role.department_id) if role.department_id else None
-            }
+                "new_department_id": str(role.department_id)
+                if role.department_id
+                else None,
+            },
         )
 
     if dept_changed and request.department_id:
         from app.models.department import Department
         from app.services.notification_service import create_notification
         from app.models.enums import NotificationType
-        
-        dept = db.query(Department).filter(Department.id == request.department_id).first()
+
+        dept = (
+            db.query(Department).filter(Department.id == request.department_id).first()
+        )
         dept_name = dept.name if dept else "unknown department"
-        
+
         role_users = db.query(User).filter(User.role_id == role.id).all()
         for u in role_users:
             create_notification(
@@ -293,33 +318,34 @@ def update_role(
                 type=NotificationType.department_added,
                 message=f"Your role '{role.name}' has been added to department: {dept_name}",
                 related_role_id=role.id,
-                related_department_id=request.department_id
+                related_department_id=request.department_id,
             )
 
     db.refresh(role)
     return role
 
+
 @router.delete("/{role_id}")
 def delete_role(
     role_id: uuid.UUID,
     current_admin: User = Depends(require_admin),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """Protected route (admin only) to delete a custom role."""
-    role = db.query(Role).filter(
-        Role.id == role_id,
-        Role.tenant_id == current_admin.tenant_id
-    ).first()
+    role = (
+        db.query(Role)
+        .filter(Role.id == role_id, Role.tenant_id == current_admin.tenant_id)
+        .first()
+    )
     if not role:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Role not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Role not found"
         )
 
     if role.is_default:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Default roles cannot be deleted"
+            detail="Default roles cannot be deleted",
         )
 
     # Check if any users are assigned this role
@@ -327,7 +353,7 @@ def delete_role(
     if user_exists:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete a role that has users assigned to it. Please reassign those users first."
+            detail="Cannot delete a role that has users assigned to it. Please reassign those users first.",
         )
 
     role_name = role.name
@@ -342,8 +368,7 @@ def delete_role(
         actor_user_id=current_admin.id,
         action="role.deleted",
         description=f"Deleted role '{role_name}'",
-        metadata={"role_id": str(role_id), "name": role_name}
+        metadata={"role_id": str(role_id), "name": role_name},
     )
 
     return {"message": "Role deleted successfully"}
-

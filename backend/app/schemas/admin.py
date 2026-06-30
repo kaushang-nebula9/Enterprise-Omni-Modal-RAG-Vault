@@ -3,20 +3,24 @@ from uuid import UUID
 from datetime import datetime
 from typing import Optional
 
+
 class AdminStatsResponse(BaseModel):
     total_documents: int
     total_members: int
     total_roles: int
 
+
 class UpdateMemberRequest(BaseModel):
     role_id: UUID | None = None
     is_active: bool | None = None
+
 
 class UpdateOrganisationRequest(BaseModel):
     name: str | None = Field(None, min_length=2)
     website: HttpUrl | None = None
     monthly_budget_limit: Optional[float] = None
     default_model_id: Optional[UUID] = None
+
 
 class TenantResponse(BaseModel):
     id: UUID
@@ -28,12 +32,12 @@ class TenantResponse(BaseModel):
     estimated_usage_this_month: Optional[float] = None
     created_at: datetime
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}
+
 
 from app.models.enums import ModelProvider
 from typing import Optional
+
 
 class ModelCreateRequest(BaseModel):
     display_name: str = Field(..., min_length=1)
@@ -43,6 +47,7 @@ class ModelCreateRequest(BaseModel):
     input_price_per_million: Optional[float] = None
     output_price_per_million: Optional[float] = None
 
+
 class ModelUpdateRequest(BaseModel):
     display_name: Optional[str] = Field(None, min_length=1)
     provider: Optional[ModelProvider] = None
@@ -51,8 +56,10 @@ class ModelUpdateRequest(BaseModel):
     input_price_per_million: Optional[float] = None
     output_price_per_million: Optional[float] = None
 
+
 from datetime import date, datetime
 from uuid import UUID
+
 
 class UsageSummaryItem(BaseModel):
     date: date
@@ -79,8 +86,10 @@ class UsageSummaryItem(BaseModel):
     openrouter_cohere_input_tokens: int = 0
     openrouter_cohere_output_tokens: int = 0
 
+
 class UsageSummaryResponse(BaseModel):
     usage: list[UsageSummaryItem]
+
 
 class DashboardOverviewResponse(BaseModel):
     department_count: int
@@ -88,9 +97,11 @@ class DashboardOverviewResponse(BaseModel):
     role_count: int
     member_count: int
 
+
 class DocumentTypeCount(BaseModel):
     file_type: str
     count: int
+
 
 class RecentDocumentItem(BaseModel):
     filename: str
@@ -99,9 +110,7 @@ class RecentDocumentItem(BaseModel):
     uploaded_at: datetime
     status: str
 
+
 class DocumentInsightsResponse(BaseModel):
     distribution: list[DocumentTypeCount]
     recent_documents: list[RecentDocumentItem]
-
-
-

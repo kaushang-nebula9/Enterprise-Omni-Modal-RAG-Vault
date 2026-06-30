@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from app.models.query_session import QuerySession
     from app.models.role import Role
     from app.models.available_model import AvailableModel
-    
+
 
 class Tenant(Base):
     __tablename__ = "tenants"
@@ -25,17 +25,27 @@ class Tenant(Base):
     default_model_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("available_models.id", ondelete="SET NULL"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), 
-        server_default=func.now(), 
-        onupdate=func.now(), 
-        nullable=False
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
     # Relationships
-    users: Mapped[list["User"]] = relationship("User", back_populates="tenant", cascade="all, delete-orphan")
-    documents: Mapped[list["Document"]] = relationship("Document", back_populates="tenant", cascade="all, delete-orphan")
-    query_sessions: Mapped[list["QuerySession"]] = relationship("QuerySession", back_populates="tenant", cascade="all, delete-orphan")
-    roles: Mapped[list["Role"]] = relationship("Role", back_populates="tenant", cascade="all, delete-orphan")
+    users: Mapped[list["User"]] = relationship(
+        "User", back_populates="tenant", cascade="all, delete-orphan"
+    )
+    documents: Mapped[list["Document"]] = relationship(
+        "Document", back_populates="tenant", cascade="all, delete-orphan"
+    )
+    query_sessions: Mapped[list["QuerySession"]] = relationship(
+        "QuerySession", back_populates="tenant", cascade="all, delete-orphan"
+    )
+    roles: Mapped[list["Role"]] = relationship(
+        "Role", back_populates="tenant", cascade="all, delete-orphan"
+    )
     default_model: Mapped[Optional["AvailableModel"]] = relationship("AvailableModel")

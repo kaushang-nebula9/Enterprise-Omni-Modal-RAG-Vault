@@ -1,5 +1,6 @@
 import sys
 import os
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
@@ -9,8 +10,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
-from app.models.user import User
-from app.models.tenant import Tenant
 from app.models.query_log import QueryLog
 from app.models.evaluation import EvaluationRun, EvaluationResult
 from app.models.enums import EvaluationStatus
@@ -22,9 +21,11 @@ DATABASE_URL = "sqlite:///:memory:"
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
 
+
 @compiles(JSONB, "sqlite")
 def compile_jsonb_sqlite(element, compiler, **kw):
     return "JSON"
+
 
 @pytest.fixture(name="db")
 def db_fixture():
@@ -38,20 +39,26 @@ def db_fixture():
         session.close()
         Base.metadata.drop_all(bind=engine)
 
+
 def test_json_parsing_defensive():
     # 1. Clean JSON response
-    res1 = clean_and_parse_json('{"faithfulness_score": 85, "relevance_score": 90, "unsupported_claims": [], "reasoning": "great answer"}')
+    res1 = clean_and_parse_json(
+        '{"faithfulness_score": 85, "relevance_score": 90, "unsupported_claims": [], "reasoning": "great answer"}'
+    )
     assert res1["faithfulness_score"] == 85
     assert res1["relevance_score"] == 90
     assert res1["unsupported_claims"] == []
     assert res1["reasoning"] == "great answer"
 
     # 2. Markdown fenced JSON response
-    res2 = clean_and_parse_json('```json\n{"faithfulness_score": 100, "relevance_score": 50, "unsupported_claims": ["claim1"], "reasoning": "some errors"}\n```')
+    res2 = clean_and_parse_json(
+        '```json\n{"faithfulness_score": 100, "relevance_score": 50, "unsupported_claims": ["claim1"], "reasoning": "some errors"}\n```'
+    )
     assert res2["faithfulness_score"] == 100
     assert res2["relevance_score"] == 50
     assert res2["unsupported_claims"] == ["claim1"]
     assert res2["reasoning"] == "some errors"
+
 
 def test_evaluation_models(db):
     # Setup tenant and user
@@ -85,7 +92,7 @@ def test_evaluation_models(db):
         question="What is this database?",
         contexts=["This is a PostgreSQL database in memory."],
         answer="It is a PostgreSQL database.",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
     db.add(log)
     db.commit()
@@ -99,7 +106,7 @@ def test_evaluation_models(db):
         relevance_score=80,
         unsupported_claims=[],
         reasoning="Highly faithful and relevant.",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
     db.add(res)
     db.commit()
@@ -142,7 +149,7 @@ def test_evaluations_by_model(db):
         contexts=["Context A"],
         answer="Answer A",
         model_string="gpt-4o",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
     log2 = QueryLog(
         id=uuid.uuid4(),
@@ -151,8 +158,8 @@ def test_evaluations_by_model(db):
         question="What is model B?",
         contexts=["Context B"],
         answer="Answer B",
-        model_string=None, # Legacy
-        created_at=datetime.now(timezone.utc)
+        model_string=None,  # Legacy
+        created_at=datetime.now(timezone.utc),
     )
     db.add(log1)
     db.add(log2)
@@ -167,7 +174,7 @@ def test_evaluations_by_model(db):
         relevance_score=80,
         unsupported_claims=[],
         reasoning="Good.",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
     res2 = EvaluationResult(
         id=uuid.uuid4(),
@@ -177,7 +184,7 @@ def test_evaluations_by_model(db):
         relevance_score=40,
         unsupported_claims=["Unsupported claim"],
         reasoning="Legacy errors.",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
     db.add(res1)
     db.add(res2)
@@ -186,9 +193,13 @@ def test_evaluations_by_model(db):
     # Run the aggregation query
     results = (
         db.query(
-            func.coalesce(QueryLog.model_string, "Unknown (legacy)").label("model_string"),
+            func.coalesce(QueryLog.model_string, "Unknown (legacy)").label(
+                "model_string"
+            ),
             func.count(EvaluationResult.id).label("query_count"),
-            func.avg(EvaluationResult.faithfulness_score).label("avg_faithfulness_score"),
+            func.avg(EvaluationResult.faithfulness_score).label(
+                "avg_faithfulness_score"
+            ),
             func.avg(EvaluationResult.relevance_score).label("avg_relevance_score"),
         )
         .join(EvaluationResult, EvaluationResult.query_log_id == QueryLog.id)
@@ -199,10 +210,10 @@ def test_evaluations_by_model(db):
     )
 
     assert len(results) == 2
-    
+
     # Map results to a dict for easy assertion
     results_map = {r.model_string: r for r in results}
-    
+
     assert "gpt-4o" in results_map
     assert results_map["gpt-4o"].query_count == 1
     assert results_map["gpt-4o"].avg_faithfulness_score == 90.0
@@ -250,7 +261,7 @@ def test_evaluations_overall(db):
         question="Q1",
         contexts=["C1"],
         answer="A1",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
     log2 = QueryLog(
         id=uuid.uuid4(),
@@ -259,7 +270,7 @@ def test_evaluations_overall(db):
         question="Q2",
         contexts=["C2"],
         answer="A2",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
     db.add(log1)
     db.add(log2)
@@ -274,7 +285,7 @@ def test_evaluations_overall(db):
         relevance_score=80,
         unsupported_claims=[],
         reasoning="Good 1.",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
     res2 = EvaluationResult(
         id=uuid.uuid4(),
@@ -284,7 +295,7 @@ def test_evaluations_overall(db):
         relevance_score=60,
         unsupported_claims=[],
         reasoning="Good 2.",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
     db.add(res1)
     db.add(res2)
@@ -293,14 +304,16 @@ def test_evaluations_overall(db):
     # Run the overall aggregation query
     results = (
         db.query(
-            func.avg(EvaluationResult.faithfulness_score).label("avg_faithfulness_score"),
+            func.avg(EvaluationResult.faithfulness_score).label(
+                "avg_faithfulness_score"
+            ),
             func.avg(EvaluationResult.relevance_score).label("avg_relevance_score"),
-            func.count(EvaluationResult.id).label("query_count")
+            func.count(EvaluationResult.id).label("query_count"),
         )
         .join(EvaluationRun, EvaluationResult.evaluation_run_id == EvaluationRun.id)
         .filter(
             EvaluationRun.tenant_id == tenant_id,
-            EvaluationRun.status == EvaluationStatus.completed
+            EvaluationRun.status == EvaluationStatus.completed,
         )
         .first()
     )
@@ -308,11 +321,10 @@ def test_evaluations_overall(db):
     assert results is not None
     assert results.query_count == 2
     assert results.avg_faithfulness_score == 75.0  # (100 + 50) / 2
-    assert results.avg_relevance_score == 70.0     # (80 + 60) / 2
+    assert results.avg_relevance_score == 70.0  # (80 + 60) / 2
 
 
 def test_all_evaluation_results(db):
-    from sqlalchemy import func
 
     # Setup tenant and user
     tenant_id = uuid.uuid4()
@@ -348,7 +360,7 @@ def test_all_evaluation_results(db):
         contexts=["C1"],
         answer="A1",
         model_string="gpt-4o",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
     log2 = QueryLog(
         id=uuid.uuid4(),
@@ -358,7 +370,7 @@ def test_all_evaluation_results(db):
         contexts=["C2"],
         answer="A2",
         model_string="claude-3",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
     db.add(log1)
     db.add(log2)
@@ -373,7 +385,7 @@ def test_all_evaluation_results(db):
         relevance_score=80,
         unsupported_claims=[],
         reasoning="Good 1.",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
     res2 = EvaluationResult(
         id=uuid.uuid4(),
@@ -383,7 +395,7 @@ def test_all_evaluation_results(db):
         relevance_score=60,
         unsupported_claims=[],
         reasoning="Good 2.",
-        created_at=datetime.now(timezone.utc)
+        created_at=datetime.now(timezone.utc),
     )
     db.add(res1)
     db.add(res2)
@@ -403,7 +415,7 @@ def test_all_evaluation_results(db):
             QueryLog.question,
             QueryLog.answer,
             QueryLog.model_string,
-            EvaluationRun.created_at.label("run_created_at")
+            EvaluationRun.created_at.label("run_created_at"),
         )
         .join(QueryLog, EvaluationResult.query_log_id == QueryLog.id)
         .join(EvaluationRun, EvaluationResult.evaluation_run_id == EvaluationRun.id)
@@ -414,7 +426,9 @@ def test_all_evaluation_results(db):
     assert total_count == 2
 
     # Sort worst-first by combined score
-    sorted_results = query.order_by((EvaluationResult.faithfulness_score + EvaluationResult.relevance_score).asc()).all()
+    sorted_results = query.order_by(
+        (EvaluationResult.faithfulness_score + EvaluationResult.relevance_score).asc()
+    ).all()
 
     # Worst one (res2) should be first
     assert sorted_results[0].id == res2.id
@@ -425,6 +439,3 @@ def test_all_evaluation_results(db):
     assert sorted_results[1].id == res1.id
     assert sorted_results[1].faithfulness_score == 100
     assert sorted_results[1].model_string == "gpt-4o"
-
-
-

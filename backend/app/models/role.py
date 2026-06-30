@@ -1,6 +1,14 @@
 from datetime import datetime
 import uuid
-from sqlalchemy import String, DateTime, Uuid, ForeignKey, Boolean, UniqueConstraint, func
+from sqlalchemy import (
+    String,
+    DateTime,
+    Uuid,
+    ForeignKey,
+    Boolean,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from typing import TYPE_CHECKING, Optional
@@ -10,39 +18,42 @@ if TYPE_CHECKING:
     from app.models.user import User
     from app.models.department import Department
 
+
 class Role(Base):
     __tablename__ = "roles"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, 
-        ForeignKey("tenants.id", ondelete="CASCADE"), 
-        nullable=False
+        Uuid, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     parent_role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        Uuid,
-        ForeignKey("roles.id", ondelete="SET NULL"),
-        nullable=True
+        Uuid, ForeignKey("roles.id", ondelete="SET NULL"), nullable=True
     )
     department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        Uuid,
-        ForeignKey("departments.id", ondelete="SET NULL"),
-        nullable=True
+        Uuid, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), 
-        server_default=func.now(), 
-        onupdate=func.now(), 
-        nullable=False
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
     # Unique Constraint on (tenant_id, name, parent_role_id, department_id)
     __table_args__ = (
-        UniqueConstraint("tenant_id", "name", "parent_role_id", "department_id", name="uq_tenant_role_dept"),
+        UniqueConstraint(
+            "tenant_id",
+            "name",
+            "parent_role_id",
+            "department_id",
+            name="uq_tenant_role_dept",
+        ),
     )
 
     # Relationships
@@ -68,4 +79,3 @@ class Role(Base):
     @property
     def department_name(self) -> Optional[str]:
         return self.department.name if self.department else None
-

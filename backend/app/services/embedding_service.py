@@ -1,8 +1,8 @@
 """
-Embedding service using sentence-transformers for text embeddings, 
+Embedding service using sentence-transformers for text embeddings,
 audio transcription, and slide image description.
 """
-import time
+
 import logging
 from google import genai
 from google.genai import types as genai_types
@@ -59,6 +59,7 @@ def embed_text(text: str) -> list[float]:
 
 # ---------------------------------------------------------------------------
 
+
 def transcribe_audio(file_path: str) -> str:
     """
     Transcribe an audio file using Gemini 2.5 Flash multimodal.
@@ -100,12 +101,11 @@ def process_pptx_slides(file_path: str) -> list[dict]:
     Extract text, tables, charts, and images from a PPTX file using python-pptx.
     Images are passed to Gemini Vision for description.
     Merges content per slide, splits if too long, and generates embeddings.
-    
+
     Returns a list of dicts: [{"slide_number": int, "slide_title": str, "text": str, "vector": list[float]}]
     """
     from pptx import Presentation
     from pptx.enum.shapes import MSO_SHAPE_TYPE
-    
 
     try:
         prs = Presentation(file_path)
@@ -131,18 +131,24 @@ def process_pptx_slides(file_path: str) -> list[dict]:
             # Tables
             if shape.has_table:
                 for row in shape.table.rows:
-                    row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
+                    row_text = " | ".join(
+                        cell.text.strip() for cell in row.cells if cell.text.strip()
+                    )
                     if row_text:
                         texts.append(row_text)
-            
+
             # Charts
             if shape.has_chart:
                 try:
                     chart = shape.chart
-                    c_title = chart.chart_title.text_frame.text if chart.has_title else "Untitled Chart"
-                    c_type = str(chart.chart_type).split('.')[-1]
+                    c_title = (
+                        chart.chart_title.text_frame.text
+                        if chart.has_title
+                        else "Untitled Chart"
+                    )
+                    c_type = str(chart.chart_type).split(".")[-1]
                     texts.append(f"Chart: {c_title}, Type: {c_type}")
-                    
+
                     for series in chart.series:
                         s_name = getattr(series, "name", "Series")
                         cats = []
@@ -150,16 +156,20 @@ def process_pptx_slides(file_path: str) -> list[dict]:
                             cats = [c.label for c in chart.plots[0].categories]
                         except Exception:
                             pass
-                        
+
                         vals = series.values
                         if cats and len(cats) == len(vals):
-                            data_str = ", ".join(f"{c}: {v}" for c, v in zip(cats, vals))
+                            data_str = ", ".join(
+                                f"{c}: {v}" for c, v in zip(cats, vals)
+                            )
                         else:
                             data_str = ", ".join(str(v) for v in vals)
-                        
+
                         texts.append(f"Series [{s_name}]: {data_str}")
                 except Exception as exc:
-                    logger.warning("Failed to extract chart on slide %d: %s", slide_idx, exc)
+                    logger.warning(
+                        "Failed to extract chart on slide %d: %s", slide_idx, exc
+                    )
 
             # Images
             if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
@@ -171,7 +181,7 @@ def process_pptx_slides(file_path: str) -> list[dict]:
                     from app.core.config import settings
 
                     anthropic_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-                    
+
                     mime_map = {
                         "png": "image/png",
                         "jpg": "image/jpeg",
@@ -181,10 +191,10 @@ def process_pptx_slides(file_path: str) -> list[dict]:
                     }
                     ext_lower = (ext or "").lower()
                     mime_type = mime_map.get(ext_lower, "image/png")
-                    
+
                     b64_image = base64.b64encode(image_bytes).decode("utf-8")
                     system_prompt = "If the image is a chart or a graph, then give exact values and analyze the data in a structured format."
-                    
+
                     message = anthropic_client.messages.create(
                         model="claude-haiku-4-5-20251001",
                         max_tokens=4096,
@@ -204,17 +214,19 @@ def process_pptx_slides(file_path: str) -> list[dict]:
                                     },
                                     {
                                         "type": "text",
-                                        "text": "Describe this image in detail. Be specific about data, trends, and key takeaways."
-                                    }
+                                        "text": "Describe this image in detail. Be specific about data, trends, and key takeaways.",
+                                    },
                                 ],
                             }
-                        ]
+                        ],
                     )
                     desc = message.content[0].text.strip()
                     if desc:
                         texts.append(f"[Image Description]: {desc}")
                 except Exception as exc:
-                    logger.warning("Failed to describe image on slide %d: %s", slide_idx, exc)
+                    logger.warning(
+                        "Failed to describe image on slide %d: %s", slide_idx, exc
+                    )
 
         # Speaker notes
         if slide.has_notes_slide:
@@ -235,19 +247,21 @@ def process_pptx_slides(file_path: str) -> list[dict]:
             chunks.append(merged[mid:])
         else:
             chunks.append(merged)
-            
+
         for chunk in chunks:
             try:
                 vector = embed_text(chunk)
-                results.append({
-                    "slide_number": slide_idx,
-                    "slide_title": slide_title,
-                    "text": chunk,
-                    "vector": vector
-                })
+                results.append(
+                    {
+                        "slide_number": slide_idx,
+                        "slide_title": slide_title,
+                        "text": chunk,
+                        "vector": vector,
+                    }
+                )
             except Exception as exc:
                 logger.warning("Failed to embed chunk for slide %d: %s", slide_idx, exc)
-                
+
     return results
 
 
@@ -259,6 +273,7 @@ def _get_anthropic_client():
     global _anthropic_client
     if _anthropic_client is None:
         from anthropic import Anthropic
+
         _anthropic_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
     return _anthropic_client
 
@@ -281,12 +296,9 @@ def generate_document_description(content_sample: str, file_type: str) -> str | 
             model="claude-haiku-4-5-20251001",
             max_tokens=150,
             temperature=0,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
+            messages=[{"role": "user", "content": prompt}],
         )
         return (message.content[0].text or "").strip()
     except Exception as exc:
         logger.error("Failed to generate document description: %s", exc)
         return None
-

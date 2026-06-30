@@ -13,18 +13,21 @@ Tests cover:
   - Cycle guard: does not infinite-loop
   - Tenant isolation: only same-tenant roles included
 """
+
 import sys
 import os
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 
 # ---------------------------------------------------------------------------
 # Minimal in-memory role representation (mirrors app.models.role.Role fields)
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class FakeRole:
@@ -39,6 +42,7 @@ class FakeRole:
 # ---------------------------------------------------------------------------
 # Algorithm under test (copied verbatim from app/api/v1/roles.py get_roles_tree)
 # ---------------------------------------------------------------------------
+
 
 def build_tree(all_roles: list[FakeRole]):
     """
@@ -85,6 +89,7 @@ def build_tree(all_roles: list[FakeRole]):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def make_role(tenant_id, name, parent_id=None) -> FakeRole:
     return FakeRole(
         id=uuid.uuid4(),
@@ -97,6 +102,7 @@ def make_role(tenant_id, name, parent_id=None) -> FakeRole:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_flat_list_no_parents():
     """Three unrelated roles → all are roots with descendant_count 0."""
@@ -158,7 +164,9 @@ def test_orphaned_role_becomes_root():
     """A role whose parent_role_id is not in the tenant appears as a root node."""
     tid = uuid.uuid4()
     ghost_id = uuid.uuid4()  # never inserted
-    orphan = FakeRole(id=uuid.uuid4(), tenant_id=tid, name="Orphan", parent_role_id=ghost_id)
+    orphan = FakeRole(
+        id=uuid.uuid4(), tenant_id=tid, name="Orphan", parent_role_id=ghost_id
+    )
     real_root = make_role(tid, "RealRoot")
 
     dcnt, children_map, root_ids = build_tree([orphan, real_root])
@@ -174,7 +182,9 @@ def test_cycle_guard_does_not_infinite_loop():
     """An artificial cycle (A → B → A) must not cause an infinite loop."""
     tid = uuid.uuid4()
     role_a = FakeRole(id=uuid.uuid4(), tenant_id=tid, name="A", parent_role_id=None)
-    role_b = FakeRole(id=uuid.uuid4(), tenant_id=tid, name="B", parent_role_id=role_a.id)
+    role_b = FakeRole(
+        id=uuid.uuid4(), tenant_id=tid, name="B", parent_role_id=role_a.id
+    )
     # Force cycle: A's parent is now B
     role_a.parent_role_id = role_b.id
 

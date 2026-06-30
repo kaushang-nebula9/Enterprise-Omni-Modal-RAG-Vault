@@ -14,48 +14,39 @@ if TYPE_CHECKING:
     from app.models.department import Department
     from app.models.evaluation import EvaluationRun
 
+
 class Notification(Base):
     __tablename__ = "notifications"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid,
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid,
-        ForeignKey("tenants.id", ondelete="CASCADE"),
-        nullable=False
+        Uuid, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     type: Mapped[NotificationType] = mapped_column(
-        notification_type_enum,
-        nullable=False
+        notification_type_enum, nullable=False
     )
     message: Mapped[str] = mapped_column(String, nullable=False)
     related_document_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        Uuid,
-        ForeignKey("documents.id", ondelete="SET NULL"),
-        nullable=True
+        Uuid, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
     )
     related_role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        Uuid,
-        ForeignKey("roles.id", ondelete="SET NULL"),
-        nullable=True
+        Uuid, ForeignKey("roles.id", ondelete="SET NULL"), nullable=True
     )
     related_department_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        Uuid,
-        ForeignKey("departments.id", ondelete="SET NULL"),
-        nullable=True
+        Uuid, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True
     )
     related_evaluation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        Uuid,
-        ForeignKey("evaluation_runs.id", ondelete="SET NULL"),
-        nullable=True
+        Uuid, ForeignKey("evaluation_runs.id", ondelete="SET NULL"), nullable=True
     )
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), default=datetime.now, nullable=False
+        DateTime(timezone=True),
+        server_default=func.now(),
+        default=datetime.now,
+        nullable=False,
     )
 
     # Relationships
@@ -64,4 +55,6 @@ class Notification(Base):
     related_document: Mapped[Optional["Document"]] = relationship("Document")
     related_role: Mapped[Optional["Role"]] = relationship("Role")
     related_department: Mapped[Optional["Department"]] = relationship("Department")
-    related_evaluation: Mapped[Optional["EvaluationRun"]] = relationship("EvaluationRun")
+    related_evaluation: Mapped[Optional["EvaluationRun"]] = relationship(
+        "EvaluationRun"
+    )

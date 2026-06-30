@@ -9,24 +9,23 @@ from anthropic import Anthropic
 import logging
 import json
 import re
-import uuid
 from datetime import datetime, timezone
 
 # Ensure all models are loaded
-import app.models.tenant            # noqa: F401
-import app.models.user              # noqa: F401
-import app.models.role              # noqa: F401
-import app.models.document          # noqa: F401
+import app.models.tenant  # noqa: F401
+import app.models.user  # noqa: F401
+import app.models.role  # noqa: F401
+import app.models.document  # noqa: F401
 import app.models.document_access_policy  # noqa: F401
-import app.models.invite_token      # noqa: F401
+import app.models.invite_token  # noqa: F401
 import app.models.otp_verification  # noqa: F401
-import app.models.query_session     # noqa: F401
-import app.models.query_message     # noqa: F401
-import app.models.query_citation    # noqa: F401
-import app.models.refresh_token     # noqa: F401
-import app.models.query_log         # noqa: F401
-import app.models.evaluation        # noqa: F401
-import app.models.notification      # noqa: F401
+import app.models.query_session  # noqa: F401
+import app.models.query_message  # noqa: F401
+import app.models.query_citation  # noqa: F401
+import app.models.refresh_token  # noqa: F401
+import app.models.query_log  # noqa: F401
+import app.models.evaluation  # noqa: F401
+import app.models.notification  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -53,42 +52,48 @@ Respond ONLY with valid JSON in this exact format, no other text:
   "reasoning": "brief explanation covering both scores"
 }}"""
 
+
 def clean_and_parse_json(text: str) -> dict:
     text = text.strip()
     if text.startswith("```"):
         match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
         if match:
             text = match.group(1).strip()
-            
+
     # Try parsing
     data = json.loads(text)
-    
+
     # Validation & parsing fields
     faithfulness_score = int(data.get("faithfulness_score", 0))
     relevance_score = int(data.get("relevance_score", 0))
-    
+
     unsupported_claims = data.get("unsupported_claims", [])
     if not isinstance(unsupported_claims, list):
         unsupported_claims = [str(unsupported_claims)]
-        
+
     reasoning = str(data.get("reasoning", ""))
-    
+
     # Clamp scores
     faithfulness_score = max(0, min(100, faithfulness_score))
     relevance_score = max(0, min(100, relevance_score))
-    
+
     return {
         "faithfulness_score": faithfulness_score,
         "relevance_score": relevance_score,
         "unsupported_claims": unsupported_claims,
-        "reasoning": reasoning
+        "reasoning": reasoning,
     }
+
 
 @celery_app.task(name="run_evaluation_task")
 def run_evaluation_task(evaluation_run_id: str):
     db = SessionLocal()
     try:
-        run = db.query(EvaluationRun).filter(EvaluationRun.id == evaluation_run_id).first()
+        run = (
+            db.query(EvaluationRun)
+            .filter(EvaluationRun.id == evaluation_run_id)
+            .first()
+        )
         if not run:
             logger.error(f"EvaluationRun {evaluation_run_id} not found.")
             return
@@ -120,7 +125,7 @@ def run_evaluation_task(evaluation_run_id: str):
             run.avg_relevance_score = 0.0
             run.completed_at = datetime.now(timezone.utc)
             db.commit()
-            
+
             create_notification(
                 db=db,
                 user_id=run.requested_by_user_id,
@@ -139,13 +144,15 @@ def run_evaluation_task(evaluation_run_id: str):
         for log in logs:
             try:
                 # Format contexts
-                contexts_str = "\n\n".join(log.contexts) if log.contexts else "No context retrieved."
-                
+                contexts_str = (
+                    "\n\n".join(log.contexts)
+                    if log.contexts
+                    else "No context retrieved."
+                )
+
                 # Format prompt
                 prompt = JUDGE_PROMPT_TEMPLATE.format(
-                    contexts=contexts_str,
-                    question=log.question,
-                    answer=log.answer
+                    contexts=contexts_str, question=log.question, answer=log.answer
                 )
 
                 # Call Claude Sonnet
@@ -153,12 +160,10 @@ def run_evaluation_task(evaluation_run_id: str):
                     model="claude-sonnet-4-6",
                     max_tokens=1024,
                     temperature=0.0,
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ]
+                    messages=[{"role": "user", "content": prompt}],
                 )
                 response_content = message.content[0].text
-                
+
                 # Parse JSON
                 parsed_eval = clean_and_parse_json(response_content)
 
@@ -180,7 +185,9 @@ def run_evaluation_task(evaluation_run_id: str):
                 total_relevance += parsed_eval["relevance_score"]
 
             except Exception as e:
-                logger.error(f"Error evaluating QueryLog {log.id}: {str(e)}", exc_info=True)
+                logger.error(
+                    f"Error evaluating QueryLog {log.id}: {str(e)}", exc_info=True
+                )
                 # Keep processing other rows
                 continue
 
@@ -188,7 +195,9 @@ def run_evaluation_task(evaluation_run_id: str):
         run.completed_at = datetime.now(timezone.utc)
         if len(logs) > 0 and success_count == 0:
             run.status = EvaluationStatus.failed
-            notification_message = "Evaluation run failed: unable to evaluate any matching queries."
+            notification_message = (
+                "Evaluation run failed: unable to evaluate any matching queries."
+            )
         else:
             run.status = EvaluationStatus.completed
             if success_count > 0:
@@ -197,7 +206,7 @@ def run_evaluation_task(evaluation_run_id: str):
             else:
                 run.avg_faithfulness_score = 0.0
                 run.avg_relevance_score = 0.0
-            
+
             notification_message = f"Evaluation run completed! Processed {success_count} queries. Avg Faithfulness: {run.avg_faithfulness_score:.1f}%, Avg Relevance: {run.avg_relevance_score:.1f}%."
 
         db.commit()
@@ -213,16 +222,22 @@ def run_evaluation_task(evaluation_run_id: str):
         )
 
     except Exception as exc:
-        logger.error(f"Unhandled error in run_evaluation_task: {str(exc)}", exc_info=True)
+        logger.error(
+            f"Unhandled error in run_evaluation_task: {str(exc)}", exc_info=True
+        )
         # Try to mark the run failed if possible
         try:
             db.rollback()
-            run = db.query(EvaluationRun).filter(EvaluationRun.id == evaluation_run_id).first()
+            run = (
+                db.query(EvaluationRun)
+                .filter(EvaluationRun.id == evaluation_run_id)
+                .first()
+            )
             if run:
                 run.status = EvaluationStatus.failed
                 run.completed_at = datetime.now(timezone.utc)
                 db.commit()
-                
+
                 create_notification(
                     db=db,
                     user_id=run.requested_by_user_id,

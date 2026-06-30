@@ -2,9 +2,19 @@
 Documents API routes — upload, list, download, delete, and access management.
 All routes are admin-only and scoped to the current user's tenant.
 """
+
 import uuid
 import logging
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    UploadFile,
+    File,
+    Form,
+    Query,
+    status,
+)
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -49,7 +59,9 @@ EXTENSION_TO_FILE_TYPE: dict[str, FileType] = {
 }
 
 
-def _load_document_with_policies(db: Session, document_id: uuid.UUID, tenant_id: uuid.UUID) -> Document:
+def _load_document_with_policies(
+    db: Session, document_id: uuid.UUID, tenant_id: uuid.UUID
+) -> Document:
     """Fetch a document with its access_policies and nested roles, verifying tenant ownership."""
     doc = (
         db.query(Document)
@@ -60,7 +72,9 @@ def _load_document_with_policies(db: Session, document_id: uuid.UUID, tenant_id:
         .first()
     )
     if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
+        )
     return doc
 
 
@@ -78,7 +92,7 @@ def _create_policies_with_inheritance(
     """
     from app.services.notification_service import create_notification
     from app.models.enums import NotificationType
-    
+
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         return
@@ -119,17 +133,21 @@ def _create_policies_with_inheritance(
         ancestors = get_role_ancestors(role_id, db)
         child_role = db.query(Role).filter(Role.id == role_id).first()
         child_role_name = child_role.name if child_role else "another role"
-        
+
         for ancestor in ancestors:
             if ancestor.id in covered:
                 continue
             if ancestor.id in unchecked_set:
                 continue
             # Check if ancestor already has any access policy for this document
-            existing = db.query(DocumentAccessPolicy).filter(
-                DocumentAccessPolicy.document_id == document_id,
-                DocumentAccessPolicy.role_id == ancestor.id,
-            ).first()
+            existing = (
+                db.query(DocumentAccessPolicy)
+                .filter(
+                    DocumentAccessPolicy.document_id == document_id,
+                    DocumentAccessPolicy.role_id == ancestor.id,
+                )
+                .first()
+            )
             if existing:
                 covered.add(ancestor.id)
                 continue
@@ -158,12 +176,16 @@ def _create_policies_with_inheritance(
                 )
 
 
-
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
-@router.post("/upload", response_model=DocumentWithAccessResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/upload",
+    response_model=DocumentWithAccessResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def upload_document(
     file: UploadFile = File(...),
     role_ids: list[str] = Form(default=[]),
@@ -199,10 +221,14 @@ def upload_document(
 
         # Validate each role exists and belongs to this tenant
         for role_id in parsed_role_ids:
-            role = db.query(Role).filter(
-                Role.id == role_id,
-                Role.tenant_id == current_admin.tenant_id,
-            ).first()
+            role = (
+                db.query(Role)
+                .filter(
+                    Role.id == role_id,
+                    Role.tenant_id == current_admin.tenant_id,
+                )
+                .first()
+            )
             if not role:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -223,10 +249,14 @@ def upload_document(
 
         # Validate each unchecked ancestor role belongs to tenant
         for rid in parsed_unchecked_ids:
-            role = db.query(Role).filter(
-                Role.id == rid,
-                Role.tenant_id == current_admin.tenant_id,
-            ).first()
+            role = (
+                db.query(Role)
+                .filter(
+                    Role.id == rid,
+                    Role.tenant_id == current_admin.tenant_id,
+                )
+                .first()
+            )
             if not role:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -247,10 +277,14 @@ def upload_document(
 
         # Validate each department exists and belongs to this tenant
         for dept_id in parsed_dept_ids:
-            dept = db.query(Department).filter(
-                Department.id == dept_id,
-                Department.tenant_id == current_admin.tenant_id,
-            ).first()
+            dept = (
+                db.query(Department)
+                .filter(
+                    Department.id == dept_id,
+                    Department.tenant_id == current_admin.tenant_id,
+                )
+                .first()
+            )
             if not dept:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -296,7 +330,9 @@ def upload_document(
 
     # Create access policy records (direct + inherited for ancestors)
     if parsed_role_ids:
-        _create_policies_with_inheritance(db, document_id, parsed_role_ids, parsed_unchecked_ids)
+        _create_policies_with_inheritance(
+            db, document_id, parsed_role_ids, parsed_unchecked_ids
+        )
 
     # Create department-based access policies
     if parsed_dept_ids:
@@ -304,29 +340,36 @@ def upload_document(
         from app.models.enums import NotificationType
 
         for dept_id in parsed_dept_ids:
-            dept_roles = db.query(Role).filter(
-                Role.department_id == dept_id,
-                Role.tenant_id == tenant_id
-            ).all()
+            dept_roles = (
+                db.query(Role)
+                .filter(Role.department_id == dept_id, Role.tenant_id == tenant_id)
+                .all()
+            )
             for role in dept_roles:
-                existing = db.query(DocumentAccessPolicy).filter(
-                    DocumentAccessPolicy.document_id == document_id,
-                    DocumentAccessPolicy.role_id == role.id
-                ).first()
+                existing = (
+                    db.query(DocumentAccessPolicy)
+                    .filter(
+                        DocumentAccessPolicy.document_id == document_id,
+                        DocumentAccessPolicy.role_id == role.id,
+                    )
+                    .first()
+                )
                 if not existing:
                     policy = DocumentAccessPolicy(
                         document_id=document_id,
                         role_id=role.id,
                         granted_via="department",
                         granted_via_department_id=dept_id,
-                        inherited_from_role_id=None
+                        inherited_from_role_id=None,
                     )
                     db.add(policy)
 
             # Notify users whose role belongs to that department
             dept = db.query(Department).filter(Department.id == dept_id).first()
             dept_name = dept.name if dept else "unknown department"
-            dept_users = db.query(User).join(Role).filter(Role.department_id == dept_id).all()
+            dept_users = (
+                db.query(User).join(Role).filter(Role.department_id == dept_id).all()
+            )
             for u in dept_users:
                 create_notification(
                     db=db,
@@ -385,7 +428,12 @@ def get_authorized_documents(
     InheritedRole = aliased(Role)
 
     rows = (
-        db.query(Document, DocumentAccessPolicy.granted_via, InheritedRole.name, Department.name)
+        db.query(
+            Document,
+            DocumentAccessPolicy.granted_via,
+            InheritedRole.name,
+            Department.name,
+        )
         .join(DocumentAccessPolicy, Document.id == DocumentAccessPolicy.document_id)
         .outerjoin(
             InheritedRole,
@@ -428,10 +476,14 @@ def preview_assignment(
     access to that document are excluded.
     """
     # Validate role belongs to tenant
-    role = db.query(Role).filter(
-        Role.id == role_id,
-        Role.tenant_id == current_admin.tenant_id,
-    ).first()
+    role = (
+        db.query(Role)
+        .filter(
+            Role.id == role_id,
+            Role.tenant_id == current_admin.tenant_id,
+        )
+        .first()
+    )
     if not role:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -460,12 +512,18 @@ def download_document(
     db: Session = Depends(get_db),
 ):
     """Serve a document file as a download response."""
-    doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.tenant_id == current_admin.tenant_id,
-    ).first()
+    doc = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.tenant_id == current_admin.tenant_id,
+        )
+        .first()
+    )
     if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
+        )
 
     absolute_path = get_absolute_path(doc.file_path)
     return FileResponse(
@@ -485,19 +543,27 @@ def delete_document(
     Delete a document: remove vectors from Qdrant (if ready + not excel),
     delete the file from disk, and remove the DB record.
     """
-    doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.tenant_id == current_admin.tenant_id,
-    ).first()
+    doc = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.tenant_id == current_admin.tenant_id,
+        )
+        .first()
+    )
     if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
+        )
 
     # Remove vectors from Qdrant if applicable
     if doc.status == DocumentStatus.ready and doc.file_type != FileType.excel:
         try:
             delete_document_vectors(doc.qdrant_collection, str(doc.id))
         except Exception as exc:
-            logger.warning("Failed to delete Qdrant vectors for document %s: %s", document_id, exc)
+            logger.warning(
+                "Failed to delete Qdrant vectors for document %s: %s", document_id, exc
+            )
 
     # Remove from filesystem
     if doc.file_path:
@@ -521,19 +587,29 @@ def update_document_access(
     Replace all access policies for a document with the provided role_ids,
     then update Qdrant payload to reflect the new role_ids (including inherited).
     """
-    doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.tenant_id == current_admin.tenant_id,
-    ).first()
+    doc = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.tenant_id == current_admin.tenant_id,
+        )
+        .first()
+    )
     if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
+        )
 
     # Validate each role
     for role_id in request.role_ids:
-        role = db.query(Role).filter(
-            Role.id == role_id,
-            Role.tenant_id == current_admin.tenant_id,
-        ).first()
+        role = (
+            db.query(Role)
+            .filter(
+                Role.id == role_id,
+                Role.tenant_id == current_admin.tenant_id,
+            )
+            .first()
+        )
         if not role:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -543,10 +619,14 @@ def update_document_access(
     # Validate unchecked ancestor roles
     if request.unchecked_ancestor_ids:
         for rid in request.unchecked_ancestor_ids:
-            role = db.query(Role).filter(
-                Role.id == rid,
-                Role.tenant_id == current_admin.tenant_id,
-            ).first()
+            role = (
+                db.query(Role)
+                .filter(
+                    Role.id == rid,
+                    Role.tenant_id == current_admin.tenant_id,
+                )
+                .first()
+            )
             if not role:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -560,10 +640,7 @@ def update_document_access(
 
     # Create new policies (direct + inherited for ancestors)
     _create_policies_with_inheritance(
-        db,
-        document_id,
-        list(request.role_ids),
-        request.unchecked_ancestor_ids
+        db, document_id, list(request.role_ids), request.unchecked_ancestor_ids
     )
 
     db.commit()
@@ -611,13 +688,16 @@ def update_document_access(
             "document_id": str(doc.id),
             "filename": doc.filename,
             "role_ids": [str(rid) for rid in request.role_ids],
-            "role_names": role_names
-        }
+            "role_names": role_names,
+        },
     )
 
     return updated_doc
 
-@router.post("/{document_id}/assign-department", response_model=DocumentWithAccessResponse)
+
+@router.post(
+    "/{document_id}/assign-department", response_model=DocumentWithAccessResponse
+)
 def assign_department(
     document_id: uuid.UUID,
     request: AssignDepartmentRequest,
@@ -634,46 +714,65 @@ def assign_department(
     from app.models.department import Department
 
     # 1. Fetch document and check tenant ownership
-    doc = db.query(Document).filter(
-        Document.id == document_id,
-        Document.tenant_id == current_admin.tenant_id
-    ).first()
+    doc = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id, Document.tenant_id == current_admin.tenant_id
+        )
+        .first()
+    )
     if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
+        )
 
     # 2. Fetch department and check tenant ownership
-    dept = db.query(Department).filter(
-        Department.id == request.department_id,
-        Department.tenant_id == current_admin.tenant_id
-    ).first()
+    dept = (
+        db.query(Department)
+        .filter(
+            Department.id == request.department_id,
+            Department.tenant_id == current_admin.tenant_id,
+        )
+        .first()
+    )
     if not dept:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Department not found")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Department not found"
+        )
 
     # 3. Find all roles belonging to this tenant where department_id matches
-    roles = db.query(Role).filter(
-        Role.department_id == dept.id,
-        Role.tenant_id == current_admin.tenant_id
-    ).all()
+    roles = (
+        db.query(Role)
+        .filter(
+            Role.department_id == dept.id, Role.tenant_id == current_admin.tenant_id
+        )
+        .all()
+    )
 
     # 4. Create DocumentAccessPolicy rows for these roles if they don't already have any policy for this document
     for role in roles:
-        existing = db.query(DocumentAccessPolicy).filter(
-            DocumentAccessPolicy.document_id == document_id,
-            DocumentAccessPolicy.role_id == role.id
-        ).first()
+        existing = (
+            db.query(DocumentAccessPolicy)
+            .filter(
+                DocumentAccessPolicy.document_id == document_id,
+                DocumentAccessPolicy.role_id == role.id,
+            )
+            .first()
+        )
         if not existing:
             policy = DocumentAccessPolicy(
                 document_id=document_id,
                 role_id=role.id,
                 granted_via="department",
                 granted_via_department_id=dept.id,
-                inherited_from_role_id=None
+                inherited_from_role_id=None,
             )
             db.add(policy)
 
     # Notify users in this department
     from app.services.notification_service import create_notification
     from app.models.enums import NotificationType
+
     dept_users = db.query(User).join(Role).filter(Role.department_id == dept.id).all()
     for u in dept_users:
         create_notification(
@@ -699,8 +798,8 @@ def assign_department(
             "document_id": str(doc.id),
             "filename": doc.filename,
             "department_id": str(dept.id),
-            "department_name": dept.name
-        }
+            "department_name": dept.name,
+        },
     )
 
     # 5. Build the complete list of role_ids for Qdrant (all policies)
@@ -729,6 +828,3 @@ def assign_department(
 
     # Reload and return
     return _load_document_with_policies(db, document_id, current_admin.tenant_id)
-
-
-

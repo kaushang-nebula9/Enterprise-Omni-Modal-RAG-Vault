@@ -11,13 +11,17 @@ logger = logging.getLogger(__name__)
 # Map user_id to a list of active connection queues
 active_connections: dict[uuid.UUID, list[asyncio.Queue]] = {}
 
+
 def register_connection(user_id: uuid.UUID) -> asyncio.Queue:
     queue = asyncio.Queue()
     if user_id not in active_connections:
         active_connections[user_id] = []
     active_connections[user_id].append(queue)
-    logger.info(f"Registered SSE connection for user {user_id}. Active connections: {len(active_connections[user_id])}")
+    logger.info(
+        f"Registered SSE connection for user {user_id}. Active connections: {len(active_connections[user_id])}"
+    )
     return queue
+
 
 def unregister_connection(user_id: uuid.UUID, queue: asyncio.Queue):
     if user_id in active_connections:
@@ -26,6 +30,7 @@ def unregister_connection(user_id: uuid.UUID, queue: asyncio.Queue):
         if not active_connections[user_id]:
             del active_connections[user_id]
     logger.info(f"Unregistered SSE connection for user {user_id}")
+
 
 def create_notification(
     db: Session,
@@ -76,18 +81,29 @@ def create_notification(
         "tenant_id": str(notification.tenant_id),
         "type": notification.type.value,
         "message": notification.message,
-        "related_document_id": str(notification.related_document_id) if notification.related_document_id else None,
-        "related_role_id": str(notification.related_role_id) if notification.related_role_id else None,
-        "related_department_id": str(notification.related_department_id) if notification.related_department_id else None,
-        "related_evaluation_id": str(notification.related_evaluation_id) if notification.related_evaluation_id else None,
+        "related_document_id": str(notification.related_document_id)
+        if notification.related_document_id
+        else None,
+        "related_role_id": str(notification.related_role_id)
+        if notification.related_role_id
+        else None,
+        "related_department_id": str(notification.related_department_id)
+        if notification.related_department_id
+        else None,
+        "related_evaluation_id": str(notification.related_evaluation_id)
+        if notification.related_evaluation_id
+        else None,
         "is_read": notification.is_read,
-        "created_at": notification.created_at.isoformat() if notification.created_at else None,
+        "created_at": notification.created_at.isoformat()
+        if notification.created_at
+        else None,
     }
-
 
     # Push to active SSE connections if they exist (for backward compatibility / tests)
     if user_id in active_connections:
-        logger.info(f"Pushing notification {notification.id} to {len(active_connections[user_id])} active SSE streams for user {user_id}")
+        logger.info(
+            f"Pushing notification {notification.id} to {len(active_connections[user_id])} active SSE streams for user {user_id}"
+        )
         for queue in active_connections[user_id]:
             queue.put_nowait(payload)
 
@@ -96,10 +112,15 @@ def create_notification(
         import redis
         import json
         from app.core.config import settings
+
         r = redis.from_url(settings.REDIS_URL)
         r.publish(f"notifications:{user_id}", json.dumps(payload))
-        logger.info(f"Published notification {notification.id} to Redis channel notifications:{user_id}")
+        logger.info(
+            f"Published notification {notification.id} to Redis channel notifications:{user_id}"
+        )
     except Exception as e:
-        logger.error(f"Failed to publish notification to Redis pub/sub: {e}", exc_info=True)
+        logger.error(
+            f"Failed to publish notification to Redis pub/sub: {e}", exc_info=True
+        )
 
     return notification

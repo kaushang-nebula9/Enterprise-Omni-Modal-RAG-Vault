@@ -1,6 +1,7 @@
 """
 Chat API routes — session management, RAG query, and private document upload.
 """
+
 import uuid
 import logging
 import json
@@ -59,14 +60,9 @@ EXTENSION_TO_FILE_TYPE: dict[str, FileType] = {
 }
 
 import re
-import uuid
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
 
-from app.models.document import Document
 from app.models.document_access_policy import DocumentAccessPolicy
-from app.models.enums import DocumentStatus
-from app.models.user import User
 
 SUMMARIZE_DOC_INSTRUCTION = "The user wants a summary, not a detailed answer. Identify the key points, main arguments, and important facts from the provided context. Present them concisely, in your own words, organized in a logical order (e.g. by topic or chronology, whichever fits the source). Omit minor details unless they are essential to understanding the core content. Keep the summary significantly shorter than the source material. If summarizing a document, mention the document's overall purpose or subject in the first sentence before going into specifics."
 SUMMARIZE_FOCUSED_INSTRUCTION = "The user wants a concise, summary-style answer rather than an exhaustive one. Answer the question directly in 3-5 sentences or a short bullet list, covering only the most important points. Avoid tangents, background context, or exhaustive detail unless the question explicitly asks for it."
@@ -87,7 +83,7 @@ SIMPLE_COMMANDS = {
 
 COMMAND_PATTERN = re.compile(
     r"/compare\s+\[([^\]]+)\]\s+\[([^\]]+)\]"  # structured compare, group 1/2
-    r"|/compare"                                 # unstructured compare
+    r"|/compare"  # unstructured compare
     r"|/summarize"
     r"|/detailed"
     r"|/table"
@@ -121,13 +117,17 @@ def parse_chat_command(
     # Strip all matched command spans out of the message to get the plain question.
     pieces, cursor = [], 0
     for m in matches:
-        pieces.append(content[cursor:m.start()])
+        pieces.append(content[cursor : m.start()])
         cursor = m.end()
     pieces.append(content[cursor:])
     clean_retrieval_query = " ".join("".join(pieces).split())
 
-    has_summarize = "/summarize" in content  # cheap containment check is fine; commands are fixed tokens
-    compare_match = next((m for m in matches if m.group(0).startswith("/compare")), None)
+    has_summarize = (
+        "/summarize" in content
+    )  # cheap containment check is fine; commands are fixed tokens
+    compare_match = next(
+        (m for m in matches if m.group(0).startswith("/compare")), None
+    )
 
     instructions: list[str] = []
     compare_document_ids = None
@@ -142,7 +142,10 @@ def parse_chat_command(
         if doc1_name and doc2_name:
             docs = (
                 db.query(Document)
-                .outerjoin(DocumentAccessPolicy, Document.id == DocumentAccessPolicy.document_id)
+                .outerjoin(
+                    DocumentAccessPolicy,
+                    Document.id == DocumentAccessPolicy.document_id,
+                )
                 .filter(
                     Document.tenant_id == user.tenant_id,
                     Document.status == DocumentStatus.ready,
@@ -157,7 +160,9 @@ def parse_chat_command(
             )
             compare_document_ids = [d.id for d in docs]
             if not has_question:
-                clean_retrieval_query = f"Compare {doc1_name.strip()} and {doc2_name.strip()}"
+                clean_retrieval_query = (
+                    f"Compare {doc1_name.strip()} and {doc2_name.strip()}"
+                )
         elif not has_question:
             clean_retrieval_query = "Compare documents"
 
@@ -191,14 +196,26 @@ def parse_chat_command(
             clean_retrieval_query = simple_fallback_text[token]
 
     command_instruction = "\n\n".join(instructions) if instructions else None
-    return content, clean_retrieval_query, command_instruction, compare_document_ids, is_compare, is_summarize
+    return (
+        content,
+        clean_retrieval_query,
+        command_instruction,
+        compare_document_ids,
+        is_compare,
+        is_summarize,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Session CRUD
 # ---------------------------------------------------------------------------
 
 
-@router.post("/sessions", response_model=CreateSessionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/sessions",
+    response_model=CreateSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_session(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -273,10 +290,10 @@ def get_session(
             joinedload(QuerySession.messages)
             .joinedload(QueryMessage.citations)
             .joinedload(QueryCitation.document),
-            joinedload(QuerySession.messages)
-            .joinedload(QueryMessage.attached_document),
-            joinedload(QuerySession.messages)
-            .joinedload(QueryMessage.model),
+            joinedload(QuerySession.messages).joinedload(
+                QueryMessage.attached_document
+            ),
+            joinedload(QuerySession.messages).joinedload(QueryMessage.model),
         )
         .filter(
             QuerySession.id == session_id,
@@ -293,10 +310,11 @@ def get_session(
     # joinedload does not guarantee ordering — sort messages chronologically
     # before serialisation so the client always receives them oldest-first.
     # Fallback to role if timestamps are identical.
-    session.messages.sort(key=lambda m: (m.created_at, 0 if m.role == MessageRole.user else 1))
+    session.messages.sort(
+        key=lambda m: (m.created_at, 0 if m.role == MessageRole.user else 1)
+    )
 
     return session
-
 
 
 @router.delete("/sessions/{session_id}")
@@ -442,34 +460,52 @@ async def send_query(
     resolved_model_id = None
     if body.model_id:
         from app.models.available_model import AvailableModel
-        model_exists = db.query(AvailableModel).filter(
-            AvailableModel.id == body.model_id,
-            AvailableModel.is_active == True
-        ).first()
+
+        model_exists = (
+            db.query(AvailableModel)
+            .filter(
+                AvailableModel.id == body.model_id, AvailableModel.is_active == True
+            )
+            .first()
+        )
         if model_exists:
             resolved_model_id = body.model_id
 
     if not resolved_model_id:
         from app.models.available_model import AvailableModel
+
         if current_user.tenant and current_user.tenant.default_model_id:
-            tenant_default = db.query(AvailableModel).filter(
-                AvailableModel.id == current_user.tenant.default_model_id,
-                AvailableModel.is_active == True
-            ).first()
+            tenant_default = (
+                db.query(AvailableModel)
+                .filter(
+                    AvailableModel.id == current_user.tenant.default_model_id,
+                    AvailableModel.is_active == True,
+                )
+                .first()
+            )
             if tenant_default:
                 resolved_model_id = tenant_default.id
 
     if not resolved_model_id:
         from app.models.available_model import AvailableModel
         from app.models.enums import ModelProvider
-        default_model = db.query(AvailableModel).filter(
-            AvailableModel.is_active == True,
-            AvailableModel.provider == ModelProvider.anthropic
-        ).order_by(AvailableModel.created_at.asc()).first()
+
+        default_model = (
+            db.query(AvailableModel)
+            .filter(
+                AvailableModel.is_active == True,
+                AvailableModel.provider == ModelProvider.anthropic,
+            )
+            .order_by(AvailableModel.created_at.asc())
+            .first()
+        )
         if not default_model:
-            default_model = db.query(AvailableModel).filter(
-                AvailableModel.is_active == True
-            ).order_by(AvailableModel.created_at.asc()).first()
+            default_model = (
+                db.query(AvailableModel)
+                .filter(AvailableModel.is_active == True)
+                .order_by(AvailableModel.created_at.asc())
+                .first()
+            )
         if default_model:
             resolved_model_id = default_model.id
 
@@ -528,6 +564,7 @@ async def send_query(
 
             # Create QueryLog entry for evaluations
             from app.models.query_log import QueryLog
+
             query_log = QueryLog(
                 tenant_id=session.tenant_id,
                 user_id=current_user.id,
@@ -551,14 +588,16 @@ async def send_query(
             # Build citation responses for the done event
             citation_responses = []
             for cit_model, cit_data in zip(citation_models, citations):
-                citation_responses.append({
-                    "id": str(cit_model.id),
-                    "document_id": str(cit_data["document_id"]),
-                    "filename": cit_data["filename"],
-                    "chunk_text": cit_data["chunk_text"],
-                    "page_number": cit_data.get("page_number"),
-                    "chunk_index": cit_data.get("chunk_index", 0),
-                })
+                citation_responses.append(
+                    {
+                        "id": str(cit_model.id),
+                        "document_id": str(cit_data["document_id"]),
+                        "filename": cit_data["filename"],
+                        "chunk_text": cit_data["chunk_text"],
+                        "page_number": cit_data.get("page_number"),
+                        "chunk_index": cit_data.get("chunk_index", 0),
+                    }
+                )
 
             # Final event: data: {"type": "done", "citations": [...], "message_id": "..."}\n\n
             yield f"data: {json.dumps({'type': 'done', 'citations': citation_responses, 'message_id': str(assistant_message.id)})}\n\n"
@@ -573,9 +612,8 @@ async def send_query(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-        }
+        },
     )
-
 
 
 # ---------------------------------------------------------------------------
@@ -583,7 +621,11 @@ async def send_query(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/sessions/{session_id}/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/sessions/{session_id}/upload",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def upload_private_document(
     session_id: uuid.UUID,
     file: UploadFile = File(...),
@@ -705,11 +747,14 @@ def transcribe_voice_query(
             try:
                 os.remove(temp_file_path)
             except Exception as delete_exc:
-                logger.warning(f"Failed to delete temp file {temp_file_path}: {delete_exc}")
+                logger.warning(
+                    f"Failed to delete temp file {temp_file_path}: {delete_exc}"
+                )
 
 
 from app.models.available_model import AvailableModel
 from app.schemas.chat import ModelResponse
+
 
 @router.get("/models", response_model=list[ModelResponse])
 def get_active_models(
@@ -726,4 +771,3 @@ def get_active_models(
         .all()
     )
     return models
-

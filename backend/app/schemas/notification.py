@@ -1,8 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from uuid import UUID
 from datetime import datetime
 from typing import Optional
 from app.models.enums import NotificationType
+
 
 class NotificationResponse(BaseModel):
     id: UUID
@@ -17,7 +18,4 @@ class NotificationResponse(BaseModel):
     is_read: bool
     created_at: datetime
 
-
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}

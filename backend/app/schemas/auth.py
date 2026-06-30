@@ -1,6 +1,7 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator, HttpUrl, model_validator
+from pydantic import BaseModel, EmailStr, Field, HttpUrl, model_validator
 from uuid import UUID
 from datetime import datetime
+
 
 class RegistrationInitRequest(BaseModel):
     org_name: str = Field(..., min_length=2)
@@ -11,17 +12,20 @@ class RegistrationInitRequest(BaseModel):
     confirm_password: str = Field(..., min_length=8)
 
     @model_validator(mode="after")
-    def validate_passwords(self) -> 'RegistrationInitRequest':
+    def validate_passwords(self) -> "RegistrationInitRequest":
         if self.password != self.confirm_password:
             raise ValueError("Passwords do not match")
         return self
+
 
 class VerifyRegistrationOTPRequest(BaseModel):
     email: EmailStr
     otp: str = Field(..., min_length=6, max_length=6)
 
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
 
 class ResetPasswordRequest(BaseModel):
     email: EmailStr
@@ -30,18 +34,21 @@ class ResetPasswordRequest(BaseModel):
     confirm_password: str = Field(..., min_length=8)
 
     @model_validator(mode="after")
-    def validate_passwords(self) -> 'ResetPasswordRequest':
+    def validate_passwords(self) -> "ResetPasswordRequest":
         if self.new_password != self.confirm_password:
             raise ValueError("Passwords do not match")
         return self
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+
 class AcceptInviteRequest(BaseModel):
     token: str
     password: str = Field(..., min_length=8)
+
 
 class RoleResponse(BaseModel):
     id: UUID
@@ -54,9 +61,8 @@ class RoleResponse(BaseModel):
     department_name: str | None = None
     created_at: datetime
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}
+
 
 class UserResponse(BaseModel):
     id: UUID
@@ -71,32 +77,35 @@ class UserResponse(BaseModel):
     avatar_url: str | None = None
     created_at: datetime
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}
+
 
 class InviteMemberRequest(BaseModel):
     full_name: str
     email: EmailStr
     role_id: UUID
 
+
 class MessageResponse(BaseModel):
     message: str
+
 
 class GoogleOrgSetupRequest(BaseModel):
     org_name: str = Field(..., min_length=2)
     org_website: HttpUrl
     setup_token: str = Field(..., min_length=1)
 
+
 class SetPasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=8)
     confirm_password: str = Field(..., min_length=8)
 
     @model_validator(mode="after")
-    def validate_passwords(self) -> 'SetPasswordRequest':
+    def validate_passwords(self) -> "SetPasswordRequest":
         if self.new_password != self.confirm_password:
             raise ValueError("Passwords do not match")
         return self
+
 
 class UpdateProfileRequest(BaseModel):
     full_name: str | None = Field(None, min_length=2)

@@ -5,15 +5,20 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def send_invite_email(to_email: str, full_name: str, invite_token: str, organisation_name: str) -> None:
+
+def send_invite_email(
+    to_email: str, full_name: str, invite_token: str, organisation_name: str
+) -> None:
     """Sends an invitation email using the Resend Python SDK.
     If sending fails, logs the error and raises an HTTPException.
     """
     resend.api_key = settings.RESEND_API_KEY
     invite_url = f"{settings.FRONTEND_URL}/accept-invite?token={invite_token}"
-    
+
     if settings.RESEND_API_KEY == "API_KEY":
-        logger.warning(f"[DEVELOPMENT] Resend API key is not configured. Email not sent. Invite URL: {invite_url}")
+        logger.warning(
+            f"[DEVELOPMENT] Resend API key is not configured. Email not sent. Invite URL: {invite_url}"
+        )
         return
 
     html_content = f"""
@@ -75,21 +80,21 @@ def send_invite_email(to_email: str, full_name: str, invite_token: str, organisa
     </body>
     </html>
     """
-    
+
     try:
         params = {
-            "from": "noreply@grooviamusic.com", # This email is temporary and only for development purpose. This must be changed before production
+            "from": "noreply@grooviamusic.com",  # This email is temporary and only for development purpose. This must be changed before production
             "to": to_email,
             "subject": f"You have been invited to join {organisation_name} on RAG Vault",
-            "html": html_content
+            "html": html_content,
         }
         resend.Emails.send(params)
     except Exception as e:
         logger.error(f"Failed to send invite email to {to_email}: {str(e)}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to send invitation email: {str(e)}"
+            status_code=500, detail=f"Failed to send invitation email: {str(e)}"
         )
+
 
 def send_otp_email(to_email: str, full_name: str, otp: str, org_name: str) -> None:
     """Sends a registration OTP verification email using the Resend Python SDK.
@@ -99,7 +104,9 @@ def send_otp_email(to_email: str, full_name: str, otp: str, org_name: str) -> No
     first_name = full_name.split()[0] if full_name else "User"
 
     if settings.RESEND_API_KEY == "API_KEY" or not settings.RESEND_API_KEY:
-        logger.warning(f"[DEVELOPMENT] Resend API key is not configured. Registration OTP email not sent. to={to_email}, otp={otp}")
+        logger.warning(
+            f"[DEVELOPMENT] Resend API key is not configured. Registration OTP email not sent. to={to_email}, otp={otp}"
+        )
         return
 
     html_content = f"""
@@ -167,15 +174,15 @@ def send_otp_email(to_email: str, full_name: str, otp: str, org_name: str) -> No
             "from": "onboarding@resend.dev",
             "to": to_email,
             "subject": "Your verification code for RAG Vault",
-            "html": html_content
+            "html": html_content,
         }
         resend.Emails.send(params)
     except Exception as e:
         logger.error(f"Failed to send OTP email to {to_email}: {str(e)}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to send OTP email: {str(e)}"
+            status_code=500, detail=f"Failed to send OTP email: {str(e)}"
         )
+
 
 def send_forgot_password_otp_email(to_email: str, full_name: str, otp: str) -> None:
     """Sends a forgot password OTP email using the Resend Python SDK.
@@ -185,7 +192,9 @@ def send_forgot_password_otp_email(to_email: str, full_name: str, otp: str) -> N
     first_name = full_name.split()[0] if full_name else "User"
 
     if settings.RESEND_API_KEY == "API_KEY" or not settings.RESEND_API_KEY:
-        logger.warning(f"[DEVELOPMENT] Resend API key is not configured. Forgot password OTP email not sent. to={to_email}, otp={otp}")
+        logger.warning(
+            f"[DEVELOPMENT] Resend API key is not configured. Forgot password OTP email not sent. to={to_email}, otp={otp}"
+        )
         return
 
     html_content = f"""
@@ -253,12 +262,11 @@ def send_forgot_password_otp_email(to_email: str, full_name: str, otp: str) -> N
             "from": "onboarding@resend.dev",
             "to": to_email,
             "subject": "Reset your RAG Vault password",
-            "html": html_content
+            "html": html_content,
         }
         resend.Emails.send(params)
     except Exception as e:
         logger.error(f"Failed to send forgot password email to {to_email}: {str(e)}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to send forgot password email: {str(e)}"
+            status_code=500, detail=f"Failed to send forgot password email: {str(e)}"
         )

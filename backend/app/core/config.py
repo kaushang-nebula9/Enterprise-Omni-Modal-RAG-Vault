@@ -1,6 +1,6 @@
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
+
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/rag_vault"
@@ -29,9 +29,8 @@ class Settings(BaseSettings):
     CHAT_SUSTAINED_WINDOW_SECONDS: int = 60
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
+
 
 settings = Settings()

@@ -28,7 +28,6 @@ celery_app.conf.update(
             "task": "check_tenant_budgets_task",
             "schedule": 3600.0,
         }
-    }
+    },
 )
 celery_app.autodiscover_tasks(["app.tasks"])
-

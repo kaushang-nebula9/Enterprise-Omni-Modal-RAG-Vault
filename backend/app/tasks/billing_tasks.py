@@ -12,6 +12,7 @@ from app.services.billing_service import calculate_tenant_monthly_cost
 
 logger = logging.getLogger(__name__)
 
+
 @celery_app.task(name="check_tenant_budgets_task")
 def check_tenant_budgets_task():
     """
@@ -27,30 +28,39 @@ def check_tenant_budgets_task():
         tenants = db.query(Tenant).all()
         for tenant in tenants:
             cost = calculate_tenant_monthly_cost(db, tenant.id)
-            logger.info(f"Tenant '{tenant.name}' ({tenant.id}) current month cost: ${cost:.4f}")
+            logger.info(
+                f"Tenant '{tenant.name}' ({tenant.id}) current month cost: ${cost:.4f}"
+            )
             if tenant.monthly_budget_limit is not None:
                 if cost > tenant.monthly_budget_limit:
                     logger.warning(
                         f"Tenant '{tenant.name}' ({tenant.id}) has exceeded monthly budget limit! "
                         f"Cost: ${cost:.4f}, Limit: ${tenant.monthly_budget_limit:.2f}"
                     )
-                    
+
                     # Fetch all admins for this tenant
-                    admins = db.query(User).join(Role).filter(
-                        User.tenant_id == tenant.id,
-                        Role.is_admin == True
-                    ).all()
-                    
+                    admins = (
+                        db.query(User)
+                        .join(Role)
+                        .filter(User.tenant_id == tenant.id, Role.is_admin == True)
+                        .all()
+                    )
+
                     for admin in admins:
                         # Check if this admin has already been notified about budget_exceeded this calendar month for the CURRENT budget limit
                         limit_str = f"Limit: ${tenant.monthly_budget_limit:.2f}"
-                        already_notified = db.query(Notification).filter(
-                            Notification.user_id == admin.id,
-                            Notification.type == NotificationType.budget_exceeded,
-                            Notification.created_at >= start_of_month,
-                            Notification.message.like(f"%{limit_str}%")
-                        ).first() is not None
-                        
+                        already_notified = (
+                            db.query(Notification)
+                            .filter(
+                                Notification.user_id == admin.id,
+                                Notification.type == NotificationType.budget_exceeded,
+                                Notification.created_at >= start_of_month,
+                                Notification.message.like(f"%{limit_str}%"),
+                            )
+                            .first()
+                            is not None
+                        )
+
                         if not already_notified:
                             msg = (
                                 f"Your organization '{tenant.name}' has exceeded its monthly budget limit. "
@@ -61,7 +71,7 @@ def check_tenant_budgets_task():
                                 user_id=admin.id,
                                 tenant_id=tenant.id,
                                 type=NotificationType.budget_exceeded,
-                                message=msg
+                                message=msg,
                             )
     except Exception as e:
         logger.error(f"Error in check_tenant_budgets_task: {str(e)}")

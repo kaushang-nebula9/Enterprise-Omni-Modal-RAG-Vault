@@ -4,10 +4,18 @@ from datetime import datetime
 from typing import Optional, List
 from app.models.enums import EvaluationStatus
 
+
 class EvaluationRunRequest(BaseModel):
-    query_count: Optional[int] = Field(default=None, description="Number of latest queries to evaluate")
-    date_range_start: Optional[datetime] = Field(default=None, description="Start range for filtering query logs")
-    date_range_end: Optional[datetime] = Field(default=None, description="End range for filtering query logs")
+    query_count: Optional[int] = Field(
+        default=None, description="Number of latest queries to evaluate"
+    )
+    date_range_start: Optional[datetime] = Field(
+        default=None, description="Start range for filtering query logs"
+    )
+    date_range_end: Optional[datetime] = Field(
+        default=None, description="End range for filtering query logs"
+    )
+
 
 class EvaluationRunResponse(BaseModel):
     id: UUID
@@ -22,9 +30,8 @@ class EvaluationRunResponse(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime] = None
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}
+
 
 class EvaluationResultResponse(BaseModel):
     id: UUID
@@ -39,13 +46,13 @@ class EvaluationResultResponse(BaseModel):
     answer: Optional[str] = None
     model_string: Optional[str] = None
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}
+
 
 class EvaluationDetailResponse(BaseModel):
     run: EvaluationRunResponse
     results: List[EvaluationResultResponse]
+
 
 class ModelEvaluationBreakdown(BaseModel):
     model_string: str
@@ -53,18 +60,16 @@ class ModelEvaluationBreakdown(BaseModel):
     avg_faithfulness_score: float
     avg_relevance_score: float
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}
+
 
 class EvaluationOverallResponse(BaseModel):
     avg_faithfulness_score: Optional[float] = None
     avg_relevance_score: Optional[float] = None
     query_count: int
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}
+
 
 class AllEvaluationResultItem(BaseModel):
     id: UUID
@@ -80,9 +85,8 @@ class AllEvaluationResultItem(BaseModel):
     model_string: Optional[str] = None
     run_created_at: datetime
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}
+
 
 class AllEvaluationResultsResponse(BaseModel):
     results: List[AllEvaluationResultItem]

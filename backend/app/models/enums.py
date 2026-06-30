@@ -10,13 +10,16 @@ class FileType(str, enum.Enum):
     pptx = "pptx"
     excel = "excel"
 
+
 class OwnerType(str, enum.Enum):
     organisation = "organisation"
     private = "private"
 
+
 class Visibility(str, enum.Enum):
     org_wide = "org_wide"
     private = "private"
+
 
 class DocumentStatus(str, enum.Enum):
     pending = "pending"
@@ -24,18 +27,22 @@ class DocumentStatus(str, enum.Enum):
     ready = "ready"
     failed = "failed"
 
+
 class MessageRole(str, enum.Enum):
     user = "user"
     assistant = "assistant"
+
 
 class OTPPurpose(str, enum.Enum):
     registration = "registration"
     forgot_password = "forgot_password"
 
+
 class GrantedVia(str, enum.Enum):
     direct = "direct"
     inherited = "inherited"
     department = "department"
+
 
 class NotificationType(str, enum.Enum):
     role_assigned = "role_assigned"
@@ -46,15 +53,18 @@ class NotificationType(str, enum.Enum):
     evaluation_completed = "evaluation_completed"
     budget_exceeded = "budget_exceeded"
 
+
 class ModelProvider(str, enum.Enum):
     anthropic = "anthropic"
     openrouter = "openrouter"
+
 
 class EvaluationStatus(str, enum.Enum):
     pending = "pending"
     running = "running"
     completed = "completed"
     failed = "failed"
+
 
 # SQLAlchemy Enum Types
 file_type_enum = SQLEnum(FileType, name="filetype")
@@ -67,5 +77,3 @@ granted_via_enum = SQLEnum(GrantedVia, name="grantedvia")
 notification_type_enum = SQLEnum(NotificationType, name="notificationtype")
 model_provider_enum = SQLEnum(ModelProvider, name="modelprovider")
 evaluation_status_enum = SQLEnum(EvaluationStatus, name="evaluationstatus")
-
-

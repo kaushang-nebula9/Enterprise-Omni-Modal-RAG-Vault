@@ -1,6 +1,7 @@
 """
 Role hierarchy service — ancestor traversal and cycle detection.
 """
+
 import uuid
 from sqlalchemy.orm import Session
 from app.models.role import Role

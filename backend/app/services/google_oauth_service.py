@@ -1,5 +1,4 @@
 import httpx
-from google.auth import jwt
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests
 from fastapi import HTTPException, status
@@ -9,6 +8,7 @@ from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 
 serializer = URLSafeTimedSerializer(settings.SECRET_KEY)
 
+
 def get_google_auth_url() -> str:
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
@@ -16,9 +16,10 @@ def get_google_auth_url() -> str:
         "response_type": "code",
         "scope": "openid email profile",
         "access_type": "offline",
-        "prompt": "consent"
+        "prompt": "consent",
     }
     return f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
+
 
 async def exchange_code_for_user_info(code: str) -> dict:
     try:
@@ -30,12 +31,12 @@ async def exchange_code_for_user_info(code: str) -> dict:
                 "client_id": settings.GOOGLE_CLIENT_ID,
                 "client_secret": settings.GOOGLE_CLIENT_SECRET,
                 "redirect_uri": settings.GOOGLE_REDIRECT_URI,
-                "grant_type": "authorization_code"
+                "grant_type": "authorization_code",
             }
             token_response = await client.post(token_url, data=data)
             if token_response.status_code != 200:
                 raise ValueError("Token exchange failed")
-                
+
             token_json = token_response.json()
             id_token = token_json.get("id_token")
             if not id_token:
@@ -43,9 +44,7 @@ async def exchange_code_for_user_info(code: str) -> dict:
 
             # 2. Verify and decode the ID token
             decoded = google_id_token.verify_oauth2_token(
-                id_token,
-                requests.Request(),
-                settings.GOOGLE_CLIENT_ID
+                id_token, requests.Request(), settings.GOOGLE_CLIENT_ID
             )
 
             # 4. Extract profile fields
@@ -61,22 +60,26 @@ async def exchange_code_for_user_info(code: str) -> dict:
                 "google_id": google_id,
                 "email": email,
                 "full_name": full_name,
-                "avatar_url": avatar_url
+                "avatar_url": avatar_url,
             }
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to authenticate with Google"
+            detail="Failed to authenticate with Google",
         )
 
-def create_google_setup_token(email: str, full_name: str, google_id: str, avatar_url: str | None) -> str:
+
+def create_google_setup_token(
+    email: str, full_name: str, google_id: str, avatar_url: str | None
+) -> str:
     payload = {
         "email": email,
         "full_name": full_name,
         "google_id": google_id,
-        "avatar_url": avatar_url
+        "avatar_url": avatar_url,
     }
     return serializer.dumps(payload)
+
 
 def verify_google_setup_token(token: str) -> dict:
     try:
@@ -84,5 +87,5 @@ def verify_google_setup_token(token: str) -> dict:
     except (SignatureExpired, BadSignature):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Setup session expired. Please try signing in with Google again."
+            detail="Setup session expired. Please try signing in with Google again.",
         )

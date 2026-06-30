@@ -3,6 +3,7 @@ from uuid import UUID
 from datetime import datetime
 from typing import Any
 
+
 class AuditLogItemResponse(BaseModel):
     id: UUID
     tenant_id: UUID
@@ -13,9 +14,8 @@ class AuditLogItemResponse(BaseModel):
     metadata: dict[str, Any] | None = None
     created_at: datetime
 
-    model_config = {
-        "from_attributes": True
-    }
+    model_config = {"from_attributes": True}
+
 
 class AuditLogListResponse(BaseModel):
     items: list[AuditLogItemResponse]
