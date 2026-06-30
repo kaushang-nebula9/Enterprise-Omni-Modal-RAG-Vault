@@ -1,6 +1,10 @@
 from unittest.mock import MagicMock, patch
 import pytest
-from app.services.qdrant_service import search_vectors, get_sparse_model, generate_sparse_vector
+from app.services.qdrant_service import (
+    search_vectors,
+    get_sparse_model,
+    generate_sparse_vector,
+)
 
 
 def test_get_sparse_model_disabled():
@@ -56,7 +60,10 @@ def test_search_vectors_enabled():
 
     with (
         patch("app.services.qdrant_service._get_client", return_value=mock_client),
-        patch("app.services.qdrant_service.get_sparse_model", return_value=mock_sparse_model),
+        patch(
+            "app.services.qdrant_service.get_sparse_model",
+            return_value=mock_sparse_model,
+        ),
         patch("app.core.config.settings.ENABLE_SPARSE_SEARCH", True),
     ):
         results = search_vectors(

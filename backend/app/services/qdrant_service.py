@@ -38,6 +38,7 @@ def get_sparse_model() -> Optional["SparseTextEmbedding"]:  # noqa: F821
         raise RuntimeError("Sparse search is disabled via configuration.")
     if _sparse_model is None:
         from fastembed import SparseTextEmbedding
+
         _sparse_model = SparseTextEmbedding("Qdrant/bm25")
     return _sparse_model
 
@@ -194,8 +195,12 @@ def search_vectors(
         results = client.query_points(
             collection_name=collection_name,
             prefetch=[
-                Prefetch(query=query_vector, using="dense", filter=role_filter, limit=20),
-                Prefetch(query=sparse_query, using="sparse", filter=role_filter, limit=20),
+                Prefetch(
+                    query=query_vector, using="dense", filter=role_filter, limit=20
+                ),
+                Prefetch(
+                    query=sparse_query, using="sparse", filter=role_filter, limit=20
+                ),
             ],
             query=FusionQuery(fusion=Fusion.RRF),
             limit=limit,
