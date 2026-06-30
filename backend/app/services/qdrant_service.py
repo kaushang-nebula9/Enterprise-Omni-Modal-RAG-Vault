@@ -21,7 +21,6 @@ from qdrant_client.models import (
     Fusion,
 )
 from app.core.config import settings
-from fastembed import SparseTextEmbedding
 
 logger = logging.getLogger(__name__)
 
@@ -30,17 +29,22 @@ logger = logging.getLogger(__name__)
 # )
 VECTOR_SIZE = 3072  # gemini-embedding-2 output dimension
 
-_sparse_model = None
+_sparse_model: Optional["SparseTextEmbedding"] = None  # noqa: F821
 
 
-def get_sparse_model() -> SparseTextEmbedding:
+def get_sparse_model() -> Optional["SparseTextEmbedding"]:  # noqa: F821
     global _sparse_model
+    if not settings.ENABLE_SPARSE_SEARCH:
+        raise RuntimeError("Sparse search is disabled via configuration.")
     if _sparse_model is None:
+        from fastembed import SparseTextEmbedding
         _sparse_model = SparseTextEmbedding("Qdrant/bm25")
     return _sparse_model
 
 
 def generate_sparse_vector(text: str) -> dict:
+    if not settings.ENABLE_SPARSE_SEARCH:
+        return {"indices": [], "values": []}
     model = get_sparse_model()
     embeddings = list(model.embed([text]))
     embedding = embeddings[0]
@@ -158,9 +162,6 @@ def search_vectors(
     """
     client = _get_client()
 
-    # Generate sparse vector for query
-    sparse_query = generate_sparse_vector(query_text)
-
     must_conditions = [
         FieldCondition(
             key="role_ids",
@@ -177,16 +178,29 @@ def search_vectors(
 
     role_filter = Filter(must=must_conditions)
 
-    results = client.query_points(
-        collection_name=collection_name,
-        prefetch=[
-            Prefetch(query=query_vector, using="dense", filter=role_filter, limit=20),
-            Prefetch(query=sparse_query, using="sparse", filter=role_filter, limit=20),
-        ],
-        query=FusionQuery(fusion=Fusion.RRF),
-        limit=limit,
-        with_payload=True,
-    ).points
+    if not settings.ENABLE_SPARSE_SEARCH:
+        results = client.query_points(
+            collection_name=collection_name,
+            query=query_vector,
+            using="dense",
+            filter=role_filter,
+            limit=limit,
+            with_payload=True,
+        ).points
+    else:
+        # Generate sparse vector for query
+        sparse_query = generate_sparse_vector(query_text)
+
+        results = client.query_points(
+            collection_name=collection_name,
+            prefetch=[
+                Prefetch(query=query_vector, using="dense", filter=role_filter, limit=20),
+                Prefetch(query=sparse_query, using="sparse", filter=role_filter, limit=20),
+            ],
+            query=FusionQuery(fusion=Fusion.RRF),
+            limit=limit,
+            with_payload=True,
+        ).points
     return [{"payload": hit.payload, "score": hit.score} for hit in results]
 
 

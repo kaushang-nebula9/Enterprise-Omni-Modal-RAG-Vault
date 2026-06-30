@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     ENABLE_CROSS_ENCODER_RERANKING: bool = True
+    ENABLE_SPARSE_SEARCH: bool = True
 
     CHAT_BURST_LIMIT: int = 3
     CHAT_BURST_WINDOW_SECONDS: int = 10
