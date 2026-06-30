@@ -7,7 +7,7 @@ class Base(DeclarativeBase):
 
 # Import models here so Alembic can detect them
 from app.models.tenant import Tenant
-from app.models.user import User
+# from app.models.user import User
 from app.models.role import Role
 from app.models.department import Department
 from app.models.document import Document
