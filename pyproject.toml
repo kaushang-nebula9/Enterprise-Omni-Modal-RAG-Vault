@@ -1,0 +1,4 @@
+[tool.ruff]
+exclude = [
+    "backend/app/db/base.py",
+]
