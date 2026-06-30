@@ -442,8 +442,6 @@ def process_document(document_id: str, db: Session) -> None:
                     )
                     chunk_index += 1
 
-            total_chunk_count = chunk_index
-
         elif file_type == FileType.docx:
             full_text = extract_text_from_docx(abs_file_path, doc_id)
             content_sample = full_text[:2000]

@@ -8,6 +8,8 @@ from app.core.dependencies import get_current_user
 from app.models.user import User
 from app.models.notification import Notification
 from app.schemas.notification import NotificationResponse
+import redis.asyncio as aioredis
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +42,7 @@ def mark_notifications_as_read(
     """
     unread_notifs = (
         db.query(Notification)
-        .filter(Notification.user_id == current_user.id, Notification.is_read == False)
+        .filter(Notification.user_id == current_user.id, not Notification.is_read)
         .all()
     )
     for notif in unread_notifs:
@@ -58,9 +60,6 @@ async def stream_notifications(
     """
 
     async def event_generator():
-        import redis.asyncio as aioredis
-        from app.core.config import settings
-
         client = aioredis.from_url(settings.REDIS_URL)
         pubsub = client.pubsub()
         await pubsub.subscribe(f"notifications:{current_user.id}")

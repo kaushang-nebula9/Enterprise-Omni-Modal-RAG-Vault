@@ -38,6 +38,12 @@ from app.schemas.document import DocumentResponse
 from app.services.rag_service import run_rag_pipeline
 from app.services.storage_service import save_file
 from app.services.document_processor import process_document
+import re
+from sqlalchemy import or_
+
+from app.models.document_access_policy import DocumentAccessPolicy
+from app.models.available_model import AvailableModel
+from app.schemas.chat import ModelResponse
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +64,6 @@ EXTENSION_TO_FILE_TYPE: dict[str, FileType] = {
     ".wav": FileType.audio,
     ".m4a": FileType.audio,
 }
-
-import re
-from sqlalchemy import or_
-
-from app.models.document_access_policy import DocumentAccessPolicy
 
 SUMMARIZE_DOC_INSTRUCTION = "The user wants a summary, not a detailed answer. Identify the key points, main arguments, and important facts from the provided context. Present them concisely, in your own words, organized in a logical order (e.g. by topic or chronology, whichever fits the source). Omit minor details unless they are essential to understanding the core content. Keep the summary significantly shorter than the source material. If summarizing a document, mention the document's overall purpose or subject in the first sentence before going into specifics."
 SUMMARIZE_FOCUSED_INSTRUCTION = "The user wants a concise, summary-style answer rather than an exhaustive one. Answer the question directly in 3-5 sentences or a short bullet list, covering only the most important points. Avoid tangents, background context, or exhaustive detail unless the question explicitly asks for it."
@@ -463,9 +464,7 @@ async def send_query(
 
         model_exists = (
             db.query(AvailableModel)
-            .filter(
-                AvailableModel.id == body.model_id, AvailableModel.is_active == True
-            )
+            .filter(AvailableModel.id == body.model_id, AvailableModel.is_active)
             .first()
         )
         if model_exists:
@@ -479,7 +478,7 @@ async def send_query(
                 db.query(AvailableModel)
                 .filter(
                     AvailableModel.id == current_user.tenant.default_model_id,
-                    AvailableModel.is_active == True,
+                    AvailableModel.is_active,
                 )
                 .first()
             )
@@ -493,7 +492,7 @@ async def send_query(
         default_model = (
             db.query(AvailableModel)
             .filter(
-                AvailableModel.is_active == True,
+                AvailableModel.is_active,
                 AvailableModel.provider == ModelProvider.anthropic,
             )
             .order_by(AvailableModel.created_at.asc())
@@ -502,7 +501,7 @@ async def send_query(
         if not default_model:
             default_model = (
                 db.query(AvailableModel)
-                .filter(AvailableModel.is_active == True)
+                .filter(AvailableModel.is_active)
                 .order_by(AvailableModel.created_at.asc())
                 .first()
             )
@@ -752,10 +751,6 @@ def transcribe_voice_query(
                 )
 
 
-from app.models.available_model import AvailableModel
-from app.schemas.chat import ModelResponse
-
-
 @router.get("/models", response_model=list[ModelResponse])
 def get_active_models(
     current_user: User = Depends(get_current_user),
@@ -766,7 +761,7 @@ def get_active_models(
     """
     models = (
         db.query(AvailableModel)
-        .filter(AvailableModel.is_active == True)
+        .filter(AvailableModel.is_active)
         .order_by(AvailableModel.created_at.asc())
         .all()
     )

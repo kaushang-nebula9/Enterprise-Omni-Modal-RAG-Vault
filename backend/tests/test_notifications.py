@@ -16,12 +16,11 @@ from app.services.notification_service import (
     register_connection,
     unregister_connection,
 )
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB
 
 # Use in-memory SQLite database for testing
 DATABASE_URL = "sqlite:///:memory:"
-
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.dialects.postgresql import JSONB
 
 
 @compiles(JSONB, "sqlite")

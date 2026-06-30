@@ -20,6 +20,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
+from app.models.role import Role
+from app.models.user import User
+from app.models.notification import Notification
+from app.models.enums import NotificationType
 
 
 @compiles(JSONB, "sqlite")
@@ -139,12 +143,6 @@ def test_check_tenant_budgets_task_warning(mock_session_local):
             assert (
                 "exceeded monthly budget limit" in mock_logger.warning.call_args[0][0]
             )
-
-
-from app.models.role import Role
-from app.models.user import User
-from app.models.notification import Notification
-from app.models.enums import NotificationType
 
 
 @patch("app.tasks.billing_tasks.SessionLocal")

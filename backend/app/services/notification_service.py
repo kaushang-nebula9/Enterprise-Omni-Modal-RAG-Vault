@@ -5,6 +5,9 @@ import logging
 from sqlalchemy.orm import Session
 from app.models.notification import Notification
 from app.models.enums import NotificationType
+import redis
+import json
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -109,10 +112,6 @@ def create_notification(
 
     # Publish to Redis pub/sub channel notifications:{user_id}
     try:
-        import redis
-        import json
-        from app.core.config import settings
-
         r = redis.from_url(settings.REDIS_URL)
         r.publish(f"notifications:{user_id}", json.dumps(payload))
         logger.info(

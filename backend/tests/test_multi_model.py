@@ -13,13 +13,12 @@ from app.models.available_model import AvailableModel
 from app.models.enums import ModelProvider
 from app.models.query_message import QueryMessage
 from app.models.enums import MessageRole
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB
 
 # Import all other models so their schemas/tables are metadata-bound
 
 DATABASE_URL = "sqlite:///:memory:"
-
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.dialects.postgresql import JSONB
 
 
 @compiles(JSONB, "sqlite")

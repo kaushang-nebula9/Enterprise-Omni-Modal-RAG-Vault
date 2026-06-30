@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field, HttpUrl
 from uuid import UUID
-from datetime import datetime
 from typing import Optional
+from app.models.enums import ModelProvider
+from datetime import date, datetime
 
 
 class AdminStatsResponse(BaseModel):
@@ -35,10 +36,6 @@ class TenantResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-from app.models.enums import ModelProvider
-from typing import Optional
-
-
 class ModelCreateRequest(BaseModel):
     display_name: str = Field(..., min_length=1)
     provider: ModelProvider
@@ -55,10 +52,6 @@ class ModelUpdateRequest(BaseModel):
     is_active: Optional[bool] = None
     input_price_per_million: Optional[float] = None
     output_price_per_million: Optional[float] = None
-
-
-from datetime import date, datetime
-from uuid import UUID
 
 
 class UsageSummaryItem(BaseModel):

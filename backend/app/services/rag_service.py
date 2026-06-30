@@ -28,6 +28,7 @@ from app.models.user import User
 from app.services import embedding_service
 from app.services.qdrant_service import search_vectors
 from app.services.storage_service import get_absolute_path
+from sentence_transformers import CrossEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +59,6 @@ def _get_async_anthropic_client() -> AsyncAnthropic:
 # ---------------------------------------------------------------------------
 # CrossEncoder model (ACTIVE)
 # ---------------------------------------------------------------------------
-
-from sentence_transformers import CrossEncoder
 
 _cross_encoder: CrossEncoder | None = None
 

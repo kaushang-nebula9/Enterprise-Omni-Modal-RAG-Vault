@@ -25,6 +25,20 @@ from datetime import datetime
 import re
 import random
 from uuid import UUID
+from datetime import date, timedelta
+from sqlalchemy import cast, Date, func, case, and_
+from app.models.usage_log import UsageLog
+from app.models.department import Department
+from app.schemas.admin import (
+    UsageSummaryItem,
+    DashboardOverviewResponse,
+    DocumentInsightsResponse,
+    DocumentTypeCount,
+    RecentDocumentItem,
+)
+from app.models.available_model import AvailableModel
+from app.schemas.chat import ModelResponse
+from app.schemas.admin import ModelCreateRequest, ModelUpdateRequest
 
 router = APIRouter()
 
@@ -43,7 +57,7 @@ def get_admin_stats(
     # Excluding default roles (Admin, Member) from the roles count
     total_roles = (
         db.query(Role)
-        .filter(Role.tenant_id == current_admin.tenant_id, Role.is_default == False)
+        .filter(Role.tenant_id == current_admin.tenant_id, not Role.is_default)
         .count()
     )
 
@@ -281,7 +295,7 @@ def update_organisation(
                 db.query(AvailableModel)
                 .filter(
                     AvailableModel.id == request.default_model_id,
-                    AvailableModel.is_active == True,
+                    AvailableModel.is_active,
                 )
                 .first()
             )
@@ -367,11 +381,6 @@ def delete_organisation(
     response.delete_cookie("refresh_token")
 
     return MessageResponse(message="Organisation deleted successfully")
-
-
-from app.models.available_model import AvailableModel
-from app.schemas.chat import ModelResponse
-from app.schemas.admin import ModelCreateRequest, ModelUpdateRequest
 
 
 @router.get("/models", response_model=list[ModelResponse])
@@ -462,19 +471,6 @@ def admin_delete_model(
     db.delete(db_model)
     db.commit()
     return MessageResponse(message="Model deleted successfully")
-
-
-from datetime import date, timedelta
-from sqlalchemy import cast, Date, func, case, and_
-from app.models.usage_log import UsageLog
-from app.models.department import Department
-from app.schemas.admin import (
-    UsageSummaryItem,
-    DashboardOverviewResponse,
-    DocumentInsightsResponse,
-    DocumentTypeCount,
-    RecentDocumentItem,
-)
 
 
 @router.get("/usage", response_model=UsageSummaryResponse)

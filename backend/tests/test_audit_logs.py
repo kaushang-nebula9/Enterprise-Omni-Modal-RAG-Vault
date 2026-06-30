@@ -14,12 +14,11 @@ from app.models.user import User
 from app.models.role import Role
 from app.models.audit_log import AuditLog
 from app.services.audit_log_service import log_audit_event
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB
 
 # Use in-memory SQLite database for testing
 DATABASE_URL = "sqlite:///:memory:"
-
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.dialects.postgresql import JSONB
 
 
 @compiles(JSONB, "sqlite")

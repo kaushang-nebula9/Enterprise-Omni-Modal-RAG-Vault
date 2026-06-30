@@ -22,10 +22,14 @@ from app.models.usage_log import UsageLog
 from app.services.rag_service import run_rag_pipeline
 from app.api.v1.admin import get_usage_summary
 
-DATABASE_URL = "sqlite:///:memory:"
+
+from app.api.v1.admin import get_dashboard_overview, get_document_insights
+from app.models.enums import FileType, DocumentStatus, OwnerType, Visibility
 
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
+
+DATABASE_URL = "sqlite:///:memory:"
 
 
 @compiles(JSONB, "sqlite")
@@ -388,10 +392,6 @@ def test_get_usage_summary_endpoint(db):
     assert len(resp_range.usage) == 2
     assert resp_range.usage[0].date == yesterday.date()
     assert resp_range.usage[1].date == today.date()
-
-
-from app.api.v1.admin import get_dashboard_overview, get_document_insights
-from app.models.enums import FileType, DocumentStatus, OwnerType, Visibility
 
 
 def test_new_dashboard_endpoints(db):

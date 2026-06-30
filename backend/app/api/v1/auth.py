@@ -49,6 +49,7 @@ from app.services.email_service import (
     send_otp_email,
     send_forgot_password_otp_email,
 )
+from app.schemas.auth import UpdateProfileRequest
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 import logging
 
@@ -75,7 +76,7 @@ def register_signup(
         db.query(OTPVerification).filter(
             OTPVerification.email == request.email,
             OTPVerification.purpose == OTPPurpose.registration,
-            OTPVerification.is_used == False,
+            not OTPVerification.is_used,
         ).delete()
 
         hashed_password = hash_password(request.password)
@@ -166,7 +167,7 @@ def register_verify_otp(
         .filter(
             OTPVerification.email == request.email,
             OTPVerification.purpose == OTPPurpose.registration,
-            OTPVerification.is_used == False,
+            not OTPVerification.is_used,
         )
         .order_by(OTPVerification.created_at.desc())
         .first()
@@ -297,7 +298,7 @@ def forgot_password_route(
         db.query(OTPVerification).filter(
             OTPVerification.email == request.email,
             OTPVerification.purpose == OTPPurpose.forgot_password,
-            OTPVerification.is_used == False,
+            not OTPVerification.is_used,
         ).delete()
 
         raw_otp, otp_hash = generate_otp()
@@ -338,7 +339,7 @@ def reset_password_route(request: ResetPasswordRequest, db: Session = Depends(ge
         .filter(
             OTPVerification.email == request.email,
             OTPVerification.purpose == OTPPurpose.forgot_password,
-            OTPVerification.is_used == False,
+            not OTPVerification.is_used,
         )
         .order_by(OTPVerification.created_at.desc())
         .first()
@@ -694,9 +695,6 @@ def accept_invite(request: AcceptInviteRequest, db: Session = Depends(get_db)):
 def get_me(current_user: User = Depends(get_current_user)):
     """Protected route to get the current authenticated user's details."""
     return current_user
-
-
-from app.schemas.auth import UpdateProfileRequest
 
 
 @router.patch("/profile", response_model=UserResponse)

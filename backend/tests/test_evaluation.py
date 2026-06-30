@@ -14,12 +14,11 @@ from app.models.query_log import QueryLog
 from app.models.evaluation import EvaluationRun, EvaluationResult
 from app.models.enums import EvaluationStatus
 from app.tasks.evaluation_tasks import clean_and_parse_json
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB
 
 # Use in-memory SQLite database for testing
 DATABASE_URL = "sqlite:///:memory:"
-
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.dialects.postgresql import JSONB
 
 
 @compiles(JSONB, "sqlite")

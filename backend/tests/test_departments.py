@@ -8,6 +8,8 @@ import uuid
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB
 from app.db.base import Base
 from app.models.role import Role
 from app.models.document import Document
@@ -17,9 +19,6 @@ from app.models.enums import FileType, DocumentStatus, OwnerType, Visibility
 
 # Use in-memory SQLite database for testing
 DATABASE_URL = "sqlite:///:memory:"
-
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.dialects.postgresql import JSONB
 
 
 @compiles(JSONB, "sqlite")

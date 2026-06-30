@@ -1,4 +1,8 @@
 [tool.ruff]
 exclude = [
     "backend/app/db/base.py",
+    "backend/app/models/__init__.py",
+    "backend/app/schemas/__init__.py",
+    "backend/app/tasks/__init__.py",
+
 ]

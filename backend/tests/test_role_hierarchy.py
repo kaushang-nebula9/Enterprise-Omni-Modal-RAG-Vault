@@ -16,11 +16,11 @@ from app.models.enums import FileType, DocumentStatus, OwnerType, Visibility
 from app.services.role_service import get_role_ancestors, check_role_cycle
 from app.api.v1.documents import _create_policies_with_inheritance
 
-# Use in-memory SQLite database for testing
-DATABASE_URL = "sqlite:///:memory:"
-
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
+
+# Use in-memory SQLite database for testing
+DATABASE_URL = "sqlite:///:memory:"
 
 
 @compiles(JSONB, "sqlite")

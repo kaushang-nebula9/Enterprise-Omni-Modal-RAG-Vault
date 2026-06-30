@@ -42,7 +42,7 @@ def check_tenant_budgets_task():
                     admins = (
                         db.query(User)
                         .join(Role)
-                        .filter(User.tenant_id == tenant.id, Role.is_admin == True)
+                        .filter(User.tenant_id == tenant.id, Role.is_admin)
                         .all()
                     )
 

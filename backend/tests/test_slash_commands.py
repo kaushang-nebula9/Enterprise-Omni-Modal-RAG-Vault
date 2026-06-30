@@ -14,10 +14,10 @@ from app.models.document import Document
 from app.models.enums import FileType, DocumentStatus, OwnerType, Visibility
 from app.api.v1.chat import parse_chat_command
 
-DATABASE_URL = "sqlite:///:memory:"
-
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB
+
+DATABASE_URL = "sqlite:///:memory:"
 
 
 @compiles(JSONB, "sqlite")

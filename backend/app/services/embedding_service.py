@@ -7,6 +7,7 @@ import logging
 from google import genai
 from google.genai import types as genai_types
 from app.core.config import settings
+from sentence_transformers import SentenceTransformer as _SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,6 @@ def _get_client() -> genai.Client:
 
 # -- Sentence Transformers (ACTIVE) -----------------------------------------
 # Model: BAAI/bge-large-en-v1.5  |  Output dimension: 1024
-
-from sentence_transformers import SentenceTransformer as _SentenceTransformer
 
 _st_model: _SentenceTransformer | None = None
 

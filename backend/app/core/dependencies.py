@@ -52,7 +52,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     """FastAPI dependency that calls get_current_user and additionally
     raises 403 if the user's role is not admin.
     """
-    if current_user.role.is_admin != True:
+    if not current_user.role.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required"
         )
