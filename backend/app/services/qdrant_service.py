@@ -184,7 +184,7 @@ def search_vectors(
             collection_name=collection_name,
             query=query_vector,
             using="dense",
-            filter=role_filter,
+            query_filter=role_filter,
             limit=limit,
             with_payload=True,
         ).points
