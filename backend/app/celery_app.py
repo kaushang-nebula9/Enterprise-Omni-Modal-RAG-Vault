@@ -1,5 +1,5 @@
 import app.db.base  # noqa: F401 - ensures all models are registered before tasks run
-from celery import Celery
+from celery import Celery # type: ignore
 from app.core.config import settings
 
 celery_app = Celery(
@@ -31,3 +31,8 @@ celery_app.conf.update(
     },
 )
 celery_app.autodiscover_tasks(["app.tasks"])
+
+# Explicitly import task modules to guarantee registration regardless of autodiscovery timing
+import app.tasks.document_tasks  # noqa: E402
+import app.tasks.billing_tasks  # noqa: E402
+import app.tasks.evaluation_tasks  # noqa: E402, F401
