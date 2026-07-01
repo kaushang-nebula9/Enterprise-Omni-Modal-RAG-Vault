@@ -43,9 +43,11 @@ def upgrade() -> None:
     )
     conn = op.get_bind()
     result = conn.execute(
-        "SELECT 1 FROM information_schema.table_constraints "
-        "WHERE constraint_name = 'notifications_related_evaluation_id_fkey' "
-        "AND table_name = 'notifications'"
+        sa.text(
+            "SELECT 1 FROM information_schema.table_constraints "
+            "WHERE constraint_name = 'notifications_related_evaluation_id_fkey' "
+            "AND table_name = 'notifications'"
+        )
     ).fetchone()
     if result:
         op.drop_constraint(
@@ -53,10 +55,21 @@ def upgrade() -> None:
             "notifications",
             type_="foreignkey",
         )
-    op.drop_column("notifications", "related_evaluation_id")
-    op.drop_table("evaluation_results")
-    op.drop_table("evaluation_runs")
-    op.drop_table("query_logs")
+    inspector = sa.inspect(conn)
+    
+    # Check notifications column before dropping
+    columns = [col["name"] for col in inspector.get_columns("notifications")]
+    if "related_evaluation_id" in columns:
+        op.drop_column("notifications", "related_evaluation_id")
+
+    # Check tables before dropping
+    tables = inspector.get_table_names()
+    if "evaluation_results" in tables:
+        op.drop_table("evaluation_results")
+    if "evaluation_runs" in tables:
+        op.drop_table("evaluation_runs")
+    if "query_logs" in tables:
+        op.drop_table("query_logs")
     op.add_column("query_messages", sa.Column("model_id", sa.Uuid(), nullable=True))
     op.create_foreign_key(
         None,
