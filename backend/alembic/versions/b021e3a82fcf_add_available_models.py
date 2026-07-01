@@ -41,11 +41,18 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.drop_constraint(
-        op.f("notifications_related_evaluation_id_fkey"),
-        "notifications",
-        type_="foreignkey",
-    )
+    conn = op.get_bind()
+    result = conn.execute(
+        "SELECT 1 FROM information_schema.table_constraints "
+        "WHERE constraint_name = 'notifications_related_evaluation_id_fkey' "
+        "AND table_name = 'notifications'"
+    ).fetchone()
+    if result:
+        op.drop_constraint(
+            "notifications_related_evaluation_id_fkey",
+            "notifications",
+            type_="foreignkey",
+        )
     op.drop_column("notifications", "related_evaluation_id")
     op.drop_table("evaluation_results")
     op.drop_table("evaluation_runs")
