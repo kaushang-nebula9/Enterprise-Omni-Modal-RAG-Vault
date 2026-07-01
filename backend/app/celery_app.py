@@ -1,5 +1,5 @@
 import app.db.base  # noqa: F401 - ensures all models are registered before tasks run
-from celery import Celery # type: ignore
+from celery import Celery  # type: ignore
 from app.core.config import settings
 
 celery_app = Celery(
