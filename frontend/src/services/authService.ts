@@ -52,7 +52,7 @@ export const acceptInvite = async (data: AcceptInvitePayload): Promise<MessageRe
 };
 
 export const initiateGoogleLogin = (): void => {
-  window.location.href = `${import.meta.env.VITE_API_BASE_URL || 'https://enterprise-omni-modal-rag-vault.onrender.com/'}/api/v1/auth/google`;
+  window.location.href = `${import.meta.env.VITE_API_BASE_URL || 'https://enterprise-omni-modal-rag-vault.onrender.com'}/api/v1/auth/google`;
 };
 
 export const completeGoogleSetup = async (data: GoogleOrgSetupPayload): Promise<UserResponse> => {
