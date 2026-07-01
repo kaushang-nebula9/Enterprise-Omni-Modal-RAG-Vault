@@ -171,7 +171,7 @@ def send_otp_email(to_email: str, full_name: str, otp: str, org_name: str) -> No
 
     try:
         params = {
-            "from": "onboarding@resend.dev",
+            "from": "test@grooviamusic.com",
             "to": to_email,
             "subject": "Your verification code for RAG Vault",
             "html": html_content,
@@ -259,7 +259,7 @@ def send_forgot_password_otp_email(to_email: str, full_name: str, otp: str) -> N
 
     try:
         params = {
-            "from": "onboarding@resend.dev",
+            "from": "test@grooviamusic.com",
             "to": to_email,
             "subject": "Reset your RAG Vault password",
             "html": html_content,
