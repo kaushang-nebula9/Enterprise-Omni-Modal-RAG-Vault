@@ -39,8 +39,16 @@ from app.schemas.admin import (
 from app.models.available_model import AvailableModel
 from app.schemas.chat import ModelResponse
 from app.schemas.admin import ModelCreateRequest, ModelUpdateRequest
+from app.core.config import settings
 
 router = APIRouter()
+
+is_production = (
+    settings.APP_ENV == "production"
+    or not settings.FRONTEND_URL.startswith("http://localhost")
+)
+cookie_samesite = "none" if is_production else "lax"
+cookie_secure = True if is_production else False
 
 
 @router.get("/stats", response_model=AdminStatsResponse)
@@ -377,8 +385,12 @@ def delete_organisation(
     db.commit()
 
     # Revoke cookies
-    response.delete_cookie("access_token")
-    response.delete_cookie("refresh_token")
+    response.delete_cookie(
+        "access_token", samesite=cookie_samesite, secure=cookie_secure
+    )
+    response.delete_cookie(
+        "refresh_token", samesite=cookie_samesite, secure=cookie_secure
+    )
 
     return MessageResponse(message="Organisation deleted successfully")
 

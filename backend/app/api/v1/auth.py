@@ -59,6 +59,13 @@ router = APIRouter()
 
 serializer = URLSafeTimedSerializer(settings.SECRET_KEY)
 
+is_production = (
+    settings.APP_ENV == "production"
+    or not settings.FRONTEND_URL.startswith("http://localhost")
+)
+cookie_samesite = "none" if is_production else "lax"
+cookie_secure = True if is_production else False
+
 
 @router.post("/register/signup", response_model=MessageResponse)
 def register_signup(
@@ -96,8 +103,8 @@ def register_signup(
             value=signed_cookie_value,
             max_age=600,
             httponly=True,
-            samesite="lax",
-            secure=False,
+            samesite=cookie_samesite,
+            secure=cookie_secure,
         )
 
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
@@ -262,19 +269,21 @@ def register_verify_otp(
         value=access_token,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         httponly=True,
-        samesite="lax",
-        secure=False,
+        samesite=cookie_samesite,
+        secure=cookie_secure,
     )
     response.set_cookie(
         key="refresh_token",
         value=raw_refresh_token,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         httponly=True,
-        samesite="lax",
-        secure=False,
+        samesite=cookie_samesite,
+        secure=cookie_secure,
     )
 
-    response.delete_cookie("registration_session")
+    response.delete_cookie(
+        "registration_session", samesite=cookie_samesite, secure=cookie_secure
+    )
     return user
 
 
@@ -439,8 +448,8 @@ def login(request: LoginRequest, response: Response, db: Session = Depends(get_d
         value=access_token,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         httponly=True,
-        samesite="lax",
-        secure=False,
+        samesite=cookie_samesite,
+        secure=cookie_secure,
     )
 
     response.set_cookie(
@@ -448,8 +457,8 @@ def login(request: LoginRequest, response: Response, db: Session = Depends(get_d
         value=raw_refresh_token,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         httponly=True,
-        samesite="lax",
-        secure=False,
+        samesite=cookie_samesite,
+        secure=cookie_secure,
     )
 
     return user
@@ -516,8 +525,8 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
         value=access_token,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         httponly=True,
-        samesite="lax",
-        secure=False,
+        samesite=cookie_samesite,
+        secure=cookie_secure,
     )
 
     return {"message": "Token refreshed"}
@@ -546,8 +555,12 @@ def logout(
             db_token.is_revoked = True
             db.commit()
 
-    response.delete_cookie("access_token")
-    response.delete_cookie("refresh_token")
+    response.delete_cookie(
+        "access_token", samesite=cookie_samesite, secure=cookie_secure
+    )
+    response.delete_cookie(
+        "refresh_token", samesite=cookie_samesite, secure=cookie_secure
+    )
     return {"message": "Logged out successfully"}
 
 
@@ -787,16 +800,16 @@ async def google_auth_callback(
             value=access_token,
             max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             httponly=True,
-            samesite="lax",
-            secure=False,
+            samesite=cookie_samesite,
+            secure=cookie_secure,
         )
         response.set_cookie(
             key="refresh_token",
             value=raw_refresh_token,
             max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
             httponly=True,
-            samesite="lax",
-            secure=False,
+            samesite=cookie_samesite,
+            secure=cookie_secure,
         )
         return response
     else:
@@ -899,16 +912,16 @@ def google_complete_setup(
         value=access_token,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         httponly=True,
-        samesite="lax",
-        secure=False,
+        samesite=cookie_samesite,
+        secure=cookie_secure,
     )
     response.set_cookie(
         key="refresh_token",
         value=raw_refresh_token,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
         httponly=True,
-        samesite="lax",
-        secure=False,
+        samesite=cookie_samesite,
+        secure=cookie_secure,
     )
     return user
 
