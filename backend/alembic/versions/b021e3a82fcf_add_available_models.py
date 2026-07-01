@@ -56,7 +56,7 @@ def upgrade() -> None:
             type_="foreignkey",
         )
     inspector = sa.inspect(conn)
-    
+
     # Check notifications column before dropping
     columns = [col["name"] for col in inspector.get_columns("notifications")]
     if "related_evaluation_id" in columns:
