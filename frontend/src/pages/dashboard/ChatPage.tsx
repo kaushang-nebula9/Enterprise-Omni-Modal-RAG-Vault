@@ -17,7 +17,6 @@ import {
   Search,
   Mic,
   Square,
-  Sparkles,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { chatService } from '../../services/chatService'
