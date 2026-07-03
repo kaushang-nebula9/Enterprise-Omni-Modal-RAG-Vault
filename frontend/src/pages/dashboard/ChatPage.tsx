@@ -61,7 +61,6 @@ const ChatPage: React.FC = () => {
   const queryClient = useQueryClient()
   
   const activeSessionIdRef = useRef<string | null>(null)
-  const mirrorRef = useRef<HTMLDivElement>(null)
 
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [messages, setMessages] = useState<MessageResponse[]>([])
@@ -133,69 +132,20 @@ const ChatPage: React.FC = () => {
     setIsModelDropdownOpen(false)
   }
 
-  const renderHighlightedText = (text: string) => {
-    let filenameToHighlight = ""
-    if (attachedDocument) {
-      filenameToHighlight = attachedDocument.filename
-    } else if (uploadedFile?.status === 'ready') {
-      filenameToHighlight = uploadedFile.file.name
-    }
-
-    if (!filenameToHighlight || !text.includes(filenameToHighlight)) {
-      return text
-    }
-
-    // Split by filename to highlight it
-    const index = text.indexOf(filenameToHighlight)
-    const before = text.substring(0, index)
-    const filename = text.substring(index, index + filenameToHighlight.length)
-    const after = text.substring(index + filenameToHighlight.length)
-
-    return (
-      <>
-        {before}
-        <span
-          onClick={() => textareaRef.current?.focus()}
-          className="font-semibold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-200 px-2 rounded-full border border-indigo-200 dark:border-indigo-800/50 transition-colors duration-150 hover:bg-indigo-200 dark:hover:bg-indigo-800/80 inline-flex items-center gap-1 align-middle pointer-events-auto cursor-pointer select-none "
-        >
-          <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-          <span className='text-sm'>{filename}</span>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleDetach()
-            }}
-            className="hover:bg-indigo-300 dark:hover:bg-indigo-700/80 rounded-full p-0.5 transition-colors flex items-center justify-center"
-            title="Detach file"
-          >
-            <X className="w-3 h-3 text-indigo-800 dark:text-indigo-200" />
-          </button>
-        </span>
-        {after}
-      </>
-    )
-  }
-
-  const handleDetach = () => {
-    let filenameToRemove = ""
-    if (attachedDocument) {
-      filenameToRemove = attachedDocument.filename
-    } else if (uploadedFile?.status === 'ready') {
-      filenameToRemove = uploadedFile.file.name
-    }
-
-    if (filenameToRemove) {
-      const index = inputValue.indexOf(filenameToRemove)
-      if (index !== -1) {
-        const before = inputValue.substring(0, index)
-        const after = inputValue.substring(index + filenameToRemove.length)
-        let newText = before + after
-        if (before.endsWith(' ') && after.startsWith(' ')) {
-          newText = before.slice(0, -1) + after
+  const handleDetach = (filenameToRemove?: string) => {
+    if (textareaRef.current) {
+      const selector = filenameToRemove
+        ? `[data-filename="${CSS.escape(filenameToRemove)}"]`
+        : '[data-filename]'
+      const pills = textareaRef.current.querySelectorAll(selector)
+      pills.forEach(pill => {
+        let next = pill.nextSibling
+        if (next && next.nodeType === Node.TEXT_NODE && next.textContent === ' ') {
+          next.remove()
         }
-        setInputValue(newText)
-      }
+        pill.remove()
+      })
+      setInputValue(textareaRef.current.innerHTML)
     }
 
     setAttachedDocument(null)
@@ -225,9 +175,9 @@ const ChatPage: React.FC = () => {
     return (
       <>
         {before}
-        <span className="font-semibold text-sm mb-1 bg-white/10 px-2 rounded-full transition-colors duration-150 hover:bg-white/20 hover:cursor-pointer inline-flex items-center gap-1 align-middle">
-          <FileText className="w-3.5 h-3.5 text-indigo-200" />
-          {filenameText}
+        <span className="inline-flex items-center gap-1 mb-1 bg-slate-100 px-2.5 py-0.5 rounded-full shadow-sm text-sm font-semibold text-slate-800 dark:text-slate-900 select-none align-middle mx-1 transition-colors">
+          <FileText className="w-3 h-3 text-indigo-600 flex-shrink-0" />
+          <span className="truncate max-w-[180px]">{filenameText}</span>
         </span>
         {after}
       </>
@@ -327,6 +277,122 @@ const ChatPage: React.FC = () => {
     }
   }, [isDropdownOpen])
 
+  const lastSelectionRangeRef = useRef<Range | null>(null)
+
+  const saveSelectionRange = () => {
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0 && textareaRef.current && textareaRef.current.contains(selection.anchorNode)) {
+      lastSelectionRangeRef.current = selection.getRangeAt(0).cloneRange()
+    }
+  }
+
+  // Resolve target range for insertions, ensuring the trigger slash is deleted.
+  const resolveInsertRange = (): Range | null => {
+    let selection = window.getSelection()
+    let range: Range | null = null
+
+    if (lastSelectionRangeRef.current && textareaRef.current && textareaRef.current.contains(lastSelectionRangeRef.current.commonAncestorContainer)) {
+      range = lastSelectionRangeRef.current.cloneRange()
+    } else if (selection && selection.rangeCount > 0 && textareaRef.current && textareaRef.current.contains(selection.anchorNode)) {
+      range = selection.getRangeAt(0).cloneRange()
+    } else if (textareaRef.current) {
+      textareaRef.current.focus()
+      range = document.createRange()
+      range.selectNodeContents(textareaRef.current)
+      range.collapse(false)
+      if (selection) {
+        selection.removeAllRanges()
+        selection.addRange(range)
+      }
+    }
+
+    if (range) {
+      // Remove trigger slash and search text up to cursor
+      const node = range.endContainer
+      const offset = range.endOffset
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent || ''
+        const slashIndex = text.lastIndexOf('/', offset - 1)
+        if (slashIndex !== -1) {
+          range.setStart(node, slashIndex)
+          range.deleteContents()
+        }
+      } else if (node.nodeType === Node.ELEMENT_NODE && textareaRef.current) {
+        // Fallback: search all text nodes from right to left inside the element
+        const walker = document.createTreeWalker(textareaRef.current, NodeFilter.SHOW_TEXT)
+        let textNode: Text | null = null
+        let lastTextNode: Text | null = null
+        while ((textNode = walker.nextNode() as Text)) {
+          lastTextNode = textNode
+        }
+        if (lastTextNode) {
+          const text = lastTextNode.textContent || ''
+          const slashIndex = text.lastIndexOf('/')
+          if (slashIndex !== -1) {
+            range.setStart(lastTextNode, slashIndex)
+            range.setEnd(lastTextNode, text.length)
+            range.deleteContents()
+          }
+        }
+      }
+    }
+
+    return range
+  }
+
+  // Helper to insert a pill (non-editable token) at the current cursor in contenteditable
+  const insertPillAtCursor = (filename: string) => {
+    const range = resolveInsertRange()
+    if (!range) return
+
+    // Create pill element matching ChatGPT/Claude aesthetics
+    const pill = document.createElement('span')
+    pill.contentEditable = 'false'
+    pill.setAttribute('data-filename', filename)
+    pill.className = 'inline-flex items-center gap-0.5 mb-1 bg-indigo-700 dark:bg-slate-800/80 px-2.5 py-0.5 rounded-xl shadow-sm text-sm font-semibold text-slate-100 dark:text-slate-200 select-none align-middle mx-1 pointer-events-auto transition-colors cursor-default'
+    
+    // Lucide FileText equivalent SVG
+    pill.innerHTML = `
+        <span class="truncate max-w-[180px]">
+      ${filename}
+    </span>
+      <button type="button" class="ml-1 p-0.5 dark:hover:bg-slate-700 rounded-full flex items-center justify-center text-slate-200 hover:bg-indigo-500/50 dark:text-slate-500 dark:hover:text-slate-300 transition-colors" title="Remove attachment">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    `
+
+    // Set up detach click handler
+    const closeBtn = pill.querySelector('button')
+    if (closeBtn) {
+      closeBtn.onclick = (e) => {
+        e.stopPropagation()
+        handleDetach(filename)
+      }
+    }
+
+    range.insertNode(pill)
+
+    // Append space after pill
+    const spaceNode = document.createTextNode(' ')
+    pill.after(spaceNode)
+
+    // Move cursor right after the space
+    range.setStartAfter(spaceNode)
+    range.setEndAfter(spaceNode)
+    const selection = window.getSelection()
+    if (selection) {
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+
+    if (textareaRef.current) {
+      setInputValue(textareaRef.current.innerHTML)
+    }
+  }
+
   // Select document and remove the trigger slash, inserting document filename instead of slash
   const handleSelectDocument = (doc: DocumentResponse) => {
     setAttachedDocument(doc)
@@ -335,25 +401,7 @@ const ChatPage: React.FC = () => {
     setDropdownSearch('')
 
     if (textareaRef.current) {
-      const cursor = textareaRef.current.selectionStart
-      const text = inputValue
-      const textBeforeCursor = text.substring(0, cursor)
-      const textAfterCursor = text.substring(cursor)
-
-      const match = textBeforeCursor.match(/(?:^|\s)\/(\S*)$/)
-      if (match) {
-        const slashIndex = textBeforeCursor.lastIndexOf('/')
-        const newText = text.substring(0, slashIndex) + " " + doc.filename + " " + textAfterCursor
-        setInputValue(newText)
-
-        setTimeout(() => {
-          textareaRef.current?.focus()
-          const newCursorPos = slashIndex + doc.filename.length + 2
-          textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos)
-        }, 50)
-      } else {
-        textareaRef.current.focus()
-      }
+      insertPillAtCursor(doc.filename)
     }
   }
 
@@ -363,35 +411,21 @@ const ChatPage: React.FC = () => {
     setDropdownSearch('')
 
     const prefix = `${cmdName} `
-    if (textareaRef.current) {
-      const cursor = textareaRef.current.selectionStart
-      const text = inputValue
-      const textBeforeCursor = text.substring(0, cursor)
-      const textAfterCursor = text.substring(cursor)
-
-      const match = textBeforeCursor.match(/(?:^|\s)\/(\S*)$/)
-      if (match) {
-        const slashIndex = textBeforeCursor.lastIndexOf('/')
-        const beforeSlash = text.substring(0, slashIndex).trim()
-        const cleanRemaining = (beforeSlash + " " + textAfterCursor).trim()
-        const newText = prefix + cleanRemaining
-        setInputValue(newText)
-
-        setTimeout(() => {
-          textareaRef.current?.focus()
-          const newCursorPos = prefix.length
-          textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos)
-        }, 50)
-      } else {
-        const newText = prefix + text.trim()
-        setInputValue(newText)
-        setTimeout(() => {
-          textareaRef.current?.focus()
-          textareaRef.current?.setSelectionRange(prefix.length, prefix.length)
-        }, 50)
+    const range = resolveInsertRange()
+    if (range) {
+      const textNode = document.createTextNode(prefix)
+      range.insertNode(textNode)
+      range.setStartAfter(textNode)
+      range.setEndAfter(textNode)
+      const selection = window.getSelection()
+      if (selection) {
+        selection.removeAllRanges()
+        selection.addRange(range)
       }
-    } else {
-      setInputValue(prefix)
+      
+      if (textareaRef.current) {
+        setInputValue(textareaRef.current.innerHTML)
+      }
     }
   }
 
@@ -403,34 +437,21 @@ const ChatPage: React.FC = () => {
     setDropdownSearch('')
 
     const cmdText = `/compare [${doc1Name}] [${doc2Name}] `
-    if (textareaRef.current) {
-      const cursor = textareaRef.current.selectionStart
-      const text = inputValue
-      const textBeforeCursor = text.substring(0, cursor)
-      const textAfterCursor = text.substring(cursor)
-
-      const match = textBeforeCursor.match(/(?:^|\s)\/(\S*)$/)
-      if (match) {
-        const slashIndex = textBeforeCursor.lastIndexOf('/')
-        const beforeSlash = text.substring(0, slashIndex).trim()
-        const cleanRemaining = (beforeSlash + " " + textAfterCursor).trim()
-        const newText = cmdText + cleanRemaining
-        setInputValue(newText)
-
-        setTimeout(() => {
-          textareaRef.current?.focus()
-          const newCursorPos = cmdText.length
-          textareaRef.current?.setSelectionRange(newCursorPos, newCursorPos)
-        }, 50)
-      } else {
-        setInputValue(cmdText + " " + inputValue)
-        setTimeout(() => {
-          textareaRef.current?.focus()
-          textareaRef.current?.setSelectionRange(cmdText.length, cmdText.length)
-        }, 50)
+    const range = resolveInsertRange()
+    if (range) {
+      const textNode = document.createTextNode(cmdText)
+      range.insertNode(textNode)
+      range.setStartAfter(textNode)
+      range.setEndAfter(textNode)
+      const selection = window.getSelection()
+      if (selection) {
+        selection.removeAllRanges()
+        selection.addRange(range)
       }
-    } else {
-      setInputValue(cmdText)
+      
+      if (textareaRef.current) {
+        setInputValue(textareaRef.current.innerHTML)
+      }
     }
   }
 
@@ -539,7 +560,7 @@ const ChatPage: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = useRef<HTMLDivElement>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const isCancelledRef = useRef(false)
@@ -555,7 +576,7 @@ const ChatPage: React.FC = () => {
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isLoading, isStreaming])
+  }, [messages])
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -564,15 +585,10 @@ const ChatPage: React.FC = () => {
     return () => clearTimeout(timer)
   }, [toast])
 
-  // Auto-resize textarea and sync scroll with mirrorRef
+  // Sync external changes of inputValue (e.g. clear or load) to contenteditable div
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-      const scrollHeight = textareaRef.current.scrollHeight
-      textareaRef.current.style.height = `${scrollHeight}px`
-      if (mirrorRef.current) {
-        mirrorRef.current.scrollTop = textareaRef.current.scrollTop
-      }
+    if (textareaRef.current && textareaRef.current.innerHTML !== inputValue) {
+      textareaRef.current.innerHTML = inputValue
     }
   }, [inputValue])
 
@@ -598,7 +614,8 @@ const ChatPage: React.FC = () => {
     isSendingRef.current = true
     setIsSending(true)
 
-    const text = (content ?? inputValue).trim()
+    const rawText = content ?? getPlainText(inputValue)
+    const text = rawText.trim()
     if (!text || isLoading || isStreaming) {
       isSendingRef.current = false
       setIsSending(false)
@@ -607,9 +624,6 @@ const ChatPage: React.FC = () => {
 
     // Clear/lock the input as part of the same synchronous guarded action, not before the guard is set.
     setInputValue('')
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-    }
     const docId = attachedDocument?.id || (uploadedFile?.status === 'ready' ? uploadedFile.id : undefined)
     const currentAttachedDocument = attachedDocument
     const currentUploadedFile = uploadedFile
@@ -932,15 +946,21 @@ const ChatPage: React.FC = () => {
       setUploadedFile({ file, status: 'ready', id: response.id })
       setToast({ message: 'Document ready. You can now ask questions about it.', type: 'success' })
 
-      // Auto-insert file name to input text area so it is highlighted inline
-      const text = inputValue
-      const space = text && !text.endsWith(' ') ? ' ' : ''
-      const newText = text + space + file.name + ' '
-      setInputValue(newText)
+      // Auto-insert file name as a pill in contenteditable
       setTimeout(() => {
-        textareaRef.current?.focus()
         if (textareaRef.current) {
-          textareaRef.current.setSelectionRange(newText.length, newText.length)
+          textareaRef.current.focus()
+          const selection = window.getSelection()
+          if (selection) {
+            if (selection.rangeCount === 0 || !textareaRef.current.contains(selection.anchorNode)) {
+              const range = document.createRange()
+              range.selectNodeContents(textareaRef.current)
+              range.collapse(false) // collapse to end
+              selection.removeAllRanges()
+              selection.addRange(range)
+            }
+          }
+          insertPillAtCursor(file.name)
         }
       }, 50)
     } catch (err: any) {
@@ -1102,13 +1122,7 @@ const ChatPage: React.FC = () => {
     }
   }, [])
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      if (isSending) return
-      handleSend()
-    }
-  }
+
 
   const formatTime = (dateStr: string) => {
     return new Date(dateStr).toLocaleTimeString('en-US', {
@@ -1126,35 +1140,93 @@ const ChatPage: React.FC = () => {
   const isAdmin = user?.role?.is_admin ?? false
   const isFileUploading = uploadedFile?.status === 'uploading'
   // Send is disabled while the AI is replying OR a document is still being processed OR recording/transcribing is active OR a message is sending
-  const isSendDisabled = !inputValue.trim() || isLoading || isStreaming || isFileUploading || isRecording || isTranscribing || isSending
+  const getPlainText = (html: string): string => {
+    const tempDiv = document.createElement('div')
+    tempDiv.innerHTML = html
+    const pills = tempDiv.querySelectorAll('[data-filename]')
+    pills.forEach((pill) => {
+      const filename = pill.getAttribute('data-filename')
+      pill.replaceWith(document.createTextNode(filename || ''))
+    })
+    return (tempDiv.innerText || tempDiv.textContent || '').trim()
+  }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value
-    setInputValue(value)
+  const isSendDisabled = !getPlainText(inputValue) || isLoading || isStreaming || isFileUploading || isRecording || isTranscribing || isSending
 
-    // Clear attachment if filename is deleted/modified in input box
-    if (attachedDocument && !value.includes(attachedDocument.filename)) {
+  const handleContentEditableInput = (e: React.FormEvent<HTMLDivElement>) => {
+    const html = e.currentTarget.innerHTML
+    setInputValue(html)
+
+    // Clear attachment if filename pill is deleted in input box
+    const tempDiv = document.createElement('div')
+    tempDiv.innerHTML = html
+    const pills = tempDiv.querySelectorAll('[data-filename]')
+    
+    let docAttachedExists = false
+    let uploadedFileExists = false
+    
+    pills.forEach((pill) => {
+      const filename = pill.getAttribute('data-filename')
+      if (attachedDocument && filename === attachedDocument.filename) {
+        docAttachedExists = true
+      }
+      if (uploadedFile?.status === 'ready' && filename === uploadedFile.file.name) {
+        uploadedFileExists = true
+      }
+    })
+    
+    if (attachedDocument && !docAttachedExists) {
       setAttachedDocument(null)
     }
-    if (uploadedFile?.status === 'ready' && !value.includes(uploadedFile.file.name)) {
+    if (uploadedFile?.status === 'ready' && !uploadedFileExists) {
       setUploadedFile(null)
     }
 
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-      const scrollHeight = textareaRef.current.scrollHeight
-      textareaRef.current.style.height = `${scrollHeight}px`
-      if (mirrorRef.current) {
-        mirrorRef.current.scrollTop = textareaRef.current.scrollTop
+    // Autocomplete dropdown check
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0 && textareaRef.current) {
+      const range = selection.getRangeAt(0)
+      const preCaretRange = range.cloneRange()
+      preCaretRange.selectNodeContents(textareaRef.current)
+      preCaretRange.setEnd(range.endContainer, range.endOffset)
+      const textBeforeCursor = preCaretRange.toString()
+      
+      const isSlashTrigger = textBeforeCursor === '/' || textBeforeCursor.endsWith(' /') || textBeforeCursor.endsWith('\n/')
+      if (isSlashTrigger) {
+        setIsDropdownOpen(true)
+        setDropdownSearch('')
       }
     }
+  }
 
-    const selectionStart = e.target.selectionStart
-    const textBeforeCursor = value.substring(0, selectionStart)
-    const isSlashTrigger = textBeforeCursor === '/' || textBeforeCursor.endsWith(' /') || textBeforeCursor.endsWith('\n/')
-    if (isSlashTrigger) {
-      setIsDropdownOpen(true)
-      setDropdownSearch('')
+  const handleContentEditableKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      if (isSending) return
+      handleSend()
+    }
+  }
+
+  const handleContentEditablePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const text = e.clipboardData.getData('text/plain')
+    
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0) return
+    
+    const range = selection.getRangeAt(0)
+    range.deleteContents()
+    
+    const textNode = document.createTextNode(text)
+    range.insertNode(textNode)
+    
+    range.setStartAfter(textNode)
+    range.setEndAfter(textNode)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    
+    if (textareaRef.current) {
+      setInputValue(textareaRef.current.innerHTML)
     }
   }
 
@@ -1619,40 +1691,27 @@ const ChatPage: React.FC = () => {
                   </div>
                 ) : (
                   <>
-                    {/* Mirror Div for inline highlighted tags */}
                     <div
-                      ref={mirrorRef}
-                      className="absolute inset-0 pointer-events-none whitespace-pre-wrap break-words px-2 py-1 border-0 overflow-y-auto custom-scrollbar select-none text-slate-800 dark:text-slate-100 z-10"
-                      style={{
-                        fontFamily: 'inherit',
-                        fontSize: 'inherit',
-                        lineHeight: 'inherit',
-                        minHeight: '80px',
-                        maxHeight: '260px',
-                      }}
-                    >
-                      {renderHighlightedText(inputValue)}
-                    </div>
-
-                    <textarea
                       ref={textareaRef}
-                      value={inputValue}
-                      onChange={handleInputChange}
-                      onKeyDown={handleKeyDown}
-                      onScroll={(e) => {
-                        if (mirrorRef.current) {
-                          mirrorRef.current.scrollTop = e.currentTarget.scrollTop
-                        }
-                      }}
-                      disabled={isFileUploading || isLoading || isStreaming || isTranscribing || isSending}
-                      placeholder={
+                      contentEditable={!(isFileUploading || isLoading || isStreaming || isTranscribing || isSending)}
+                      onInput={handleContentEditableInput}
+                      onKeyDown={handleContentEditableKeyDown}
+                      onPaste={handleContentEditablePaste}
+                      onKeyUp={saveSelectionRange}
+                      onMouseUp={saveSelectionRange}
+                      onClick={saveSelectionRange}
+                      className="w-full text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-transparent px-2 py-1.5 focus:outline-none border-0 overflow-y-auto custom-scrollbar relative z-0 min-h-[40px] max-h-[200px] whitespace-pre-wrap break-words outline-none editable-input"
+                      data-placeholder={
                         isFileUploading
                           ? "Please wait while the document is processed..."
                           : "Ask about your documents, or type '/' to see commands and attach documents"
                       }
-                      rows={1}
-                      className="w-full text-transparent caret-slate-800 dark:caret-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 bg-transparent px-2 py-1 resize-none focus:outline-none border-0 custom-scrollbar relative z-0"
-                      style={{ maxHeight: "200px" }}
+                      data-empty={!inputValue || inputValue === '<br>' || inputValue === '<div><br></div>' ? "true" : "false"}
+                      style={{
+                        fontFamily: 'inherit',
+                        fontSize: 'inherit',
+                        lineHeight: 'inherit',
+                      }}
                     />
                   </>
                 )}
