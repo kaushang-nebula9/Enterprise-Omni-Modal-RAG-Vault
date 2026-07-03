@@ -39,7 +39,7 @@ export const chatService = {
     sessionId: string,
     content: string,
     onToken: (token: string) => void,
-    onDone: (citations: CitationResponse[], messageId: string) => void,
+    onDone: (citations: CitationResponse[], messageId: string, followUpQuestions?: string[]) => void,
     onError: (error: string, status?: number) => void,
     documentId?: string,
     modelId?: string,
@@ -103,7 +103,7 @@ export const chatService = {
                 if (parsed.type === 'token') {
                   onToken(parsed.content)
                 } else if (parsed.type === 'done') {
-                  onDone(parsed.citations, parsed.message_id)
+                  onDone(parsed.citations, parsed.message_id, parsed.follow_up_questions)
                 } else if (parsed.type === 'error') {
                   onError(parsed.content)
                 }
@@ -123,7 +123,7 @@ export const chatService = {
               if (parsed.type === 'token') {
                 onToken(parsed.content)
               } else if (parsed.type === 'done') {
-                onDone(parsed.citations, parsed.message_id)
+                onDone(parsed.citations, parsed.message_id, parsed.follow_up_questions)
               } else if (parsed.type === 'error') {
                 onError(parsed.content)
               }

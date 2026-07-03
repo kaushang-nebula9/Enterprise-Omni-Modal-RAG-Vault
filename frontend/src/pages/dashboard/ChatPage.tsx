@@ -17,6 +17,7 @@ import {
   Search,
   Mic,
   Square,
+  Sparkles,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { chatService } from '../../services/chatService'
@@ -702,12 +703,12 @@ const ChatPage: React.FC = () => {
               )
             )
           },
-          (citations, messageId) => {
+          (citations, messageId, followUpQuestions) => {
             controller.signal.removeEventListener('abort', handleAbort)
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === tempAssistantId
-                  ? { ...msg, id: messageId, citations }
+                  ? { ...msg, id: messageId, citations, follow_up_questions: followUpQuestions }
                   : msg
               )
             )
@@ -872,13 +873,13 @@ const ChatPage: React.FC = () => {
           )
         )
       },
-      (citations, messageId) => {
+      (citations, messageId, followUpQuestions) => {
         setIsStreaming(false)
         setIsLoading(false)
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === tempAssistantId
-              ? { ...msg, id: messageId, citations }
+              ? { ...msg, id: messageId, citations, follow_up_questions: followUpQuestions }
               : msg
           )
         )
@@ -1137,6 +1138,66 @@ const ChatPage: React.FC = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
+  const getFollowUpQuestions = useCallback((msg: MessageResponse): string[] => {
+    if (msg.follow_up_questions && msg.follow_up_questions.length > 0) {
+      return msg.follow_up_questions
+    }
+    if (msg.content.includes('[FOLLOW_UP]')) {
+      const parts = msg.content.split('[FOLLOW_UP]')
+      const rawQuestions = parts[1] || ''
+      return rawQuestions
+        .split('\n')
+        .map((q) => q.trim().replace(/^[-*\d.]+\s*/, '').trim())
+        .filter(Boolean)
+    }
+    return []
+  }, [])
+
+  const handleFollowUpClick = useCallback((q: string) => {
+    setInputValue(q)
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+        
+        // Move caret to the end of the contenteditable div
+        const range = document.createRange()
+        const sel = window.getSelection()
+        range.selectNodeContents(textareaRef.current)
+        range.collapse(false) // false means collapse to end
+        sel?.removeAllRanges()
+        sel?.addRange(range)
+      }
+    }, 0)
+  }, [])
+
+  const renderFollowUpQuestions = (msg: MessageResponse, index: number) => {
+    const isLatestAssistant = index === messages.length - 1
+    if (!isLatestAssistant) return null
+
+    const questions = getFollowUpQuestions(msg)
+    if (questions.length === 0) return null
+
+    return (
+      <div className="mt-3 ml-2 mr-auto max-w-2xl animate-fade-in">
+        <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1.5 select-none">
+          Suggested Follow-ups
+        </p>
+        <div className="flex flex-col gap-2">
+          {questions.map((q, idx) => (
+            <button
+              key={idx}
+              onClick={() => handleFollowUpClick(q)}
+              disabled={isLoading || isStreaming || isSending}
+              className="text-left w-full -ml-2 px-2 py-1.5 rounded-lg dark:hover:bg-slate-500/10 hover:bg-slate-400/10 text-indigo-700 dark:text-indigo-300 text-sm font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:transform-none"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   const isAdmin = user?.role?.is_admin ?? false
   const isFileUploading = uploadedFile?.status === 'uploading'
   // Send is disabled while the AI is replying OR a document is still being processed OR recording/transcribing is active OR a message is sending
@@ -1270,7 +1331,7 @@ const ChatPage: React.FC = () => {
           </div>
         ) : (
           <div className="max-w-3xl mx-auto w-full space-y-4">
-            {messages.map((msg) => (
+            {messages.map((msg, index) => (
               <div key={msg.id}>
                 {msg.role === 'user' ? (
                   <div className="ml-auto max-w-2xl flex flex-col items-end gap-2">
@@ -1287,95 +1348,98 @@ const ChatPage: React.FC = () => {
                     </div>
                   </div>
                 ) : msg.content === '' && msg.citations.length === 0 ? null : (
-                  <div className="mr-auto max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm text-slate-800 dark:text-slate-100">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        table: ({ ...props }) => (
-                          <div className="my-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm custom-scrollbar">
-                            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left border-collapse" {...props} />
-                          </div>
-                        ),
-                        thead: ({ ...props }) => (
-                          <thead className="bg-slate-50 dark:bg-slate-800/50" {...props} />
-                        ),
-                        tbody: ({ ...props }) => (
-                          <tbody className="divide-y divide-slate-100 dark:divide-slate-850 bg-white dark:bg-slate-900" {...props} />
-                        ),
-                        tr: ({ ...props }) => (
-                          <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors duration-150" {...props} />
-                        ),
-                        th: ({ ...props }) => (
-                          <th className="px-4 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-850" {...props} />
-                        ),
-                        td: ({ ...props }) => (
-                          <td className="px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 whitespace-nowrap" {...props} />
-                        ),
-                        p: ({ ...props }) => (
-                          <p className="mb-2 last:mb-0 leading-relaxed" {...props} />
-                        ),
-                        ul: ({ ...props }) => (
-                          <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />
-                        ),
-                        ol: ({ ...props }) => (
-                          <ol className="list-decimal pl-5 mb-2 space-y-1" {...props} />
-                        ),
-                        li: ({ ...props }) => (
-                          <li className="text-sm" {...props} />
-                        ),
-                      }}
-                    >
-                      {msg.content}
-                    </ReactMarkdown>
-                    <div className="flex items-center gap-2 mt-1 select-none">
-                      <span className="text-slate-400 dark:text-slate-500 text-xs">{formatTime(msg.created_at)}</span>
-                      {msg.model && (
-                        <>
-                          <span className="text-slate-300 dark:text-slate-700">•</span>
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200/40 dark:border-slate-700/50">
-                            {msg.model.display_name}
-                          </span>
-                        </>
-                      )}
-                    </div>
-
-                    {msg.citations.length > 0 && (
-                      <div className="mt-2">
-                        <button
-                          onClick={() => toggleCitations(msg.id)}
-                          className="text-indigo-600 dark:text-indigo-400 text-sm hover:underline cursor-pointer flex items-center gap-1"
-                        >
-                          Sources ({msg.citations.length})
-                          {expandedCitations.has(msg.id) ? (
-                            <ChevronUp className="w-4 h-4" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4" />
-                          )}
-                        </button>
-
-                        {expandedCitations.has(msg.id) && (
-                          <div className="mt-2 space-y-2">
-                            {msg.citations.map((cite) => (
-                              <div key={cite.id} className="bg-slate-50 dark:bg-slate-950 rounded-lg p-3 space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <FileText className="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0" />
-                                  <span className="text-slate-700 dark:text-slate-300 font-medium text-sm">{cite.filename}</span>
-                                  {cite.page_number !== null && (
-                                    <span className="text-slate-500 dark:text-slate-400 text-xs">Page {cite.page_number}</span>
-                                  )}
-                                </div>
-                                <p className="text-slate-500 dark:text-slate-400 text-xs italic">
-                                  {cite.chunk_text.length > 150
-                                    ? `${cite.chunk_text.slice(0, 150)}...`
-                                    : cite.chunk_text}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
+                  <>
+                    <div className="mr-auto max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm text-slate-800 dark:text-slate-100">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          table: ({ ...props }) => (
+                            <div className="my-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm custom-scrollbar">
+                              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left border-collapse" {...props} />
+                            </div>
+                          ),
+                          thead: ({ ...props }) => (
+                            <thead className="bg-slate-50 dark:bg-slate-800/50" {...props} />
+                          ),
+                          tbody: ({ ...props }) => (
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-850 bg-white dark:bg-slate-900" {...props} />
+                          ),
+                          tr: ({ ...props }) => (
+                            <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors duration-150" {...props} />
+                          ),
+                          th: ({ ...props }) => (
+                            <th className="px-4 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-850" {...props} />
+                          ),
+                          td: ({ ...props }) => (
+                            <td className="px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 whitespace-nowrap" {...props} />
+                          ),
+                          p: ({ ...props }) => (
+                            <p className="mb-2 last:mb-0 leading-relaxed" {...props} />
+                          ),
+                          ul: ({ ...props }) => (
+                            <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />
+                          ),
+                          ol: ({ ...props }) => (
+                            <ol className="list-decimal pl-5 mb-2 space-y-1" {...props} />
+                          ),
+                          li: ({ ...props }) => (
+                            <li className="text-sm" {...props} />
+                          ),
+                        }}
+                      >
+                        {msg.content.split('[FOLLOW_UP]')[0]}
+                      </ReactMarkdown>
+                      <div className="flex items-center gap-2 mt-1 select-none">
+                        <span className="text-slate-400 dark:text-slate-500 text-xs">{formatTime(msg.created_at)}</span>
+                        {msg.model && (
+                          <>
+                            <span className="text-slate-300 dark:text-slate-700">•</span>
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200/40 dark:border-slate-700/50">
+                              {msg.model.display_name}
+                            </span>
+                          </>
                         )}
                       </div>
-                    )}
-                  </div>
+
+                      {msg.citations.length > 0 && (
+                        <div className="mt-2">
+                          <button
+                            onClick={() => toggleCitations(msg.id)}
+                            className="text-indigo-600 dark:text-indigo-400 text-sm hover:underline cursor-pointer flex items-center gap-1"
+                          >
+                            Sources ({msg.citations.length})
+                            {expandedCitations.has(msg.id) ? (
+                              <ChevronUp className="w-4 h-4" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4" />
+                            )}
+                          </button>
+
+                          {expandedCitations.has(msg.id) && (
+                            <div className="mt-2 space-y-2">
+                              {msg.citations.map((cite) => (
+                                <div key={cite.id} className="bg-slate-50 dark:bg-slate-950 rounded-lg p-3 space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <FileText className="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0" />
+                                    <span className="text-slate-700 dark:text-slate-300 font-medium text-sm">{cite.filename}</span>
+                                    {cite.page_number !== null && (
+                                      <span className="text-slate-500 dark:text-slate-400 text-xs">Page {cite.page_number}</span>
+                                    )}
+                                  </div>
+                                  <p className="text-slate-500 dark:text-slate-400 text-xs italic">
+                                    {cite.chunk_text.length > 150
+                                      ? `${cite.chunk_text.slice(0, 150)}...`
+                                      : cite.chunk_text}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {msg.role === 'assistant' && renderFollowUpQuestions(msg, index)}
+                  </>
                 )}
               </div>
             ))}

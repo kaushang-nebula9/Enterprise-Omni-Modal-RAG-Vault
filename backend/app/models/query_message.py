@@ -2,10 +2,11 @@ from datetime import datetime
 import uuid
 from sqlalchemy import Text, DateTime, Uuid, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import JSONB
 from app.db.base import Base
 from app.models.enums import message_role_enum, MessageRole
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, List
 
 if TYPE_CHECKING:
     from app.models.query_citation import QueryCitation
@@ -31,6 +32,9 @@ class QueryMessage(Base):
     )
     model_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid, ForeignKey("available_models.id", ondelete="SET NULL"), nullable=True
+    )
+    follow_up_questions: Mapped[Optional[List[str]]] = mapped_column(
+        JSONB, nullable=True
     )
 
     # Relationships

@@ -7,7 +7,7 @@ import logging
 from google import genai
 from google.genai import types as genai_types
 from app.core.config import settings
-# from sentence_transformers import SentenceTransformer as _SentenceTransformer
+from sentence_transformers import SentenceTransformer as _SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -29,53 +29,53 @@ def _get_client() -> genai.Client:
 # -- Sentence Transformers (INACTIVE - Commented out) -----------------------
 # Model: BAAI/bge-large-en-v1.5  |  Output dimension: 1024
 
-# _st_model: _SentenceTransformer | None = None
+_st_model: _SentenceTransformer | None = None
 
 
-# def _get_st_model() -> _SentenceTransformer:
-#     """Lazily load and cache the SentenceTransformer model."""
-#     global _st_model
-#     if _st_model is None:
-#         logger.info("Loading SentenceTransformer model: BAAI/bge-large-en-v1.5")
-#         _st_model = _SentenceTransformer("BAAI/bge-large-en-v1.5")
-#     return _st_model
+def _get_st_model() -> _SentenceTransformer:
+    """Lazily load and cache the SentenceTransformer model."""
+    global _st_model
+    if _st_model is None:
+        logger.info("Loading SentenceTransformer model: BAAI/bge-large-en-v1.5")
+        _st_model = _SentenceTransformer("BAAI/bge-large-en-v1.5")
+    return _st_model
 
 
-# def embed_text(text: str) -> list[float]:
-#     """
-#     Generate a 1024-dimensional text embedding using BAAI/bge-large-en-v1.5
-#     via Sentence Transformers (local, no API calls).
-#
-#     Raises an exception with a clear message if the call fails.
-#     """
-#     try:
-#         model = _get_st_model()
-#         vector = model.encode(text, normalize_embeddings=True)
-#         return vector.tolist()
-#     except Exception as exc:
-#         raise RuntimeError(f"Failed to generate embedding: {exc}") from exc
+def embed_text(text: str) -> list[float]:
+    """
+    Generate a 1024-dimensional text embedding using BAAI/bge-large-en-v1.5
+    via Sentence Transformers (local, no API calls).
+
+    Raises an exception with a clear message if the call fails.
+    """
+    try:
+        model = _get_st_model()
+        vector = model.encode(text, normalize_embeddings=True)
+        return vector.tolist()
+    except Exception as exc:
+        raise RuntimeError(f"Failed to generate embedding: {exc}") from exc
 
 
 # -- Gemini Embeddings (ACTIVE) ---------------------------------------------
 # Model: gemini-embedding-2-preview  |  Output dimension: 3072
 
 
-def embed_text(text: str) -> list[float]:
-    """
-    Generate a 3072-dimensional text embedding using gemini-embedding-2
-    via the Gemini API.
+# def embed_text(text: str) -> list[float]:
+#     """
+#     Generate a 3072-dimensional text embedding using gemini-embedding-2
+#     via the Gemini API.
 
-    Raises an exception with a clear message if the call fails.
-    """
-    try:
-        client = _get_client()
-        response = client.models.embed_content(
-            model="gemini-embedding-2-preview",
-            contents=text,
-        )
-        return response.embeddings[0].values
-    except Exception as exc:
-        raise RuntimeError(f"Failed to generate embedding: {exc}") from exc
+#     Raises an exception with a clear message if the call fails.
+#     """
+#     try:
+#         client = _get_client()
+#         response = client.models.embed_content(
+#             model="gemini-embedding-2-preview",
+#             contents=text,
+#         )
+#         return response.embeddings[0].values
+#     except Exception as exc:
+#         raise RuntimeError(f"Failed to generate embedding: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------

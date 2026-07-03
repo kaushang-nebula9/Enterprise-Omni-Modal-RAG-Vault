@@ -526,6 +526,7 @@ async def send_query(
             full_answer = ""
             citations = []
             actual_model_string = None
+            follow_up_questions = []
 
             async for event in generator:
                 if event["type"] == "token":
@@ -535,6 +536,7 @@ async def send_query(
                     full_answer = event["answer"]
                     citations = event["citations"]
                     actual_model_string = event.get("model_string")
+                    follow_up_questions = event.get("follow_up_questions", [])
 
             # Store the assistant's response in the database after streaming completes
             assistant_message = QueryMessage(
@@ -543,6 +545,7 @@ async def send_query(
                 content=full_answer,
                 created_at=datetime.now(timezone.utc),
                 model_id=resolved_model_id,
+                follow_up_questions=follow_up_questions,
             )
             db.add(assistant_message)
             db.flush()
@@ -598,8 +601,8 @@ async def send_query(
                     }
                 )
 
-            # Final event: data: {"type": "done", "citations": [...], "message_id": "..."}\n\n
-            yield f"data: {json.dumps({'type': 'done', 'citations': citation_responses, 'message_id': str(assistant_message.id)})}\n\n"
+            # Final event: data: {"type": "done", "citations": [...], "message_id": "...", "follow_up_questions": [...]}\n\n
+            yield f"data: {json.dumps({'type': 'done', 'citations': citation_responses, 'message_id': str(assistant_message.id), 'follow_up_questions': follow_up_questions})}\n\n"
 
         except Exception as exc:
             logger.error("Error in event_generator: %s", exc)

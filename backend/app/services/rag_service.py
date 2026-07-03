@@ -205,7 +205,15 @@ def execute_excel_query(
 _SYSTEM_PROMPT = """You are an intelligent assistant for an enterprise knowledge management system.
 Answer the user's question based ONLY on the provided context below.
 If the answer cannot be found in the context, say "I could not find relevant information in the available documents."
-Do not make up information. Be concise and accurate."""
+Do not make up information. Be concise and accurate.
+
+At the very end of your response, after your answer, you MUST suggest 2-3 subsequent questions that the user may likely ask next. These questions must strictly be related to the provided context.
+You MUST format this section exactly like this:
+[FOLLOW_UP]
+- Question 1?
+- Question 2?
+- Question 3?
+"""
 
 
 async def _rerank_chunks(query: str, hits: list[dict], label: str = "") -> list[dict]:
@@ -689,6 +697,19 @@ async def run_rag_pipeline(
         )
         yield {"type": "token", "content": full_answer}
 
+    # Parse follow up questions using regex split
+    import re
+
+    answer_parts = re.split(r"(?i)\[follow[-_]up\]", full_answer)
+    clean_answer = answer_parts[0].strip()
+    follow_up_questions: list[str] = []
+    if len(answer_parts) > 1:
+        raw_questions = answer_parts[1].strip().split("\n")
+        for q in raw_questions:
+            q = q.strip().lstrip("-").lstrip("*").lstrip("123456789.").strip()
+            if q:
+                follow_up_questions.append(q)
+
     # Build citations list
     citations: list[dict] = []
     for hit in qdrant_results:
@@ -707,7 +728,8 @@ async def run_rag_pipeline(
 
     yield {
         "type": "done",
-        "answer": full_answer,
+        "answer": clean_answer,
         "citations": citations,
         "model_string": selected_model_string,
+        "follow_up_questions": follow_up_questions,
     }

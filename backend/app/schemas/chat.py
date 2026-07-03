@@ -73,6 +73,7 @@ class MessageResponse(BaseModel):
     attached_file: Optional[dict] = None
     model_id: Optional[UUID] = None
     model: Optional[ModelResponse] = None
+    follow_up_questions: Optional[list[str]] = None
 
     model_config = {"from_attributes": True}
 

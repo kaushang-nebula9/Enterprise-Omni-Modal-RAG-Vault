@@ -41,6 +41,7 @@ export interface MessageResponse {
   }
   model_id?: string
   model?: AvailableModel
+  follow_up_questions?: string[]
 }
 
 export interface SessionDetailResponse extends SessionResponse {
