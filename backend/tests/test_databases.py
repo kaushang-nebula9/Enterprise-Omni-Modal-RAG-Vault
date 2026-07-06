@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from app.db.base import Base
 from app.models.role import Role
 from app.models.user import User
+from app.models.department import Department
 from app.models.external_database import (
     ExternalDatabaseConnection,
     DatabaseAccessPolicy,
@@ -390,3 +391,80 @@ def test_database_citations_storage(db):
     assert saved_citation.document_id is None
     assert saved_citation.connection_id == conn.id
     assert saved_citation.connection.name == "Citation DB"
+
+
+def test_revoke_department_access_member_only(db):
+    """
+    Verify revoking database access for a specific department member deletes
+    only that member's policy and does not cascade to other department members.
+    """
+    tenant_id = uuid.uuid4()
+    dept = Department(id=uuid.uuid4(), tenant_id=tenant_id, name="HR")
+
+    role1 = Role(
+        id=uuid.uuid4(), tenant_id=tenant_id, name="HR Recruiter", department_id=dept.id
+    )
+    role2 = Role(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        name="HR Generalist",
+        department_id=dept.id,
+    )
+
+    db.add_all([dept, role1, role2])
+    db.commit()
+
+    conn = ExternalDatabaseConnection(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        name="Org DB",
+        engine="postgresql",
+        host="localhost",
+        port=5432,
+        database_name="production",
+        username="user",
+        password="encrypted",
+        status="active",
+    )
+    db.add(conn)
+    db.commit()
+
+    # Create policies for both roles under the department grant
+    policy1 = DatabaseAccessPolicy(
+        id=uuid.uuid4(),
+        connection_id=conn.id,
+        role_id=role1.id,
+        granted_via="department",
+        granted_via_department_id=dept.id,
+    )
+    policy2 = DatabaseAccessPolicy(
+        id=uuid.uuid4(),
+        connection_id=conn.id,
+        role_id=role2.id,
+        granted_via="department",
+        granted_via_department_id=dept.id,
+    )
+    db.add_all([policy1, policy2])
+    db.commit()
+
+    # Verify both policies exist
+    assert db.query(DatabaseAccessPolicy).count() == 2
+
+    # Delete policy1 only
+    db.delete(policy1)
+    db.commit()
+
+    # Verify policy1 is deleted, but policy2 still remains
+    assert (
+        db.query(DatabaseAccessPolicy)
+        .filter(DatabaseAccessPolicy.id == policy1.id)
+        .first()
+        is None
+    )
+    assert (
+        db.query(DatabaseAccessPolicy)
+        .filter(DatabaseAccessPolicy.id == policy2.id)
+        .first()
+        is not None
+    )
+    assert db.query(DatabaseAccessPolicy).count() == 1

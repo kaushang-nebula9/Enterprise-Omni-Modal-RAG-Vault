@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Optional, Any
+from pydantic import BaseModel, Field, model_validator
 from app.models.enums import DatabaseEngine
 
 
@@ -51,9 +51,22 @@ class DatabaseConnectionResponse(BaseModel):
     last_synced_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
+    table_count: int = 0
 
     class Config:
         from_attributes = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_table_count(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            schema_cache = data.get("schema_cache")
+            if schema_cache:
+                schema_data = schema_cache.get("schema_data", {})
+                data["table_count"] = len(schema_data.get("tables", []))
+            elif "table_count" not in data:
+                data["table_count"] = 0
+        return data
 
 
 class DatabaseAccessPolicyCreate(BaseModel):

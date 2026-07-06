@@ -15,6 +15,7 @@ export interface DatabaseConnectionResponse {
   last_synced_at: string | null;
   created_at: string;
   updated_at: string;
+  table_count: number;
 }
 
 export interface DatabaseConnectionCreatePayload {

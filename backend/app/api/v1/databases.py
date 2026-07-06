@@ -170,6 +170,7 @@ def list_authorized_database_connections(
 
     connections = (
         db.query(ExternalDatabaseConnection)
+        .options(joinedload(ExternalDatabaseConnection.schema_cache))
         .filter(ExternalDatabaseConnection.tenant_id == current_user.tenant_id)
         .all()
     )
@@ -192,6 +193,7 @@ def list_database_connections(
     """
     connections = (
         db.query(ExternalDatabaseConnection)
+        .options(joinedload(ExternalDatabaseConnection.schema_cache))
         .filter(ExternalDatabaseConnection.tenant_id == current_admin.tenant_id)
         .all()
     )
@@ -209,6 +211,7 @@ def get_database_connection(
     """
     conn = (
         db.query(ExternalDatabaseConnection)
+        .options(joinedload(ExternalDatabaseConnection.schema_cache))
         .filter(
             ExternalDatabaseConnection.id == id,
             ExternalDatabaseConnection.tenant_id == current_admin.tenant_id,
@@ -754,21 +757,6 @@ def revoke_connection_access(
         )
         for ip in inherited_policies:
             db.delete(ip)
-
-    # If it is a department grant, we cascade-delete all policies generated via this department and table_name
-    elif policy.granted_via == "department":
-        dept_policies = (
-            db.query(DatabaseAccessPolicy)
-            .filter(
-                DatabaseAccessPolicy.connection_id == id,
-                DatabaseAccessPolicy.granted_via_department_id
-                == policy.granted_via_department_id,
-                DatabaseAccessPolicy.table_name == policy.table_name,
-            )
-            .all()
-        )
-        for dp in dept_policies:
-            db.delete(dp)
 
     db.delete(policy)
     log_audit_event(

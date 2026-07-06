@@ -289,15 +289,15 @@ def introspect_schema_live(
                         }
                     )
 
-                    schema_data["tables"].append(
-                        {
-                            "schema": schema,
-                            "name": table_name,
-                            "columns": columns_info,
-                            "primary_key": pk,
-                            "foreign_keys": fks_info,
-                        }
-                    )
+                schema_data["tables"].append(
+                    {
+                        "schema": schema,
+                        "name": table_name,
+                        "columns": columns_info,
+                        "primary_key": pk,
+                        "foreign_keys": fks_info,
+                    }
+                )
 
                 print(f"[SUCCESS] Finished processing table: {table_name}")
 

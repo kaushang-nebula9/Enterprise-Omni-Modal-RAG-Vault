@@ -64,6 +64,12 @@ class ExternalDatabaseConnection(Base):
         cascade="all, delete-orphan",
     )
 
+    @property
+    def table_count(self) -> int:
+        if self.schema_cache and self.schema_cache.schema_data:
+            return len(self.schema_cache.schema_data.get("tables", []))
+        return 0
+
 
 class DatabaseSchemaCache(Base):
     __tablename__ = "database_schema_caches"
