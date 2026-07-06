@@ -28,6 +28,14 @@ from app.models.user import User
 from app.services import embedding_service
 from app.services.qdrant_service import search_vectors
 from app.services.storage_service import get_absolute_path
+from app.models.external_database import ExternalDatabaseConnection, DatabaseSchemaCache
+from app.services.database_service import (
+    check_user_db_access,
+    get_user_authorized_tables,
+    translate_nl_to_sql,
+    run_query_on_connection,
+)
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -393,6 +401,7 @@ async def run_rag_pipeline(
     db: Session,
     conversation_history: str = "",
     document_id: Optional[uuid.UUID] = None,
+    database_id: Optional[uuid.UUID] = None,
     command_instruction: Optional[str] = None,
     compare_document_ids: Optional[list[uuid.UUID]] = None,
     is_compare_mode: bool = False,
@@ -408,6 +417,201 @@ async def run_rag_pipeline(
       5. Use Claude to stream response
       6. Yield tokens and final citations
     """
+    if database_id:
+        connection = (
+            db.query(ExternalDatabaseConnection)
+            .filter(
+                ExternalDatabaseConnection.id == database_id,
+                ExternalDatabaseConnection.tenant_id == user.tenant_id,
+            )
+            .first()
+        )
+        if not connection:
+            yield {"type": "token", "content": "Error: Database connection not found."}
+            yield {
+                "type": "done",
+                "answer": "Error: Database connection not found.",
+                "citations": [],
+                "follow_up_questions": [],
+            }
+            return
+
+        if not check_user_db_access(db, user, database_id):
+            yield {
+                "type": "token",
+                "content": "Error: You do not have permission to access this database.",
+            }
+            yield {
+                "type": "done",
+                "answer": "Error: Access denied.",
+                "citations": [],
+                "follow_up_questions": [],
+            }
+            return
+
+        schema_cache = (
+            db.query(DatabaseSchemaCache)
+            .filter(DatabaseSchemaCache.connection_id == database_id)
+            .first()
+        )
+        if not schema_cache or not schema_cache.schema_data:
+            yield {
+                "type": "token",
+                "content": "Error: Database schema has not been introspected yet. Please contact your administrator.",
+            }
+            yield {
+                "type": "done",
+                "answer": "Error: Schema missing.",
+                "citations": [],
+                "follow_up_questions": [],
+            }
+            return
+
+        all_tables = [t["name"] for t in schema_cache.schema_data.get("tables", [])]
+        authorized_table_names = get_user_authorized_tables(
+            db, user, database_id, all_tables
+        )
+        if not authorized_table_names:
+            yield {
+                "type": "token",
+                "content": "Error: You do not have access to any tables in this database.",
+            }
+            yield {
+                "type": "done",
+                "answer": "Error: Table access denied.",
+                "citations": [],
+                "follow_up_questions": [],
+            }
+            return
+
+        authorized_tables_info = [
+            t
+            for t in schema_cache.schema_data.get("tables", [])
+            if t["name"] in authorized_table_names
+        ]
+        filtered_schema_data = {"tables": authorized_tables_info}
+
+        yield {
+            "type": "token",
+            "content": "*Thinking... Translating your request to SQL...*\n\n",
+        }
+        try:
+            sql_query = await translate_nl_to_sql(
+                query=query,
+                schema_data_filtered=filtered_schema_data,
+                engine_type=connection.engine,
+                db=db,
+                model_id=model_id,
+            )
+            yield {
+                "type": "token",
+                "content": f"**Generated SQL Query:**\n```sql\n{sql_query}\n```\n\n*Executing query...*\n\n",
+            }
+        except Exception as e:
+            err_msg = f"Error during SQL generation: {str(e)}"
+            yield {"type": "token", "content": err_msg}
+            yield {
+                "type": "done",
+                "answer": err_msg,
+                "citations": [],
+                "follow_up_questions": [],
+            }
+            return
+
+        try:
+            query_results = run_query_on_connection(
+                connection=connection,
+                sql_query=sql_query,
+                schema_cache_tables=schema_cache.schema_data.get("tables", []),
+            )
+        except Exception as e:
+            err_msg = f"Error executing query: {str(e)}"
+            yield {"type": "token", "content": err_msg}
+            yield {
+                "type": "done",
+                "answer": err_msg,
+                "citations": [],
+                "follow_up_questions": [],
+            }
+            return
+
+        formatted_results_str = json.dumps(query_results, indent=2, default=str)
+
+        system_prompt = (
+            "You are a helpful data analyst assistant. Your job is to analyze the executed SQL query and its returned results, "
+            "and provide a clear, concise, and professional natural language answer to the user's original question. "
+            "Make sure to format the output nicely (e.g. use markdown tables or bullet points where appropriate). "
+            "Always cite values directly from the query results. If the results are empty, explain that no matching records were found."
+        )
+
+        prompt = f"""User Question: {query}
+Generated SQL Query: {sql_query}
+Query Results:
+{formatted_results_str}
+
+Please summarize and answer the user's question based on the query results. Do not make up any facts."""
+
+        selected_model_string = "claude-haiku-4-5-20251001"
+        selected_provider = "anthropic"
+
+        if model_id:
+            from app.models.available_model import AvailableModel
+
+            db_model = (
+                db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
+            )
+            if db_model:
+                selected_model_string = db_model.model_string
+                selected_provider = db_model.provider
+
+        full_answer_list = []
+        if selected_provider == "anthropic":
+            client = _get_async_anthropic_client()
+            async with client.messages.stream(
+                model=selected_model_string,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+            ) as stream:
+                async for event in stream:
+                    if event.type == "text":
+                        full_answer_list.append(event.text)
+                        yield {"type": "token", "content": event.text}
+        elif selected_provider == "openrouter":
+            from app.services.openrouter_service import stream_openrouter_completion
+
+            async for chunk_type, data in stream_openrouter_completion(
+                model_string=selected_model_string,
+                system_prompt=system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+            ):
+                if chunk_type == "text":
+                    full_answer_list.append(data)
+                    yield {"type": "token", "content": data}
+
+        full_answer = "".join(full_answer_list).strip()
+
+        citations = [
+            {
+                "document_id": str(database_id),
+                "filename": f"Database: {connection.name}",
+                "chunk_text": f"SQL: {sql_query}\nResults: {formatted_results_str[:1000]}...",
+                "page_number": None,
+                "slide_number": None,
+                "chunk_index": 0,
+            }
+        ]
+
+        yield {
+            "type": "done",
+            "answer": full_answer,
+            "citations": citations,
+            "model_string": selected_model_string,
+            "follow_up_questions": [],
+        }
+        return
+
     tenant_id = str(user.tenant_id)
     role_id = str(user.role_id)
     search_role_ids = [role_id, str(user.id)]

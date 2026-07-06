@@ -66,6 +66,11 @@ class EvaluationStatus(str, enum.Enum):
     failed = "failed"
 
 
+class DatabaseEngine(str, enum.Enum):
+    postgresql = "postgresql"
+    mysql = "mysql"
+
+
 # SQLAlchemy Enum Types
 file_type_enum = SQLEnum(FileType, name="filetype")
 owner_type_enum = SQLEnum(OwnerType, name="ownertype")
@@ -77,3 +82,4 @@ granted_via_enum = SQLEnum(GrantedVia, name="grantedvia")
 notification_type_enum = SQLEnum(NotificationType, name="notificationtype")
 model_provider_enum = SQLEnum(ModelProvider, name="modelprovider")
 evaluation_status_enum = SQLEnum(EvaluationStatus, name="evaluationstatus")
+database_engine_enum = SQLEnum(DatabaseEngine, name="databaseengine")

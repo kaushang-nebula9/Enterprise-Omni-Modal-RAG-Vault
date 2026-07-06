@@ -291,6 +291,9 @@ def get_session(
             joinedload(QuerySession.messages)
             .joinedload(QueryMessage.citations)
             .joinedload(QueryCitation.document),
+            joinedload(QuerySession.messages)
+            .joinedload(QueryMessage.citations)
+            .joinedload(QueryCitation.connection),
             joinedload(QuerySession.messages).joinedload(
                 QueryMessage.attached_document
             ),
@@ -516,6 +519,7 @@ async def send_query(
                 db=db,
                 conversation_history=conversation_history,
                 document_id=body.document_id,
+                database_id=body.database_id,
                 command_instruction=command_instruction,
                 compare_document_ids=compare_document_ids,
                 is_compare_mode=is_compare,
@@ -553,9 +557,25 @@ async def send_query(
             # Store citations linked to the assistant message
             citation_models = []
             for cit in citations:
+                doc_id_val = None
+                conn_id_val = None
+                try:
+                    target_uuid = uuid.UUID(str(cit["document_id"]))
+                    doc_exists = (
+                        db.query(Document).filter(Document.id == target_uuid).first()
+                        is not None
+                    )
+                    if doc_exists:
+                        doc_id_val = target_uuid
+                    else:
+                        conn_id_val = target_uuid
+                except Exception:
+                    pass
+
                 citation = QueryCitation(
                     message_id=assistant_message.id,
-                    document_id=cit["document_id"],
+                    document_id=doc_id_val,
+                    connection_id=conn_id_val,
                     qdrant_vector_id=str(cit.get("chunk_index", "")),
                     chunk_text=cit["chunk_text"],
                     page_number=cit.get("page_number"),
@@ -593,7 +613,12 @@ async def send_query(
                 citation_responses.append(
                     {
                         "id": str(cit_model.id),
-                        "document_id": str(cit_data["document_id"]),
+                        "document_id": str(cit_model.document_id)
+                        if cit_model.document_id
+                        else None,
+                        "connection_id": str(cit_model.connection_id)
+                        if cit_model.connection_id
+                        else None,
                         "filename": cit_data["filename"],
                         "chunk_text": cit_data["chunk_text"],
                         "page_number": cit_data.get("page_number"),

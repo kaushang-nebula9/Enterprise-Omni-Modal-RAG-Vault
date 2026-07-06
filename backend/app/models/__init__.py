@@ -14,3 +14,9 @@ from .usage_log import UsageLog
 from .query_log import QueryLog
 from .evaluation import EvaluationRun, EvaluationResult
 from .audit_log import AuditLog
+from .external_database import (
+    ExternalDatabaseConnection,
+    DatabaseSchemaCache,
+    DatabaseAccessPolicy,
+)
+

@@ -8,6 +8,7 @@ from app.api.v1.personal_documents import router as personal_documents_router
 from app.api.v1.departments import router as departments_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.evaluations import router as evaluations_router
+from app.api.v1.databases import router as databases_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
@@ -27,3 +28,4 @@ api_router.include_router(
 api_router.include_router(
     evaluations_router, prefix="/evaluations", tags=["evaluations"]
 )
+api_router.include_router(databases_router, prefix="/databases", tags=["databases"])

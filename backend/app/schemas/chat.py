@@ -42,7 +42,8 @@ class CreateSessionResponse(SessionResponse):
 
 class CitationResponse(BaseModel):
     id: UUID
-    document_id: UUID
+    document_id: Optional[UUID] = None
+    connection_id: Optional[UUID] = None
     filename: str = ""
     chunk_text: str
     page_number: Optional[int] = None
@@ -55,11 +56,14 @@ class CitationResponse(BaseModel):
     def resolve_filename(cls, data: Any) -> Any:
         """
         When building from a SQLAlchemy ORM QueryCitation object,
-        extract the filename from the related document relationship.
+        extract the filename from the related document or database relationship.
         """
         if hasattr(data, "document") and data.document is not None:
             # Inject filename from the related Document
             data.__dict__["filename"] = data.document.filename
+        elif hasattr(data, "connection") and data.connection is not None:
+            # Inject connection name
+            data.__dict__["filename"] = f"Database: {data.connection.name}"
         return data
 
 
@@ -110,6 +114,7 @@ class SessionDetailResponse(SessionResponse):
 class QueryRequest(BaseModel):
     content: str = Field(..., min_length=1, strip_whitespace=True)
     document_id: Optional[UUID] = None
+    database_id: Optional[UUID] = None
     model_id: Optional[UUID] = None
 
 

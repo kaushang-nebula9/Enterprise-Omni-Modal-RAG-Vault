@@ -4,11 +4,12 @@ from sqlalchemy import String, Text, Integer, DateTime, Uuid, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from app.models.document import Document
     from app.models.query_message import QueryMessage
+    from app.models.external_database import ExternalDatabaseConnection
 
 
 class QueryCitation(Base):
@@ -18,8 +19,13 @@ class QueryCitation(Base):
     message_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("query_messages.id", ondelete="CASCADE"), nullable=False
     )
-    document_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    document_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid, ForeignKey("documents.id", ondelete="CASCADE"), nullable=True
+    )
+    connection_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid,
+        ForeignKey("external_database_connections.id", ondelete="CASCADE"),
+        nullable=True,
     )
     qdrant_vector_id: Mapped[str] = mapped_column(String, nullable=False)
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -33,4 +39,9 @@ class QueryCitation(Base):
     message: Mapped["QueryMessage"] = relationship(
         "QueryMessage", back_populates="citations"
     )
-    document: Mapped["Document"] = relationship("Document", back_populates="citations")
+    document: Mapped[Optional["Document"]] = relationship(
+        "Document", back_populates="citations"
+    )
+    connection: Mapped[Optional["ExternalDatabaseConnection"]] = relationship(
+        "ExternalDatabaseConnection"
+    )

@@ -14,6 +14,7 @@ import {
   Trash2,
   Pin,
   History,
+  Database,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { chatService } from '../../services/chatService';
@@ -32,6 +33,7 @@ interface SidebarProps {
 const adminLinks = [
   { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { name: 'Documents', icon: FileText, path: '/dashboard/documents' },
+  { name: 'Databases', icon: Database, path: '/dashboard/databases' },
   { name: 'Team Management', icon: Users, path: '/dashboard/team' },
   { name: 'Roles and Permissions', icon: ShieldCheck, path: '/dashboard/roles' },
   { name: 'Organisation Settings', icon: Settings, path: '/dashboard/settings' },

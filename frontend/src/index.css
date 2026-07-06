@@ -71,3 +71,54 @@
 .animate-fade-in {
   animation: fadeInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Pre and Code block formatting inside markdown messages to prevent overflow */
+pre {
+  background-color: rgb(248 250 252);
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid rgb(241 245 249);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dark pre {
+  background-color: rgba(30, 41, 59, 0.5);
+  border-color: rgb(30 41 59);
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.75rem;
+  padding-left: 0.375rem;
+  padding-right: 0.375rem;
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+  background-color: rgb(248 250 252);
+  border-radius: 0.25rem;
+  border: 1px solid rgb(241 245 249);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.dark code {
+  background-color: rgba(30, 41, 59, 0.5);
+  border-color: rgb(30 41 59);
+}
+
+/* Reset inner pre code styles */
+pre code {
+  padding: 0 !important;
+  background-color: transparent !important;
+  border: none !important;
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  display: block;
+}

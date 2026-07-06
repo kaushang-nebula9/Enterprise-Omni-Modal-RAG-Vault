@@ -24,4 +24,10 @@ from app.models.evaluation import EvaluationRun, EvaluationResult
 from app.models.audit_log import AuditLog
 from app.models.refresh_token import RefreshToken
 from app.models.invite_token import InviteToken
+from app.models.external_database import (
+    ExternalDatabaseConnection,
+    DatabaseSchemaCache,
+    DatabaseAccessPolicy,
+)
+
 

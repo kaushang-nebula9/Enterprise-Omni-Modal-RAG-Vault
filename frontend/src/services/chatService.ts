@@ -43,7 +43,8 @@ export const chatService = {
     onError: (error: string, status?: number) => void,
     documentId?: string,
     modelId?: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    databaseId?: string
   ): void => {
     const baseURL = api.defaults.baseURL || 'http://localhost:8000'
     const url = `${baseURL}/api/v1/chat/sessions/${sessionId}/query`
@@ -56,6 +57,7 @@ export const chatService = {
       body: JSON.stringify({
         content,
         document_id: documentId,
+        database_id: databaseId,
         model_id: modelId,
       }),
       credentials: 'include',
