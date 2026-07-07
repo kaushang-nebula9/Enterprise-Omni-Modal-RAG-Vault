@@ -17,7 +17,7 @@ class OwnerType(str, enum.Enum):
 
 
 class Visibility(str, enum.Enum):
-    org_wide = "org_wide"
+    public = "public"
     private = "private"
 
 

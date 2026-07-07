@@ -316,7 +316,7 @@ def upload_document(
         filename=filename,
         file_type=file_type,
         owner_type=OwnerType.organisation,
-        visibility=Visibility.org_wide,
+        visibility=Visibility.public,
         chunk_count=0,
         qdrant_collection=collection_name,
         status=DocumentStatus.pending,

@@ -118,7 +118,7 @@ def test_assign_document_to_department(db):
         filename="marketing_brief.pdf",
         file_type=FileType.pdf,
         owner_type=OwnerType.organisation,
-        visibility=Visibility.org_wide,
+        visibility=Visibility.public,
         chunk_count=0,
         qdrant_collection="test_collection",
         status=DocumentStatus.ready,

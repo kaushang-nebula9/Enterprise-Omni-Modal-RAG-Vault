@@ -3,7 +3,7 @@ import type { RoleResponse } from './auth'
 export type DocumentStatus = 'pending' | 'processing' | 'ready' | 'failed'
 export type FileType = 'text' | 'audio' | 'pdf' | 'docx' | 'pptx' | 'excel'
 export type OwnerType = 'organisation' | 'private'
-export type Visibility = 'org_wide' | 'private'
+export type Visibility = 'public' | 'private'
 
 export interface DocumentResponse {
   id: string
