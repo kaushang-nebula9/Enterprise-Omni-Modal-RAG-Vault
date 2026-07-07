@@ -395,6 +395,41 @@ async def _resolve_compare_document(
     return "\n---\n".join(lines), doc_results
 
 
+def is_value_mismatch_error(engine_type: str, e: Exception) -> bool:
+    err_str = str(e).lower()
+    orig = getattr(e, "orig", None)
+    from app.models.enums import DatabaseEngine
+
+    if engine_type == DatabaseEngine.postgresql:
+        if orig and hasattr(orig, "pgcode") and orig.pgcode == "22P02":
+            return True
+        if "invalid input value for enum" in err_str:
+            return True
+        if "invalidtextrepresentation" in err_str:
+            return True
+        if "invalid input syntax for" in err_str:
+            return True
+
+    elif engine_type == DatabaseEngine.mysql:
+        if (
+            orig
+            and hasattr(orig, "args")
+            and isinstance(orig.args, tuple)
+            and len(orig.args) > 0
+        ):
+            err_code = orig.args[0]
+            if err_code in (1265, 1366, 1292):
+                return True
+        if "data truncated" in err_str:
+            return True
+        if "truncated incorrect" in err_str:
+            return True
+        if "incorrect integer value" in err_str:
+            return True
+
+    return False
+
+
 async def run_rag_pipeline(
     query: str,
     user: User,
@@ -525,15 +560,71 @@ async def run_rag_pipeline(
                 schema_cache_tables=schema_cache.schema_data.get("tables", []),
             )
         except Exception as e:
-            err_msg = f"Error executing query: {str(e)}"
-            yield {"type": "token", "content": err_msg}
-            yield {
-                "type": "done",
-                "answer": err_msg,
-                "citations": [],
-                "follow_up_questions": [],
-            }
-            return
+            if is_value_mismatch_error(connection.engine, e):
+                # Log retry event
+                logger.warning(
+                    f"Connection {connection.id} - NL-to-SQL execution failed with value/literal mismatch: {str(e)}. "
+                    f"Original SQL: {sql_query}. Attempting self-correction..."
+                )
+                yield {
+                    "type": "token",
+                    "content": f"\n*Database reported a value/literal mismatch error: {str(e)}.*\n*Attempting self-correction (retry 1/1)...*\n\n",
+                }
+
+                try:
+                    # Regenerate SQL with error feedback
+                    sql_query = await translate_nl_to_sql(
+                        query=query,
+                        schema_data_filtered=filtered_schema_data,
+                        engine_type=connection.engine,
+                        db=db,
+                        model_id=model_id,
+                        failed_sql=sql_query,
+                        error_message=str(e),
+                    )
+
+                    yield {
+                        "type": "token",
+                        "content": f"**Regenerated SQL Query:**\n```sql\n{sql_query}\n```\n\n*Executing corrected query...*\n\n",
+                    }
+
+                    # Re-run execution and re-verify
+                    query_results = run_query_on_connection(
+                        connection=connection,
+                        sql_query=sql_query,
+                        schema_cache_tables=schema_cache.schema_data.get("tables", []),
+                    )
+
+                    # Log successful retry
+                    logger.info(
+                        f"Connection {connection.id} - NL-to-SQL self-correction successful. New SQL: {sql_query}"
+                    )
+
+                except Exception as retry_err:
+                    # Log failed retry
+                    logger.error(
+                        f"Connection {connection.id} - NL-to-SQL self-correction failed. "
+                        f"Regenerated SQL: {sql_query}. Error: {str(retry_err)}"
+                    )
+                    err_msg = f"Error executing query: {str(retry_err)}"
+                    yield {"type": "token", "content": err_msg}
+                    yield {
+                        "type": "done",
+                        "answer": err_msg,
+                        "citations": [],
+                        "follow_up_questions": [],
+                    }
+                    return
+            else:
+                err_msg = f"Error executing query: {str(e)}"
+                yield {"type": "token", "content": err_msg}
+                yield {
+                    "type": "done",
+                    "answer": err_msg,
+                    "citations": [],
+                    "follow_up_questions": [],
+                }
+                return
 
         formatted_results_str = json.dumps(query_results, indent=2, default=str)
 

@@ -468,3 +468,94 @@ def test_revoke_department_access_member_only(db):
         is not None
     )
     assert db.query(DatabaseAccessPolicy).count() == 1
+
+
+def test_is_value_mismatch_error():
+    from app.services.rag_service import is_value_mismatch_error
+
+    # Postgres 22P02 exception simulation
+    class PostgresMockError(Exception):
+        pass
+
+    pg_err = PostgresMockError("invalid input value for enum visibility: 'public'")
+
+    class MockOrigPg:
+        pgcode = "22P02"
+
+    pg_err.orig = MockOrigPg()
+    assert is_value_mismatch_error("postgresql", pg_err) is True
+
+    # Fallback postgres string check
+    pg_err_fallback = Exception("invalid input value for enum visibility: 'public'")
+    assert is_value_mismatch_error("postgresql", pg_err_fallback) is True
+
+    # MySQL 1265 (Data truncated) error simulation
+    class MySQLMockError(Exception):
+        pass
+
+    mysql_err = MySQLMockError("Data truncated for column 'visibility' at row 1")
+
+    class MockOrigMysql:
+        args = (1265, "Data truncated")
+
+    mysql_err.orig = MockOrigMysql()
+    assert is_value_mismatch_error("mysql", mysql_err) is True
+
+    # Fallback mysql string check
+    mysql_err_fallback = Exception("data truncated for column")
+    assert is_value_mismatch_error("mysql", mysql_err_fallback) is True
+
+    # Generic error should be False
+    other_err = Exception("Connection refused")
+    assert is_value_mismatch_error("postgresql", other_err) is False
+
+
+@pytest.mark.asyncio
+async def test_translate_nl_to_sql_with_allowed_values(db):
+    from app.services.database_service import translate_nl_to_sql
+
+    schema_data = {
+        "tables": [
+            {
+                "name": "documents",
+                "columns": [
+                    {"name": "id", "type": "UUID"},
+                    {
+                        "name": "visibility",
+                        "type": "VARCHAR",
+                        "allowed_values": ["org_wide", "private"],
+                    },
+                ],
+                "primary_key": ["id"],
+                "foreign_keys": [],
+            }
+        ]
+    }
+
+    # Mock Anthropic Async client
+    with patch("app.services.database_service.AsyncAnthropic"):
+        mock_client = MagicMock()
+        mock_client.messages = MagicMock()
+
+        # Setup async create mock
+        async def mock_create(*args, **kwargs):
+            m_res = MagicMock()
+            m_res.content = [
+                MagicMock(
+                    text="SELECT id FROM documents WHERE visibility = 'org_wide' LIMIT 100"
+                )
+            ]
+            return m_res
+
+        mock_client.messages.create = mock_create
+
+        with patch(
+            "app.services.database_service._async_anthropic_client", new=mock_client
+        ):
+            sql = await translate_nl_to_sql(
+                query="find documents",
+                schema_data_filtered=schema_data,
+                engine_type="postgresql",
+                db=db,
+            )
+            assert "SELECT" in sql

@@ -204,6 +204,71 @@ def introspect_schema_live(
         inspector = inspect(engine)
         print("[SUCCESS] Inspector created.")
 
+        # Query custom enum types and allowed values directly from database catalogs
+        enums_lookup = {}
+        if engine_type == DatabaseEngine.postgresql:
+            try:
+                pg_query = """
+                SELECT 
+                    ns.nspname AS schema_name,
+                    t.relname AS table_name,
+                    a.attname AS column_name,
+                    e.enumlabel AS enum_value
+                FROM pg_attribute a
+                JOIN pg_class t ON a.attrelid = t.oid
+                JOIN pg_namespace ns ON t.relnamespace = ns.oid
+                JOIN pg_type tp ON a.atttypid = tp.oid
+                JOIN pg_enum e ON tp.oid = e.enumtypid
+                WHERE a.attnum > 0 AND NOT a.attisdropped
+                ORDER BY ns.nspname, t.relname, a.attname, e.enumsortorder;
+                """
+                with engine.connect() as conn:
+                    pg_res = conn.execute(text(pg_query)).fetchall()
+                    for s_name, t_name, c_name, e_val in pg_res:
+                        key = (
+                            s_name.lower() if s_name else None,
+                            t_name.lower(),
+                            c_name.lower(),
+                        )
+                        if key not in enums_lookup:
+                            enums_lookup[key] = []
+                        enums_lookup[key].append(e_val)
+            except Exception as enum_err:
+                print(
+                    f"[WARNING] Failed to fetch Postgres enums from catalog: {enum_err}"
+                )
+            print(f"[INFO] Found {len(enums_lookup)} enum columns in Postgres.")
+            print(f"[INFO] Enum lookup keys: {list(enums_lookup.keys())[:5]} ...")
+
+        elif engine_type == DatabaseEngine.mysql:
+            try:
+                mysql_query = """
+                SELECT 
+                    table_schema AS schema_name,
+                    table_name AS table_name,
+                    column_name AS column_name,
+                    column_type AS column_type
+                FROM information_schema.columns
+                WHERE data_type = 'enum' AND table_schema = DATABASE();
+                """
+                import re
+
+                with engine.connect() as conn:
+                    mysql_res = conn.execute(text(mysql_query)).fetchall()
+                    for s_name, t_name, c_name, col_type in mysql_res:
+                        vals = re.findall(r"'([^']*)'", col_type)
+                        if vals:
+                            key = (
+                                s_name.lower() if s_name else None,
+                                t_name.lower(),
+                                c_name.lower(),
+                            )
+                            enums_lookup[key] = vals
+            except Exception as enum_err:
+                print(
+                    f"[WARNING] Failed to fetch MySQL enums from information_schema: {enum_err}"
+                )
+
         schema_data = {"tables": []}
 
         print("[STEP] Detecting default schema...")
@@ -240,13 +305,18 @@ def introspect_schema_live(
                 columns_info = []
                 for col in columns:
                     print(f"    [COLUMN] {col['name']} ({col['type']})")
-                    columns_info.append(
-                        {
-                            "name": col["name"],
-                            "type": str(col["type"]),
-                            "nullable": col.get("nullable", True),
-                        }
-                    )
+                    col_item = {
+                        "name": col["name"],
+                        "type": str(col["type"]),
+                        "nullable": col.get("nullable", True),
+                    }
+                    lookup_schema = schema.lower() if schema else None
+                    key1 = (lookup_schema, table_name.lower(), col["name"].lower())
+                    key2 = (None, table_name.lower(), col["name"].lower())
+                    allowed_vals = enums_lookup.get(key1) or enums_lookup.get(key2)
+                    if allowed_vals:
+                        col_item["allowed_values"] = allowed_vals
+                    columns_info.append(col_item)
 
                 # Primary Key
                 try:
@@ -394,6 +464,8 @@ async def translate_nl_to_sql(
     engine_type: str,
     db: Session,
     model_id: Optional[uuid.UUID] = None,
+    failed_sql: Optional[str] = None,
+    error_message: Optional[str] = None,
 ) -> str:
     """
     Uses the LLM model to translate natural language into a clean, single SQL statement.
@@ -402,7 +474,13 @@ async def translate_nl_to_sql(
     # Build schema description
     schema_desc = []
     for tbl in schema_data_filtered.get("tables", []):
-        cols = ", ".join([f"{c['name']} ({c['type']})" for c in tbl["columns"]])
+        cols_list = []
+        for c in tbl["columns"]:
+            c_str = f"{c['name']} ({c['type']})"
+            if "allowed_values" in c:
+                c_str += f" [allowed values: {c['allowed_values']}]"
+            cols_list.append(c_str)
+        cols = ", ".join(cols_list)
         pk = f", Primary Key: {tbl['primary_key']}" if tbl["primary_key"] else ""
         fks = ""
         if tbl["foreign_keys"]:
@@ -415,18 +493,45 @@ async def translate_nl_to_sql(
 
     schema_str = "\n".join(schema_desc)
 
-    system_prompt = (
-        "You are an expert SQL translation assistant. Your task is to translate the user's natural language question "
-        "into a valid, executable SQL query for the given database schema. Follow these strict rules:\n"
-        "1. Output ONLY the raw SQL query. Do not wrap it in markdown code blocks, do not add comments, and do not write any introductory or explanatory text.\n"
-        f"2. Use {engine_type} SQL syntax.\n"
-        "3. Pay attention to case-sensitivity and quote identifiers correctly if needed (e.g. backticks for MySQL, double quotes for PostgreSQL).\n"
-        "4. Only query the tables and columns listed in the schema. Do not invent columns.\n"
-        "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
-        "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT)."
-    )
+    if failed_sql and error_message:
+        system_prompt = (
+            "You are an expert SQL translation assistant. You previously generated a SQL query that failed with a database error.\n"
+            "Your task is to correct the SQL query based on the database error message and user's original question. Follow these strict rules:\n"
+            "1. Output ONLY the raw SQL query. Do not wrap it in markdown code blocks, do not add comments, and do not write any introductory or explanatory text.\n"
+            f"2. Use {engine_type} SQL syntax.\n"
+            "3. Pay attention to case-sensitivity and quote identifiers correctly if needed (e.g. backticks for MySQL, double quotes for PostgreSQL).\n"
+            "4. Only query the tables and columns listed in the schema. Do not invent columns.\n"
+            "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
+            "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT)."
+        )
 
-    prompt = f"""Database Schema (Engine: {engine_type}):
+        prompt = f"""Database Schema (Engine: {engine_type}):
+{schema_str}
+
+User Question: {query}
+
+Previously Generated SQL:
+{failed_sql}
+
+Database Error Message:
+{error_message}
+
+Please correct the SQL query to fix the value/literal mismatch or enum issue reported in the error message. Ensure the SQL is completely valid and follows all rules.
+
+SQL Query:"""
+    else:
+        system_prompt = (
+            "You are an expert SQL translation assistant. Your task is to translate the user's natural language question "
+            "into a valid, executable SQL query for the given database schema. Follow these strict rules:\n"
+            "1. Output ONLY the raw SQL query. Do not wrap it in markdown code blocks, do not add comments, and do not write any introductory or explanatory text.\n"
+            f"2. Use {engine_type} SQL syntax.\n"
+            "3. Pay attention to case-sensitivity and quote identifiers correctly if needed (e.g. backticks for MySQL, double quotes for PostgreSQL).\n"
+            "4. Only query the tables and columns listed in the schema. Do not invent columns.\n"
+            "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
+            "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT)."
+        )
+
+        prompt = f"""Database Schema (Engine: {engine_type}):
 {schema_str}
 
 User Question: {query}
