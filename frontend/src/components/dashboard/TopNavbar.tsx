@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bell, LogOut, UserCheck, FileText, Layers, Briefcase, Building2, Award, AlertTriangle } from 'lucide-react';
+import { Bell, LogOut, UserCheck, FileText, Layers, Briefcase, Building2, Award, AlertTriangle, Database } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { logout } from '../../services/authService';
 import ThemeToggle from '../shared/ThemeToggle';
@@ -124,6 +124,12 @@ const TopNavbar: React.FC = () => {
                           return <Award className={`${baseClass} text-indigo-500`} />;
                         case 'budget_exceeded':
                           return <AlertTriangle className={`${baseClass} text-rose-500`} />;
+                        case 'database_access_direct':
+                          return <Database className={`${baseClass} text-indigo-500`} />;
+                        case 'database_access_inherited_hierarchy':
+                          return <Layers className={`${baseClass} text-violet-500`} />;
+                        case 'database_access_inherited_department':
+                          return <Briefcase className={`${baseClass} text-emerald-500`} />;
                         default:
                           return <Bell className={`${baseClass} text-slate-500`} />;
                       }

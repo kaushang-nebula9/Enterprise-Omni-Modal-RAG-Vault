@@ -42,7 +42,9 @@ def mark_notifications_as_read(
     """
     unread_notifs = (
         db.query(Notification)
-        .filter(Notification.user_id == current_user.id, not Notification.is_read)
+        .filter(
+            Notification.user_id == current_user.id, Notification.is_read.is_(False)
+        )
         .all()
     )
     for notif in unread_notifs:

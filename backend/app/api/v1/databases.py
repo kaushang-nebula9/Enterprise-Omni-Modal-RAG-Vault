@@ -580,6 +580,9 @@ def assign_connection_access(
                 detail="Role not found",
             )
 
+        from app.services.notification_service import create_notification
+        from app.models.enums import NotificationType
+
         # Create direct policy if not already existing
         existing = (
             db.query(DatabaseAccessPolicy)
@@ -599,6 +602,20 @@ def assign_connection_access(
             )
             db.add(direct_policy)
             added_policies.append(direct_policy)
+
+            # Notify direct role users
+            role_users = db.query(User).filter(User.role_id == request.role_id).all()
+            table_info = f" (table: {request.table_name})" if request.table_name else ""
+            for user in role_users:
+                create_notification(
+                    db=db,
+                    user_id=user.id,
+                    tenant_id=user.tenant_id,
+                    type=NotificationType.database_access_direct,
+                    message=f"You have been granted direct access to database: {conn.name}{table_info}",
+                    related_role_id=request.role_id,
+                    flush_only=True,
+                )
 
         # Walk up role hierarchy for upward inheritance
         ancestors = get_role_ancestors(request.role_id, db)
@@ -624,8 +641,29 @@ def assign_connection_access(
                 db.add(anc_policy)
                 added_policies.append(anc_policy)
 
+                # Notify ancestor role users
+                ancestor_users = (
+                    db.query(User).filter(User.role_id == ancestor.id).all()
+                )
+                table_info = (
+                    f" (table: {request.table_name})" if request.table_name else ""
+                )
+                for user in ancestor_users:
+                    create_notification(
+                        db=db,
+                        user_id=user.id,
+                        tenant_id=user.tenant_id,
+                        type=NotificationType.database_access_inherited_hierarchy,
+                        message=f"You have been granted inherited access to database: {conn.name}{table_info} (inherited from role: {role.name})",
+                        related_role_id=ancestor.id,
+                        flush_only=True,
+                    )
+
     # 2. Process Department-Based Grant (no hierarchy inheritance)
     if request.department_id:
+        from app.services.notification_service import create_notification
+        from app.models.enums import NotificationType
+
         dept = (
             db.query(Department)
             .filter(
@@ -669,6 +707,25 @@ def assign_connection_access(
                 )
                 db.add(dept_policy)
                 added_policies.append(dept_policy)
+
+        # Notify users whose role belongs to that department
+        dept_users = (
+            db.query(User)
+            .join(Role)
+            .filter(Role.department_id == request.department_id)
+            .all()
+        )
+        table_info = f" (table: {request.table_name})" if request.table_name else ""
+        for u in dept_users:
+            create_notification(
+                db=db,
+                user_id=u.id,
+                tenant_id=u.tenant_id,
+                type=NotificationType.database_access_inherited_department,
+                message=f"You have been granted access to database: {conn.name}{table_info} (via department: {dept.name})",
+                related_department_id=request.department_id,
+                flush_only=True,
+            )
 
     db.commit()
 

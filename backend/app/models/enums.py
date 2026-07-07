@@ -52,6 +52,9 @@ class NotificationType(str, enum.Enum):
     department_added = "department_added"
     evaluation_completed = "evaluation_completed"
     budget_exceeded = "budget_exceeded"
+    database_access_direct = "database_access_direct"
+    database_access_inherited_hierarchy = "database_access_inherited_hierarchy"
+    database_access_inherited_department = "database_access_inherited_department"
 
 
 class ModelProvider(str, enum.Enum):

@@ -1840,7 +1840,7 @@ const ChatPage: React.FC = () => {
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-650 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all font-semibold text-sm outline-none"
                       >
                         <span>{selectedModel?.display_name || 'Select model'}</span>
-                        <ChevronDown className="w-3 h-3 text-slate-450" />
+                        <ChevronDown className={`w-3 h-3 text-slate-450 transition-transform duration-200 ${isModelDropdownOpen ? 'rotate-180' : ''}`} />
                       </button>
 
                       {isModelDropdownOpen && (
@@ -1904,11 +1904,11 @@ const ChatPage: React.FC = () => {
                         onClick={() => setIsDbDropdownOpen(!isDbDropdownOpen)}
                         disabled={isLoading || isStreaming}
                         type="button"
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-650 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all font-semibold text-sm outline-none border border-slate-200 dark:border-slate-800"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-650 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all font-semibold text-sm outline-none"
                       >
                         <Database className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                         <span>{attachedDatabase ? attachedDatabase.name : 'Select DB'}</span>
-                        <ChevronDown className="w-3 h-3 text-slate-455" />
+                        <ChevronDown className={`w-3 h-3 text-slate-455 transition-transform duration-200 ${isDbDropdownOpen ? 'rotate-180' : ''}`} />
                       </button>
 
                       {isDbDropdownOpen && (
