@@ -897,13 +897,20 @@ const ChatPage: React.FC = () => {
           )
         )
       },
-      (citations, messageId, followUpQuestions) => {
+      (citations, messageId, followUpQuestions, generatedSql, answer) => {
         setIsStreaming(false)
         setIsLoading(false)
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === tempAssistantId
-              ? { ...msg, id: messageId, citations, follow_up_questions: followUpQuestions }
+              ? {
+                  ...msg,
+                  id: messageId,
+                  citations,
+                  follow_up_questions: followUpQuestions,
+                  generated_sql: generatedSql,
+                  content: answer || msg.content,
+                }
               : msg
           )
         )
@@ -1412,7 +1419,13 @@ const ChatPage: React.FC = () => {
                           ),
                         }}
                       >
-                        {msg.content.split('[FOLLOW_UP]')[0]}
+                        {(() => {
+                          const mainContent = msg.content.split('[FOLLOW_UP]')[0];
+                          if (msg.generated_sql) {
+                            return `*Thinking... Translating your request to SQL...*\n\n**Generated SQL Query:**\n\`\`\`sql\n${msg.generated_sql}\n\`\`\`\n\n*Executing query...*\n\n${mainContent}`;
+                          }
+                          return mainContent;
+                        })()}
                       </ReactMarkdown>
                       <div className="flex items-center gap-2 mt-1 select-none">
                         <span className="text-slate-400 dark:text-slate-500 text-xs">{formatTime(msg.created_at)}</span>
@@ -1425,6 +1438,8 @@ const ChatPage: React.FC = () => {
                           </>
                         )}
                       </div>
+
+
 
                       {msg.citations.length > 0 && (
                         <div className="mt-2">

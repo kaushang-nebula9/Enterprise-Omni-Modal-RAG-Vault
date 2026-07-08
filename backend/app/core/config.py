@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     CHAT_SUSTAINED_LIMIT: int = 10
     CHAT_SUSTAINED_WINDOW_SECONDS: int = 60
 
+    SQL_HISTORY_LIMIT: int = 5
+    SQL_RESULT_SUMMARY_THRESHOLD: int = 20
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )

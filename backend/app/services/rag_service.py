@@ -430,6 +430,46 @@ def is_value_mismatch_error(engine_type: str, e: Exception) -> bool:
     return False
 
 
+def get_recent_turns(db: Session, session_id: uuid.UUID, limit: int = 5) -> list[dict]:
+    from app.models.query_message import QueryMessage
+    from app.models.enums import MessageRole
+
+    messages = (
+        db.query(QueryMessage)
+        .filter(QueryMessage.session_id == session_id)
+        .order_by(QueryMessage.created_at.desc())
+        .limit(limit * 2)
+        .all()
+    )
+    messages = list(reversed(messages))
+
+    turns = []
+    i = 0
+    while i < len(messages):
+        msg = messages[i]
+        if msg.role == MessageRole.user:
+            if i + 1 < len(messages) and messages[i + 1].role == MessageRole.assistant:
+                turns.append(
+                    {
+                        "question": msg.content,
+                        "answer": messages[i + 1].content,
+                        "generated_sql": getattr(
+                            messages[i + 1], "generated_sql", None
+                        ),
+                        "query_results": getattr(
+                            messages[i + 1], "query_results", None
+                        ),
+                    }
+                )
+                i += 2
+            else:
+                i += 1
+        else:
+            i += 1
+
+    return turns[-limit:]
+
+
 async def run_rag_pipeline(
     query: str,
     user: User,
@@ -442,6 +482,7 @@ async def run_rag_pipeline(
     is_compare_mode: bool = False,
     is_summarize_mode: bool = False,
     model_id: Optional[uuid.UUID] = None,
+    session_id: Optional[uuid.UUID] = None,
 ) -> AsyncGenerator[dict, None]:
     """
     Main RAG pipeline with streaming output:
@@ -530,6 +571,10 @@ async def run_rag_pipeline(
             "type": "token",
             "content": "*Thinking... Translating your request to SQL...*\n\n",
         }
+        turns = []
+        if session_id:
+            turns = get_recent_turns(db, session_id, settings.SQL_HISTORY_LIMIT)
+
         try:
             sql_query = await translate_nl_to_sql(
                 query=query,
@@ -537,13 +582,18 @@ async def run_rag_pipeline(
                 engine_type=connection.engine,
                 db=db,
                 model_id=model_id,
+                conversation_history=turns,
             )
             yield {
                 "type": "token",
                 "content": f"**Generated SQL Query:**\n```sql\n{sql_query}\n```\n\n*Executing query...*\n\n",
             }
         except Exception as e:
-            err_msg = f"Error during SQL generation: {str(e)}"
+            err_msg = str(e)
+            if "I cannot generate a SQL query, this is ambiguous" in err_msg:
+                err_msg = "I cannot generate a SQL query, this is ambiguous"
+            else:
+                err_msg = f"Error during SQL generation: {str(e)}"
             yield {"type": "token", "content": err_msg}
             yield {
                 "type": "done",
@@ -581,6 +631,7 @@ async def run_rag_pipeline(
                         model_id=model_id,
                         failed_sql=sql_query,
                         error_message=str(e),
+                        conversation_history=turns,
                     )
 
                     yield {
@@ -606,7 +657,11 @@ async def run_rag_pipeline(
                         f"Connection {connection.id} - NL-to-SQL self-correction failed. "
                         f"Regenerated SQL: {sql_query}. Error: {str(retry_err)}"
                     )
-                    err_msg = f"Error executing query: {str(retry_err)}"
+                    err_msg = str(retry_err)
+                    if "I cannot generate a SQL query, this is ambiguous" in err_msg:
+                        err_msg = "I cannot generate a SQL query, this is ambiguous"
+                    else:
+                        err_msg = f"Error executing query: {str(retry_err)}"
                     yield {"type": "token", "content": err_msg}
                     yield {
                         "type": "done",
@@ -616,7 +671,11 @@ async def run_rag_pipeline(
                     }
                     return
             else:
-                err_msg = f"Error executing query: {str(e)}"
+                err_msg = str(e)
+                if "I cannot generate a SQL query, this is ambiguous" in err_msg:
+                    err_msg = "I cannot generate a SQL query, this is ambiguous"
+                else:
+                    err_msg = f"Error executing query: {str(e)}"
                 yield {"type": "token", "content": err_msg}
                 yield {
                     "type": "done",
@@ -694,12 +753,19 @@ Please summarize and answer the user's question based on the query results. Do n
             }
         ]
 
+        # Ensure query_results is JSON serializable (converts UUIDs, datetimes, etc. to strings)
+        serializable_results = None
+        if query_results is not None:
+            serializable_results = json.loads(json.dumps(query_results, default=str))
+
         yield {
             "type": "done",
             "answer": full_answer,
             "citations": citations,
             "model_string": selected_model_string,
             "follow_up_questions": [],
+            "generated_sql": sql_query,
+            "query_results": serializable_results,
         }
         return
 

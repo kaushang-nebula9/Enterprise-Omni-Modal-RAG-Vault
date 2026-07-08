@@ -42,6 +42,8 @@ export interface MessageResponse {
   model_id?: string
   model?: AvailableModel
   follow_up_questions?: string[]
+  generated_sql?: string
+  query_results?: any[]
 }
 
 export interface SessionDetailResponse extends SessionResponse {

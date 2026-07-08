@@ -458,6 +458,33 @@ def _recalculate_policy_inheritance(
 # --- Query Generator & Execution Layer ---
 
 
+def format_query_results_for_prompt(
+    results: Optional[List[Dict[str, Any]]], threshold: int = 20
+) -> str:
+    """
+    Formats SQL query results for inclusion in prompt. If the results list is empty
+    or None, returns a message. If the size of the result set exceeds `threshold`,
+    returns a bounded summary (row count + first 3 rows).
+    """
+    import json
+
+    if not results:
+        return "No results returned."
+    if not isinstance(results, list):
+        return str(results)
+
+    total_rows = len(results)
+    if total_rows <= threshold:
+        return json.dumps(results, indent=2, default=str)
+
+    # Bounded summary: row count + first 3 rows
+    summary_rows = results[:3]
+    return (
+        f"Total rows: {total_rows} (showing first 3 rows as summary)\n"
+        f"{json.dumps(summary_rows, indent=2, default=str)}"
+    )
+
+
 async def translate_nl_to_sql(
     query: str,
     schema_data_filtered: Dict[str, Any],
@@ -466,6 +493,7 @@ async def translate_nl_to_sql(
     model_id: Optional[uuid.UUID] = None,
     failed_sql: Optional[str] = None,
     error_message: Optional[str] = None,
+    conversation_history: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """
     Uses the LLM model to translate natural language into a clean, single SQL statement.
@@ -493,6 +521,25 @@ async def translate_nl_to_sql(
 
     schema_str = "\n".join(schema_desc)
 
+    history_str = ""
+    if conversation_history:
+        history_parts = []
+        for idx, turn in enumerate(conversation_history, 1):
+            part = f"--- Turn {idx} ---\nQuestion: {turn['question']}\n"
+            if turn.get("generated_sql"):
+                part += f"Generated SQL: {turn['generated_sql']}\n"
+            if turn.get("query_results") is not None:
+                formatted_results = format_query_results_for_prompt(
+                    turn["query_results"], settings.SQL_RESULT_SUMMARY_THRESHOLD
+                )
+                part += f"SQL Results:\n{formatted_results}\n"
+            if turn.get("answer"):
+                part += f"Answer: {turn['answer']}\n"
+            history_parts.append(part)
+        history_str = (
+            "\nPrior Conversation Context:\n" + "\n".join(history_parts) + "\n"
+        )
+
     if failed_sql and error_message:
         system_prompt = (
             "You are an expert SQL translation assistant. You previously generated a SQL query that failed with a database error.\n"
@@ -502,12 +549,14 @@ async def translate_nl_to_sql(
             "3. Pay attention to case-sensitivity and quote identifiers correctly if needed (e.g. backticks for MySQL, double quotes for PostgreSQL).\n"
             "4. Only query the tables and columns listed in the schema. Do not invent columns.\n"
             "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
-            "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT)."
+            "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT).\n"
+            "7. Use the 'Prior Conversation Context' to resolve references (such as pronouns 'he', 'she', 'it', or referring phrases like 'that document', 'the same region', 'last quarter') to concrete values or conditions in the generated SQL query.\n"
+            "8. If a reference in the question cannot be resolved using the conversation context, or if there is no context and the question is too ambiguous to generate a query for, you MUST return exactly: 'I cannot generate a SQL query, this is ambiguous'"
         )
 
         prompt = f"""Database Schema (Engine: {engine_type}):
 {schema_str}
-
+{history_str}
 User Question: {query}
 
 Previously Generated SQL:
@@ -528,26 +577,52 @@ SQL Query:"""
             "3. Pay attention to case-sensitivity and quote identifiers correctly if needed (e.g. backticks for MySQL, double quotes for PostgreSQL).\n"
             "4. Only query the tables and columns listed in the schema. Do not invent columns.\n"
             "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
-            "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT)."
+            "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT).\n"
+            "7. Use the 'Prior Conversation Context' to resolve references (such as pronouns 'he', 'she', 'it', or referring phrases like 'that document', 'the same region', 'last quarter') to concrete values or conditions in the generated SQL query.\n"
+            "8. If a reference in the question cannot be resolved using the conversation context, or if there is no context and the question is too ambiguous to generate a query for, you MUST return exactly: 'I cannot generate a SQL query, this is ambiguous'"
         )
 
         prompt = f"""Database Schema (Engine: {engine_type}):
 {schema_str}
-
+{history_str}
 User Question: {query}
 
 SQL Query:"""
 
-    selected_model_string = "claude-haiku-4-5-20251001"
-    selected_provider = "anthropic"
-
+    db_model = None
     if model_id:
         db_model = (
-            db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
+            db.query(AvailableModel)
+            .filter(AvailableModel.id == model_id, AvailableModel.is_active)
+            .first()
         )
-        if db_model:
-            selected_model_string = db_model.model_string
-            selected_provider = db_model.provider
+
+    if not db_model:
+        from app.models.enums import ModelProvider
+
+        db_model = (
+            db.query(AvailableModel)
+            .filter(
+                AvailableModel.is_active,
+                AvailableModel.provider == ModelProvider.anthropic,
+            )
+            .order_by(AvailableModel.created_at.asc())
+            .first()
+        )
+        if not db_model:
+            db_model = (
+                db.query(AvailableModel)
+                .filter(AvailableModel.is_active)
+                .order_by(AvailableModel.created_at.asc())
+                .first()
+            )
+
+    if db_model:
+        selected_model_string = db_model.model_string
+        selected_provider = db_model.provider
+    else:
+        selected_model_string = "claude-haiku-4-5-20251001"
+        selected_provider = "anthropic"
 
     if selected_provider == "anthropic":
         client = _get_async_anthropic_client()

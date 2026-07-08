@@ -437,10 +437,26 @@ async def send_query(
     # Format conversation history
     conversation_history = ""
     if recent_messages:
+        from app.services.database_service import format_query_results_for_prompt
+        from app.core.config import settings
+
         history_lines = []
         for msg in recent_messages:
             role_label = "User" if msg.role == MessageRole.user else "Assistant"
-            history_lines.append(f"{role_label}: {msg.content}")
+            if msg.role == MessageRole.assistant:
+                msg_content = msg.content
+                if getattr(msg, "generated_sql", None):
+                    formatted_results = format_query_results_for_prompt(
+                        msg.query_results, settings.SQL_RESULT_SUMMARY_THRESHOLD
+                    )
+                    msg_content = (
+                        f"Generated SQL:\n{msg.generated_sql}\n"
+                        f"SQL Results:\n{formatted_results}\n"
+                        f"Answer: {msg.content}"
+                    )
+                history_lines.append(f"{role_label}: {msg_content}")
+            else:
+                history_lines.append(f"{role_label}: {msg.content}")
         conversation_history = "\n".join(history_lines)
 
     # Store the user's message using clean display content
@@ -525,12 +541,15 @@ async def send_query(
                 is_compare_mode=is_compare,
                 is_summarize_mode=is_summarize,
                 model_id=resolved_model_id,
+                session_id=session_id,
             )
 
             full_answer = ""
             citations = []
             actual_model_string = None
             follow_up_questions = []
+            generated_sql = None
+            query_results = None
 
             async for event in generator:
                 if event["type"] == "token":
@@ -541,6 +560,8 @@ async def send_query(
                     citations = event["citations"]
                     actual_model_string = event.get("model_string")
                     follow_up_questions = event.get("follow_up_questions", [])
+                    generated_sql = event.get("generated_sql")
+                    query_results = event.get("query_results")
 
             # Store the assistant's response in the database after streaming completes
             assistant_message = QueryMessage(
@@ -550,6 +571,8 @@ async def send_query(
                 created_at=datetime.now(timezone.utc),
                 model_id=resolved_model_id,
                 follow_up_questions=follow_up_questions,
+                generated_sql=generated_sql,
+                query_results=query_results,
             )
             db.add(assistant_message)
             db.flush()
@@ -626,8 +649,8 @@ async def send_query(
                     }
                 )
 
-            # Final event: data: {"type": "done", "citations": [...], "message_id": "...", "follow_up_questions": [...]}\n\n
-            yield f"data: {json.dumps({'type': 'done', 'citations': citation_responses, 'message_id': str(assistant_message.id), 'follow_up_questions': follow_up_questions})}\n\n"
+            # Final event: data: {"type": "done", "citations": [...], "message_id": "...", "follow_up_questions": [...], "generated_sql": "...", "answer": "..."}\n\n
+            yield f"data: {json.dumps({'type': 'done', 'citations': citation_responses, 'message_id': str(assistant_message.id), 'follow_up_questions': follow_up_questions, 'generated_sql': generated_sql, 'answer': full_answer})}\n\n"
 
         except Exception as exc:
             logger.error("Error in event_generator: %s", exc)

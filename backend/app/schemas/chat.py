@@ -78,6 +78,8 @@ class MessageResponse(BaseModel):
     model_id: Optional[UUID] = None
     model: Optional[ModelResponse] = None
     follow_up_questions: Optional[list[str]] = None
+    generated_sql: Optional[str] = None
+    query_results: Optional[list[dict]] = None
 
     model_config = {"from_attributes": True}
 

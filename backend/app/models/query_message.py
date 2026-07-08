@@ -36,6 +36,8 @@ class QueryMessage(Base):
     follow_up_questions: Mapped[Optional[List[str]]] = mapped_column(
         JSONB, nullable=True
     )
+    generated_sql: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    query_results: Mapped[Optional[List[dict]]] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     session: Mapped["QuerySession"] = relationship(
