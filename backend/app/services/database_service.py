@@ -695,8 +695,12 @@ def resolve_categorical_literals(
 ) -> str:
     """
     Case-insensitively resolves single-quoted literal values in the SQL query against
-    allowed_values cached in the schema tables. If a match is found, rewrites that literal
-    in the SQL query to its canonical casing.
+    allowed_values cached in the schema tables.
+    If the column is an enum:
+        - If matched, rewrites the filter to: col = 'CanonicalValue'
+        - If fallback, rewrites the filter to: col::text ILIKE '%value%'
+    If the column is a non-enum TEXT/VARCHAR:
+        - Leaves the case-insensitive ILIKE/LOWER operator intact.
     """
     import re
 
@@ -729,6 +733,12 @@ def resolve_categorical_literals(
     if not column_allowed_vals:
         return sql_query
 
+    # Regexes to detect operators immediately preceding the literal
+    op_regex = re.compile(r"\b([a-zA-Z0-9_\.]+)\s+(ILIKE|LIKE|=)\s*$", re.IGNORECASE)
+    lower_op_regex = re.compile(
+        r"\bLOWER\s*\(\s*([a-zA-Z0-9_\.]+)\s*\)\s*=\s*LOWER\s*\(\s*$", re.IGNORECASE
+    )
+
     # 2. Find all string literals in the query
     literal_regex = re.compile(r"'((?:''|[^'])*)'")
 
@@ -742,27 +752,50 @@ def resolve_categorical_literals(
         literal_val = match.group(1)
         unescaped_val = literal_val.replace("''", "'")
 
-        # Scan backwards to locate the nearest column name
-        before_text = sql_query[:start_idx].lower()
-        tokens = re.split(r"[^a-zA-Z0-9_\.]+", before_text)
-        tokens = [t for t in tokens if t]
+        before_text = sql_query[:start_idx]
 
+        # Try to match preceding operator patterns
+        op_match = op_regex.search(before_text)
+        lower_match = lower_op_regex.search(before_text)
+
+        target_col_token = None
         target_allowed_vals = None
         target_col_display_name = None
+        filter_start_idx = None
 
-        for t in reversed(tokens):
-            lookup_key = t
-            if "." in t:
-                parts = t.split(".")
-                suffix = parts[-1]
-                if suffix in column_allowed_vals:
-                    lookup_key = suffix
+        if op_match:
+            target_col_token = op_match.group(1)
+            filter_start_idx = op_match.start(1)
+        elif lower_match:
+            target_col_token = lower_match.group(1)
+            filter_start_idx = lower_match.start()  # Start of LOWER(col)
+
+        if target_col_token:
+            lookup_key = target_col_token.lower()
+            if "." in lookup_key:
+                lookup_key = lookup_key.split(".")[-1]
 
             if lookup_key in column_allowed_vals:
                 target_allowed_vals, target_col_display_name = column_allowed_vals[
                     lookup_key
                 ]
-                break
+
+        # Safety fallback scanning if regex didn't find the column operator
+        if not target_allowed_vals:
+            before_text_lower = before_text.lower()
+            tokens = re.split(r"[^a-zA-Z0-9_\.]+", before_text_lower)
+            tokens = [t for t in tokens if t]
+            for t in reversed(tokens):
+                lookup_key = t
+                if "." in t:
+                    lookup_key = t.split(".")[-1]
+                if lookup_key in column_allowed_vals:
+                    target_allowed_vals, target_col_display_name = column_allowed_vals[
+                        lookup_key
+                    ]
+                    target_col_token = t
+                    filter_start_idx = before_text_lower.rfind(t)
+                    break
 
         if target_allowed_vals:
             matched_canonical = None
@@ -772,11 +805,33 @@ def resolve_categorical_literals(
                     break
 
             if matched_canonical is not None:
+                # Canonical rewrite: use plain =
                 escaped_canonical = matched_canonical.replace("'", "''")
-                replacements.append((start_idx, end_idx, f"'{escaped_canonical}'"))
+                replacement_text = f"{target_col_token} = '{escaped_canonical}'"
+
+                # If we have filter_start_idx, replace from operator start to literal end
+                if filter_start_idx is not None and filter_start_idx >= 0:
+                    replacements.append((filter_start_idx, end_idx, replacement_text))
+                else:
+                    replacements.append((start_idx, end_idx, f"'{escaped_canonical}'"))
+
                 logger.info(
-                    f"SQL Casing Rewrite: column '{target_col_display_name}', "
+                    f"SQL Casing Rewrite (Enum Match): column '{target_col_display_name}', "
                     f"original literal '{literal_val}', resolved literal '{escaped_canonical}'"
+                )
+            else:
+                # Fallback rewrite: cast to text and use ILIKE
+                escaped_literal = unescaped_val.replace("'", "''")
+                replacement_text = (
+                    f"{target_col_token}::text ILIKE '%{escaped_literal}%'"
+                )
+
+                if filter_start_idx is not None and filter_start_idx >= 0:
+                    replacements.append((filter_start_idx, end_idx, replacement_text))
+
+                logger.info(
+                    f"SQL Casing Rewrite (Enum Fallback): column '{target_col_display_name}', "
+                    f"original literal '{literal_val}', casting enum to text ILIKE"
                 )
 
     if replacements:

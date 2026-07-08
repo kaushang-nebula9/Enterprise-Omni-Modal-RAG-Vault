@@ -24,30 +24,39 @@ def test_resolve_categorical_literals_basic():
                     "type": "VARCHAR",
                     "allowed_values": ["Engineering", "HR"],
                 },
+                {
+                    "name": "description",
+                    "type": "VARCHAR",
+                },
             ],
         }
     ]
 
-    # Test case 1: simple rewrite of name 'tech lead' -> 'Tech Lead'
+    # Test case 1: simple rewrite of name 'tech lead' -> 'Tech Lead' with = operator (no ILIKE, no cast)
     sql_1 = "SELECT * FROM roles WHERE name ILIKE 'tech lead' AND department = 'hr';"
     rewritten_1 = resolve_categorical_literals(sql_1, schema_tables)
     assert (
         rewritten_1
-        == "SELECT * FROM roles WHERE name ILIKE 'Tech Lead' AND department = 'HR';"
+        == "SELECT * FROM roles WHERE name = 'Tech Lead' AND department = 'HR';"
     )
 
-    # Test case 2: query with table alias 'r.name' -> 'Tech Lead'
+    # Test case 2: query with table alias 'r.name' -> 'Tech Lead' with = operator (no ILIKE, no cast)
     sql_2 = "SELECT r.id FROM roles r WHERE r.name = 'manager' OR r.department ILIKE 'engineering';"
     rewritten_2 = resolve_categorical_literals(sql_2, schema_tables)
     assert (
         rewritten_2
-        == "SELECT r.id FROM roles r WHERE r.name = 'Manager' OR r.department ILIKE 'Engineering';"
+        == "SELECT r.id FROM roles r WHERE r.name = 'Manager' OR r.department = 'Engineering';"
     )
 
-    # Test case 3: query with no case-insensitive match (value doesn't exist in allowed_values)
-    sql_3 = "SELECT * FROM roles WHERE name = 'unrelated' AND department = 'unknown';"
+    # Test case 3: query with no case-insensitive match (enum column fallback using text cast and ILIKE wildcard)
+    sql_3 = (
+        "SELECT * FROM roles WHERE name ILIKE 'unrelated' AND department = 'unknown';"
+    )
     rewritten_3 = resolve_categorical_literals(sql_3, schema_tables)
-    assert rewritten_3 == sql_3  # Remains unchanged as-is
+    assert (
+        rewritten_3
+        == "SELECT * FROM roles WHERE name::text ILIKE '%unrelated%' AND department::text ILIKE '%unknown%';"
+    )
 
     # Test case 4: UUID literal should not match since ID has no allowed values
     sql_4 = "SELECT * FROM roles WHERE id = '85c024d0-7db4-48a1-8d0f-c0c457e9ca1d' AND name = 'intern';"
@@ -56,6 +65,11 @@ def test_resolve_categorical_literals_basic():
         rewritten_4
         == "SELECT * FROM roles WHERE id = '85c024d0-7db4-48a1-8d0f-c0c457e9ca1d' AND name = 'Intern';"
     )
+
+    # Test case 5: standard text column with case-insensitive search should be left as-is (no rewrite/cast)
+    sql_5 = "SELECT * FROM roles WHERE description ILIKE 'some text';"
+    rewritten_5 = resolve_categorical_literals(sql_5, schema_tables)
+    assert rewritten_5 == sql_5
 
 
 @pytest.mark.asyncio
