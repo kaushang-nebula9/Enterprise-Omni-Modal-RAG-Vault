@@ -540,6 +540,12 @@ async def translate_nl_to_sql(
             "\nPrior Conversation Context:\n" + "\n".join(history_parts) + "\n"
         )
 
+    rule_9 = (
+        "9. For equality filters against TEXT/VARCHAR columns, ALWAYS use the case-insensitive ILIKE operator instead of the standard = operator (e.g. col ILIKE 'value'). Do not apply this to non-text columns (like IDs, numbers, booleans, or dates)."
+        if engine_type == "postgresql"
+        else "9. For equality filters against TEXT/VARCHAR columns, ALWAYS use case-insensitive comparison. Since MySQL LIKE is case-insensitive by default under standard collations, you can use col LIKE 'value' or LOWER(col) = LOWER('value'). Do not apply this to non-text columns (like IDs, numbers, booleans, or dates)."
+    )
+
     if failed_sql and error_message:
         system_prompt = (
             "You are an expert SQL translation assistant. You previously generated a SQL query that failed with a database error.\n"
@@ -551,7 +557,8 @@ async def translate_nl_to_sql(
             "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
             "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT).\n"
             "7. Use the 'Prior Conversation Context' to resolve references (such as pronouns 'he', 'she', 'it', or referring phrases like 'that document', 'the same region', 'last quarter') to concrete values or conditions in the generated SQL query.\n"
-            "8. If a reference in the question cannot be resolved using the conversation context, or if there is no context and the question is too ambiguous to generate a query for, you MUST return exactly: 'I cannot generate a SQL query, this is ambiguous'"
+            "8. If a reference in the question cannot be resolved using the conversation context, or if there is no context and the question is too ambiguous to generate a query for, you MUST return exactly: 'I cannot generate a SQL query, this is ambiguous'\n"
+            f"{rule_9}"
         )
 
         prompt = f"""Database Schema (Engine: {engine_type}):
@@ -579,7 +586,8 @@ SQL Query:"""
             "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
             "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT).\n"
             "7. Use the 'Prior Conversation Context' to resolve references (such as pronouns 'he', 'she', 'it', or referring phrases like 'that document', 'the same region', 'last quarter') to concrete values or conditions in the generated SQL query.\n"
-            "8. If a reference in the question cannot be resolved using the conversation context, or if there is no context and the question is too ambiguous to generate a query for, you MUST return exactly: 'I cannot generate a SQL query, this is ambiguous'"
+            "8. If a reference in the question cannot be resolved using the conversation context, or if there is no context and the question is too ambiguous to generate a query for, you MUST return exactly: 'I cannot generate a SQL query, this is ambiguous'\n"
+            f"{rule_9}"
         )
 
         prompt = f"""Database Schema (Engine: {engine_type}):
@@ -682,6 +690,105 @@ SQL Query:"""
     return cleaned_sql
 
 
+def resolve_categorical_literals(
+    sql_query: str, schema_tables: List[Dict[str, Any]]
+) -> str:
+    """
+    Case-insensitively resolves single-quoted literal values in the SQL query against
+    allowed_values cached in the schema tables. If a match is found, rewrites that literal
+    in the SQL query to its canonical casing.
+    """
+    import re
+
+    # 1. Build a map of column names and their allowed values
+    # To be precise, identify which tables are mentioned in the query
+    mentioned_tables = []
+    sql_lower = sql_query.lower()
+    for tbl in schema_tables:
+        tname = tbl.get("name", "").lower()
+        if tname and tname in re.split(r"\b", sql_lower):
+            mentioned_tables.append(tbl)
+
+    if not mentioned_tables:
+        mentioned_tables = schema_tables
+
+    column_allowed_vals = {}
+    for tbl in mentioned_tables:
+        tname = tbl.get("name", "").lower()
+        for col in tbl.get("columns", []):
+            cname = col.get("name", "").lower()
+            if "allowed_values" in col and col["allowed_values"]:
+                # Map both direct column name and fully-qualified column name
+                column_allowed_vals[cname] = (col["allowed_values"], col.get("name"))
+                if tname:
+                    column_allowed_vals[f"{tname}.{cname}"] = (
+                        col["allowed_values"],
+                        col.get("name"),
+                    )
+
+    if not column_allowed_vals:
+        return sql_query
+
+    # 2. Find all string literals in the query
+    literal_regex = re.compile(r"'((?:''|[^'])*)'")
+
+    matches = list(literal_regex.finditer(sql_query))
+    if not matches:
+        return sql_query
+
+    replacements = []
+    for match in matches:
+        start_idx, end_idx = match.span()
+        literal_val = match.group(1)
+        unescaped_val = literal_val.replace("''", "'")
+
+        # Scan backwards to locate the nearest column name
+        before_text = sql_query[:start_idx].lower()
+        tokens = re.split(r"[^a-zA-Z0-9_\.]+", before_text)
+        tokens = [t for t in tokens if t]
+
+        target_allowed_vals = None
+        target_col_display_name = None
+
+        for t in reversed(tokens):
+            lookup_key = t
+            if "." in t:
+                parts = t.split(".")
+                suffix = parts[-1]
+                if suffix in column_allowed_vals:
+                    lookup_key = suffix
+
+            if lookup_key in column_allowed_vals:
+                target_allowed_vals, target_col_display_name = column_allowed_vals[
+                    lookup_key
+                ]
+                break
+
+        if target_allowed_vals:
+            matched_canonical = None
+            for val in target_allowed_vals:
+                if isinstance(val, str) and val.lower() == unescaped_val.lower():
+                    matched_canonical = val
+                    break
+
+            if matched_canonical is not None:
+                escaped_canonical = matched_canonical.replace("'", "''")
+                replacements.append((start_idx, end_idx, f"'{escaped_canonical}'"))
+                logger.info(
+                    f"SQL Casing Rewrite: column '{target_col_display_name}', "
+                    f"original literal '{literal_val}', resolved literal '{escaped_canonical}'"
+                )
+
+    if replacements:
+        replacements.sort(key=lambda x: x[0], reverse=True)
+        sql_list = list(sql_query)
+        for start, end, rep_str in replacements:
+            sql_list[start:end] = list(rep_str)
+        return "".join(sql_list)
+
+    return sql_query
+
+
 def run_query_on_connection(
     connection: ExternalDatabaseConnection,
     sql_query: str,
@@ -690,6 +797,11 @@ def run_query_on_connection(
     """
     Executes the query on the database. Checks for schema drift and enforces bounds.
     """
+    try:
+        sql_query = resolve_categorical_literals(sql_query, schema_cache_tables)
+    except Exception as exc:
+        logger.error(f"Error during categorical literal resolution: {exc}")
+
     password_decrypted = decrypt_password(connection.password)
     url = get_connection_url(
         engine_type=connection.engine,
