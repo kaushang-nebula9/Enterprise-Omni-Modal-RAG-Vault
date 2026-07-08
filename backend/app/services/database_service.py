@@ -494,6 +494,8 @@ async def translate_nl_to_sql(
     failed_sql: Optional[str] = None,
     error_message: Optional[str] = None,
     conversation_history: Optional[List[Dict[str, Any]]] = None,
+    user_id: Optional[uuid.UUID] = None,
+    tenant_id: Optional[uuid.UUID] = None,
 ) -> str:
     """
     Uses the LLM model to translate natural language into a clean, single SQL statement.
@@ -632,6 +634,9 @@ SQL Query:"""
         selected_model_string = "claude-haiku-4-5-20251001"
         selected_provider = "anthropic"
 
+    input_tokens = 0
+    output_tokens = 0
+
     if selected_provider == "anthropic":
         client = _get_async_anthropic_client()
         response = await client.messages.create(
@@ -642,6 +647,9 @@ SQL Query:"""
             messages=[{"role": "user", "content": prompt}],
         )
         sql = response.content[0].text.strip()
+        if getattr(response, "usage", None):
+            input_tokens = getattr(response.usage, "input_tokens", 0)
+            output_tokens = getattr(response.usage, "output_tokens", 0)
     elif selected_provider == "openrouter":
         # Simple non-stream fallback
         sql = ""
@@ -652,9 +660,32 @@ SQL Query:"""
         ):
             if chunk_type == "text":
                 sql += data
+            elif chunk_type == "usage":
+                input_tokens = data.get("prompt_tokens", 0)
+                output_tokens = data.get("completion_tokens", 0)
         sql = sql.strip()
     else:
         raise ValueError(f"Unsupported provider: {selected_provider}")
+
+    # Save SQL translation UsageLog row
+    if user_id and tenant_id:
+        try:
+            from app.models.usage_log import UsageLog
+
+            usage_log = UsageLog(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                provider=selected_provider.value
+                if hasattr(selected_provider, "value")
+                else selected_provider,
+                model_string=selected_model_string,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+            db.add(usage_log)
+            db.commit()
+        except Exception as usage_err:
+            logger.error(f"Failed to save SQL translation usage log: {usage_err}")
 
     # Remove any markdown formatting wraps
     cleaned_sql = sql.strip().strip("`").strip()

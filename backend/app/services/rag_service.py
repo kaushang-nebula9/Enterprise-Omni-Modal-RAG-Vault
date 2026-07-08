@@ -583,6 +583,8 @@ async def run_rag_pipeline(
                 db=db,
                 model_id=model_id,
                 conversation_history=turns,
+                user_id=user.id,
+                tenant_id=user.tenant_id,
             )
             yield {
                 "type": "token",
@@ -632,6 +634,8 @@ async def run_rag_pipeline(
                         failed_sql=sql_query,
                         error_message=str(e),
                         conversation_history=turns,
+                        user_id=user.id,
+                        tenant_id=user.tenant_id,
                     )
 
                     yield {
@@ -714,6 +718,9 @@ Please summarize and answer the user's question based on the query results. Do n
                 selected_model_string = db_model.model_string
                 selected_provider = db_model.provider
 
+        input_tokens = 0
+        output_tokens = 0
+
         full_answer_list = []
         if selected_provider == "anthropic":
             client = _get_async_anthropic_client()
@@ -728,6 +735,11 @@ Please summarize and answer the user's question based on the query results. Do n
                     if event.type == "text":
                         full_answer_list.append(event.text)
                         yield {"type": "token", "content": event.text}
+
+                final_msg = await stream.get_final_message()
+                if getattr(final_msg, "usage", None):
+                    input_tokens = getattr(final_msg.usage, "input_tokens", 0)
+                    output_tokens = getattr(final_msg.usage, "output_tokens", 0)
         elif selected_provider == "openrouter":
             from app.services.openrouter_service import stream_openrouter_completion
 
@@ -739,6 +751,41 @@ Please summarize and answer the user's question based on the query results. Do n
                 if chunk_type == "text":
                     full_answer_list.append(data)
                     yield {"type": "token", "content": data}
+                elif chunk_type == "usage":
+                    input_tokens = data.get("prompt_tokens", 0)
+                    output_tokens = data.get("completion_tokens", 0)
+
+        # Save SQL summarization UsageLog row
+        try:
+            from app.models.usage_log import UsageLog
+
+            usage_log = UsageLog(
+                tenant_id=user.tenant_id,
+                user_id=user.id,
+                provider=selected_provider.value
+                if hasattr(selected_provider, "value")
+                else selected_provider,
+                model_string=selected_model_string,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+            db.add(usage_log)
+            db.commit()
+
+            # Trigger budget check task in background
+            try:
+                import sys
+
+                if "pytest" not in sys.modules:
+                    from app.tasks.billing_tasks import check_tenant_budgets_task
+
+                    check_tenant_budgets_task.delay()
+            except Exception as task_exc:
+                logger.error(
+                    "Failed to trigger check_tenant_budgets_task: %s", task_exc
+                )
+        except Exception as usage_err:
+            logger.error(f"Failed to save SQL summarization usage log: {usage_err}")
 
         full_answer = "".join(full_answer_list).strip()
 

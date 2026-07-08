@@ -221,7 +221,7 @@ const AdminDashboardPage: React.FC = () => {
     }
 
     const maxRequests = Math.max(...items.map((i) => i.request_count), 5);
-    const height = 140;
+    const height = 230;
     const paddingLeft = 35;
     const paddingRight = 10;
     const paddingTop = 15;
@@ -259,7 +259,7 @@ const AdminDashboardPage: React.FC = () => {
           </span>
         </div>
 
-        <div className="w-full overflow-x-auto">
+        <div className="w-full h-full overflow-x-auto">
           <svg className="w-full min-w-[500px]" viewBox={`0 0 ${width} ${height}`}>
             {/* Grid Lines */}
             {[0, 0.25, 0.5, 0.75, 1].map((ratio, index) => {
@@ -272,14 +272,14 @@ const AdminDashboardPage: React.FC = () => {
                     y1={yVal} 
                     x2={width - paddingRight} 
                     y2={yVal} 
-                    className="stroke-slate-100 dark:stroke-slate-800/60" 
+                    className="stroke-slate-300 dark:stroke-slate-700" 
                     strokeWidth={1} 
                     strokeDasharray="4 4"
                   />
                   <text 
                     x={paddingLeft - 8} 
                     y={yVal + 4} 
-                    className="fill-slate-400 dark:fill-slate-500 font-sora text-[10px] text-right"
+                    className="fill-slate-600 dark:fill-slate-400 font-sora text-[10px] text-right"
                     textAnchor="end"
                   >
                     {gridLabel}
@@ -347,7 +347,7 @@ const AdminDashboardPage: React.FC = () => {
                   key={idx}
                   x={p.x} 
                   y={height - 6} 
-                  className="fill-slate-400 dark:fill-slate-500 font-medium text-[9px]"
+                  className="fill-slate-600 dark:fill-slate-400 font-medium text-[9px]"
                   textAnchor="middle"
                 >
                   {displayDate}
