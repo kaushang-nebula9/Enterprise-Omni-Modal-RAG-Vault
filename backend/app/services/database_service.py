@@ -1,7 +1,7 @@
 import base64
 import logging
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -959,3 +959,138 @@ def run_query_on_connection(
                 raise e
     finally:
         engine.dispose()
+
+
+def get_user_authorized_columns_for_table(
+    policies: List[DatabaseAccessPolicy], table_name: str, all_table_columns: List[str]
+) -> Set[str]:
+    """
+    Returns a set of lowercase column names the user is authorized to access on a specific table.
+    """
+    authorized_columns = set()
+    has_full_table_access = False
+    has_any_matching_policy = False
+
+    for policy in policies:
+        if policy.table_name is None:
+            has_any_matching_policy = True
+            if not policy.columns:  # None or empty means all columns
+                has_full_table_access = True
+            else:
+                for col_spec in policy.columns:
+                    if "." in col_spec:
+                        tbl, col = col_spec.split(".", 1)
+                        if tbl.lower() == table_name.lower():
+                            authorized_columns.add(col.lower())
+                    else:
+                        authorized_columns.add(col_spec.lower())
+        elif policy.table_name.lower() == table_name.lower():
+            has_any_matching_policy = True
+            if not policy.columns:  # None or empty means all columns
+                has_full_table_access = True
+            else:
+                for col_spec in policy.columns:
+                    if "." in col_spec:
+                        tbl, col = col_spec.split(".", 1)
+                        if tbl.lower() == table_name.lower():
+                            authorized_columns.add(col.lower())
+                    else:
+                        authorized_columns.add(col_spec.lower())
+
+    if not has_any_matching_policy:
+        return set()  # No access to this table
+
+    if has_full_table_access:
+        return {c.lower() for c in all_table_columns}
+
+    return authorized_columns
+
+
+def check_sql_authorized_columns(
+    sql_query: str,
+    engine_type: str,
+    authorized_cols_by_table: Dict[str, Set[str]],
+    valid_tables: Set[str],
+) -> None:
+    """
+    Parses a SQL query using sqlglot and checks if it accesses any unauthorized columns or tables.
+    Raises ValueError if unauthorized access is detected.
+    """
+    import sqlglot
+    from sqlglot.expressions import Column, Table, CTE
+
+    read_dialect = "postgres" if engine_type.lower() == "postgresql" else "mysql"
+
+    try:
+        expression = sqlglot.parse_one(sql_query, read=read_dialect)
+    except Exception:
+        try:
+            expression = sqlglot.parse_one(sql_query)
+        except Exception as e2:
+            raise ValueError(
+                f"SQL validation error: Failed to parse generated SQL query: {e2}"
+            )
+
+    alias_map = {}
+    for table_expr in expression.find_all(Table):
+        tbl_name = table_expr.name.lower().strip('"`')
+        alias_map[tbl_name] = tbl_name
+        alias_name = table_expr.alias.lower().strip('"`')
+        if alias_name:
+            alias_map[alias_name] = tbl_name
+
+    # Check all referenced tables first (excluding CTE aliases)
+    ctes = {cte.alias.lower().strip('"`') for cte in expression.find_all(CTE)}
+    for table_expr in expression.find_all(Table):
+        tbl_name = table_expr.name.lower().strip('"`')
+        if tbl_name in ctes:
+            continue
+        if tbl_name not in authorized_cols_by_table:
+            raise ValueError(f"Access denied: Table '{tbl_name}' is unauthorized.")
+
+    # Check columns
+    for col_expr in expression.find_all(Column):
+        col_name = col_expr.name.lower().strip('"`')
+        table_alias = col_expr.text("table").lower().strip('"`')
+
+        resolved_table = None
+        if table_alias:
+            resolved_table = alias_map.get(table_alias)
+            if not resolved_table:
+                resolved_table = table_alias
+        else:
+            matching_tables = []
+            for t_alias, t_name in alias_map.items():
+                if (
+                    t_name in authorized_cols_by_table
+                    and col_name in authorized_cols_by_table[t_name]
+                ):
+                    matching_tables.append(t_name)
+
+            if len(matching_tables) == 1:
+                resolved_table = matching_tables[0]
+            elif len(matching_tables) > 1:
+                for mt in matching_tables:
+                    if col_name not in authorized_cols_by_table[mt]:
+                        raise ValueError(
+                            f"Access denied: Column '{col_name}' on table '{mt}' is unauthorized."
+                        )
+                continue
+            else:
+                for t_alias, t_name in alias_map.items():
+                    if t_name in valid_tables:
+                        resolved_table = t_name
+                        break
+
+        if resolved_table:
+            resolved_table = resolved_table.strip('"`')
+            if resolved_table in authorized_cols_by_table:
+                allowed_cols = authorized_cols_by_table[resolved_table]
+                if col_name not in allowed_cols:
+                    raise ValueError(
+                        f"Access denied: Column '{col_name}' on table '{resolved_table}' is unauthorized."
+                    )
+            elif resolved_table in valid_tables:
+                raise ValueError(
+                    f"Access denied: Table '{resolved_table}' is unauthorized."
+                )

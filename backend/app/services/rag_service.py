@@ -560,11 +560,64 @@ async def run_rag_pipeline(
             }
             return
 
-        authorized_tables_info = [
-            t
-            for t in schema_cache.schema_data.get("tables", [])
-            if t["name"] in authorized_table_names
-        ]
+        from app.models.external_database import DatabaseAccessPolicy
+        from app.services.database_service import (
+            get_user_authorized_columns_for_table,
+            check_sql_authorized_columns,
+        )
+
+        policies = []
+        if not user.role.is_admin:
+            policies = (
+                db.query(DatabaseAccessPolicy)
+                .filter(
+                    DatabaseAccessPolicy.connection_id == database_id,
+                    DatabaseAccessPolicy.role_id == user.role_id,
+                )
+                .all()
+            )
+
+        authorized_cols_by_table = {}
+        valid_tables = {
+            t["name"].lower() for t in schema_cache.schema_data.get("tables", [])
+        }
+        authorized_tables_info = []
+
+        for t in schema_cache.schema_data.get("tables", []):
+            t_name = t["name"]
+            if t_name in authorized_table_names:
+                all_cols = [c["name"] for c in t.get("columns", [])]
+                if user.role.is_admin:
+                    auth_cols = set(c.lower() for c in all_cols)
+                else:
+                    auth_cols = get_user_authorized_columns_for_table(
+                        policies, t_name, all_cols
+                    )
+
+                if auth_cols or user.role.is_admin:
+                    authorized_cols_by_table[t_name.lower()] = auth_cols
+                    tbl_copy = dict(t)
+                    # Filter columns shown to the LLM to only the ones authorized
+                    tbl_copy["columns"] = [
+                        col
+                        for col in t.get("columns", [])
+                        if col["name"].lower() in auth_cols
+                    ]
+                    authorized_tables_info.append(tbl_copy)
+
+        if not authorized_tables_info:
+            yield {
+                "type": "token",
+                "content": "Error: You do not have access to any columns/tables in this database.",
+            }
+            yield {
+                "type": "done",
+                "answer": "Error: Table access denied.",
+                "citations": [],
+                "follow_up_questions": [],
+            }
+            return
+
         filtered_schema_data = {"tables": authorized_tables_info}
 
         yield {
@@ -586,6 +639,15 @@ async def run_rag_pipeline(
                 user_id=user.id,
                 tenant_id=user.tenant_id,
             )
+
+            # Enforce guardrails on generated SQL
+            if not user.role.is_admin:
+                check_sql_authorized_columns(
+                    sql_query=sql_query,
+                    engine_type=connection.engine,
+                    authorized_cols_by_table=authorized_cols_by_table,
+                    valid_tables=valid_tables,
+                )
             yield {
                 "type": "token",
                 "content": f"**Generated SQL Query:**\n```sql\n{sql_query}\n```\n\n*Executing query...*\n\n",
@@ -637,6 +699,15 @@ async def run_rag_pipeline(
                         user_id=user.id,
                         tenant_id=user.tenant_id,
                     )
+
+                    # Enforce guardrails on regenerated SQL
+                    if not user.role.is_admin:
+                        check_sql_authorized_columns(
+                            sql_query=sql_query,
+                            engine_type=connection.engine,
+                            authorized_cols_by_table=authorized_cols_by_table,
+                            valid_tables=valid_tables,
+                        )
 
                     yield {
                         "type": "token",

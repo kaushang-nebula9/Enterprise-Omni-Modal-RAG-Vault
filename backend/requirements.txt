@@ -37,3 +37,4 @@ fastembed
 celery
 redis
 flower
+sqlglot

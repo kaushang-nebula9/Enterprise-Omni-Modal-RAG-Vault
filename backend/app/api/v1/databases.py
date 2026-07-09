@@ -1,5 +1,5 @@
 import uuid
-from typing import List
+from typing import List, Optional
 from datetime import datetime, timezone
 import logging
 
@@ -525,10 +525,30 @@ def list_connection_access_policies(
                 if policy.granted_via_department
                 else None,
                 table_name=policy.table_name,
+                columns=policy.columns,
                 created_at=policy.created_at,
             )
         )
     return response_list
+
+
+def filter_columns_for_table(
+    columns: Optional[List[str]], table_name: Optional[str]
+) -> Optional[List[str]]:
+    if not columns:
+        return None
+    if not table_name:
+        return columns
+
+    filtered = []
+    for col_spec in columns:
+        if "." in col_spec:
+            parts = col_spec.split(".", 1)
+            if parts[0].lower() == table_name.lower():
+                filtered.append(parts[1])
+        else:
+            filtered.append(col_spec)
+    return filtered
 
 
 @router.post("/{id}/access", response_model=List[DatabaseAccessPolicyResponse])
@@ -556,176 +576,208 @@ def assign_connection_access(
             detail="Database connection not found",
         )
 
-    if not request.role_id and not request.department_id:
+    target_roles = []
+    if request.role_ids:
+        target_roles = request.role_ids
+    elif request.role_id:
+        target_roles = [request.role_id]
+
+    target_departments = []
+    if request.department_ids:
+        target_departments = request.department_ids
+    elif request.department_id:
+        target_departments = [request.department_id]
+
+    if not target_roles and not target_departments:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Either role_id or department_id must be provided",
+            detail="Either role_ids or department_ids must be provided",
+        )
+
+    target_tables = []
+    if request.table_names is not None:
+        target_tables = request.table_names
+    else:
+        target_tables = [request.table_name]
+
+    if request.table_names is not None and not request.table_names:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one table must be selected",
         )
 
     added_policies = []
 
     # 1. Process Role-Based Grant
-    if request.role_id:
-        # Check role belongs to this tenant
-        role = (
-            db.query(Role)
-            .filter(
-                Role.id == request.role_id, Role.tenant_id == current_admin.tenant_id
-            )
-            .first()
-        )
-        if not role:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Role not found",
-            )
-
+    if target_roles:
         from app.services.notification_service import create_notification
         from app.models.enums import NotificationType
 
-        # Create direct policy if not already existing
-        existing = (
-            db.query(DatabaseAccessPolicy)
-            .filter(
-                DatabaseAccessPolicy.connection_id == id,
-                DatabaseAccessPolicy.role_id == request.role_id,
-                DatabaseAccessPolicy.table_name == request.table_name,
-            )
-            .first()
-        )
-        if not existing:
-            direct_policy = DatabaseAccessPolicy(
-                connection_id=id,
-                role_id=request.role_id,
-                granted_via="direct",
-                table_name=request.table_name,
-            )
-            db.add(direct_policy)
-            added_policies.append(direct_policy)
-
-            # Notify direct role users
-            role_users = db.query(User).filter(User.role_id == request.role_id).all()
-            table_info = f" (table: {request.table_name})" if request.table_name else ""
-            for user in role_users:
-                create_notification(
-                    db=db,
-                    user_id=user.id,
-                    tenant_id=user.tenant_id,
-                    type=NotificationType.database_access_direct,
-                    message=f"You have been granted direct access to database: {conn.name}{table_info}",
-                    related_role_id=request.role_id,
-                    flush_only=True,
-                )
-
-        # Walk up role hierarchy for upward inheritance
-        ancestors = get_role_ancestors(request.role_id, db)
-        for ancestor in ancestors:
-            # Check if this ancestor already has an access policy
-            existing_anc = (
-                db.query(DatabaseAccessPolicy)
-                .filter(
-                    DatabaseAccessPolicy.connection_id == id,
-                    DatabaseAccessPolicy.role_id == ancestor.id,
-                    DatabaseAccessPolicy.table_name == request.table_name,
-                )
+        for r_id in target_roles:
+            role = (
+                db.query(Role)
+                .filter(Role.id == r_id, Role.tenant_id == current_admin.tenant_id)
                 .first()
             )
-            if not existing_anc:
-                anc_policy = DatabaseAccessPolicy(
-                    connection_id=id,
-                    role_id=ancestor.id,
-                    granted_via="inherited",
-                    inherited_from_role_id=request.role_id,
-                    table_name=request.table_name,
+            if not role:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Role with ID {r_id} not found",
                 )
-                db.add(anc_policy)
-                added_policies.append(anc_policy)
 
-                # Notify ancestor role users
-                ancestor_users = (
-                    db.query(User).filter(User.role_id == ancestor.id).all()
-                )
-                table_info = (
-                    f" (table: {request.table_name})" if request.table_name else ""
-                )
-                for user in ancestor_users:
-                    create_notification(
-                        db=db,
-                        user_id=user.id,
-                        tenant_id=user.tenant_id,
-                        type=NotificationType.database_access_inherited_hierarchy,
-                        message=f"You have been granted inherited access to database: {conn.name}{table_info} (inherited from role: {role.name})",
-                        related_role_id=ancestor.id,
-                        flush_only=True,
+            for tbl in target_tables:
+                tbl_columns = filter_columns_for_table(request.columns, tbl)
+
+                # Create direct policy if not already existing
+                existing = (
+                    db.query(DatabaseAccessPolicy)
+                    .filter(
+                        DatabaseAccessPolicy.connection_id == id,
+                        DatabaseAccessPolicy.role_id == r_id,
+                        DatabaseAccessPolicy.table_name == tbl,
                     )
+                    .first()
+                )
+                if not existing:
+                    direct_policy = DatabaseAccessPolicy(
+                        connection_id=id,
+                        role_id=r_id,
+                        granted_via="direct",
+                        table_name=tbl,
+                        columns=tbl_columns,
+                    )
+                    db.add(direct_policy)
+                    added_policies.append(direct_policy)
+
+                    # Notify direct role users
+                    role_users = db.query(User).filter(User.role_id == r_id).all()
+                    table_info = f" (table: {tbl})" if tbl else ""
+                    for user in role_users:
+                        create_notification(
+                            db=db,
+                            user_id=user.id,
+                            tenant_id=user.tenant_id,
+                            type=NotificationType.database_access_direct,
+                            message=f"You have been granted direct access to database: {conn.name}{table_info}",
+                            related_role_id=r_id,
+                            flush_only=True,
+                        )
+
+                # Walk up role hierarchy for upward inheritance
+                ancestors = get_role_ancestors(r_id, db)
+                for ancestor in ancestors:
+                    # Check if this ancestor already has an access policy
+                    existing_anc = (
+                        db.query(DatabaseAccessPolicy)
+                        .filter(
+                            DatabaseAccessPolicy.connection_id == id,
+                            DatabaseAccessPolicy.role_id == ancestor.id,
+                            DatabaseAccessPolicy.table_name == tbl,
+                        )
+                        .first()
+                    )
+                    if not existing_anc:
+                        anc_policy = DatabaseAccessPolicy(
+                            connection_id=id,
+                            role_id=ancestor.id,
+                            granted_via="inherited",
+                            inherited_from_role_id=r_id,
+                            table_name=tbl,
+                            columns=tbl_columns,
+                        )
+                        db.add(anc_policy)
+                        added_policies.append(anc_policy)
+
+                        # Notify ancestor role users
+                        ancestor_users = (
+                            db.query(User).filter(User.role_id == ancestor.id).all()
+                        )
+                        table_info = f" (table: {tbl})" if tbl else ""
+                        for user in ancestor_users:
+                            create_notification(
+                                db=db,
+                                user_id=user.id,
+                                tenant_id=user.tenant_id,
+                                type=NotificationType.database_access_inherited_hierarchy,
+                                message=f"You have been granted inherited access to database: {conn.name}{table_info} (inherited from role: {role.name})",
+                                related_role_id=ancestor.id,
+                                flush_only=True,
+                            )
 
     # 2. Process Department-Based Grant (no hierarchy inheritance)
-    if request.department_id:
+    if target_departments:
         from app.services.notification_service import create_notification
         from app.models.enums import NotificationType
 
-        dept = (
-            db.query(Department)
-            .filter(
-                Department.id == request.department_id,
-                Department.tenant_id == current_admin.tenant_id,
-            )
-            .first()
-        )
-        if not dept:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Department not found",
-            )
-
-        # Find all roles assigned to this department
-        roles = (
-            db.query(Role)
-            .filter(
-                Role.department_id == request.department_id,
-                Role.tenant_id == current_admin.tenant_id,
-            )
-            .all()
-        )
-        for role in roles:
-            existing = (
-                db.query(DatabaseAccessPolicy)
+        for dept_id in target_departments:
+            dept = (
+                db.query(Department)
                 .filter(
-                    DatabaseAccessPolicy.connection_id == id,
-                    DatabaseAccessPolicy.role_id == role.id,
-                    DatabaseAccessPolicy.table_name == request.table_name,
+                    Department.id == dept_id,
+                    Department.tenant_id == current_admin.tenant_id,
                 )
                 .first()
             )
-            if not existing:
-                dept_policy = DatabaseAccessPolicy(
-                    connection_id=id,
-                    role_id=role.id,
-                    granted_via="department",
-                    granted_via_department_id=request.department_id,
-                    table_name=request.table_name,
+            if not dept:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Department with ID {dept_id} not found",
                 )
-                db.add(dept_policy)
-                added_policies.append(dept_policy)
 
-        # Notify users whose role belongs to that department
-        dept_users = (
-            db.query(User)
-            .join(Role)
-            .filter(Role.department_id == request.department_id)
-            .all()
-        )
-        table_info = f" (table: {request.table_name})" if request.table_name else ""
-        for u in dept_users:
-            create_notification(
-                db=db,
-                user_id=u.id,
-                tenant_id=u.tenant_id,
-                type=NotificationType.database_access_inherited_department,
-                message=f"You have been granted access to database: {conn.name}{table_info} (via department: {dept.name})",
-                related_department_id=request.department_id,
-                flush_only=True,
+            # Find all roles assigned to this department
+            roles = (
+                db.query(Role)
+                .filter(
+                    Role.department_id == dept_id,
+                    Role.tenant_id == current_admin.tenant_id,
+                )
+                .all()
             )
+            for role in roles:
+                for tbl in target_tables:
+                    tbl_columns = filter_columns_for_table(request.columns, tbl)
+
+                    existing = (
+                        db.query(DatabaseAccessPolicy)
+                        .filter(
+                            DatabaseAccessPolicy.connection_id == id,
+                            DatabaseAccessPolicy.role_id == role.id,
+                            DatabaseAccessPolicy.table_name == tbl,
+                        )
+                        .first()
+                    )
+                    if not existing:
+                        dept_policy = DatabaseAccessPolicy(
+                            connection_id=id,
+                            role_id=role.id,
+                            granted_via="department",
+                            granted_via_department_id=dept_id,
+                            table_name=tbl,
+                            columns=tbl_columns,
+                        )
+                        db.add(dept_policy)
+                        added_policies.append(dept_policy)
+
+            # Notify users whose role belongs to that department
+            dept_users = (
+                db.query(User).join(Role).filter(Role.department_id == dept_id).all()
+            )
+            tables_str = (
+                ", ".join([t for t in target_tables if t])
+                if any(target_tables)
+                else "all"
+            )
+            table_info = f" (tables: {tables_str})" if tables_str != "all" else ""
+            for u in dept_users:
+                create_notification(
+                    db=db,
+                    user_id=u.id,
+                    tenant_id=u.tenant_id,
+                    type=NotificationType.database_access_inherited_department,
+                    message=f"You have been granted access to database: {conn.name}{table_info} (via department: {dept.name})",
+                    related_department_id=dept_id,
+                    flush_only=True,
+                )
 
     db.commit()
 
@@ -749,6 +801,7 @@ def assign_connection_access(
                 if policy.granted_via_department
                 else None,
                 table_name=policy.table_name,
+                columns=policy.columns,
                 created_at=policy.created_at,
             )
         )

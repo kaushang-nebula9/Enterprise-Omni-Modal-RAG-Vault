@@ -12,7 +12,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, List
 
 if TYPE_CHECKING:
     from app.models.tenant import Tenant
@@ -122,6 +122,9 @@ class DatabaseAccessPolicy(Base):
     table_name: Mapped[Optional[str]] = mapped_column(
         String, nullable=True
     )  # null means access to the whole DB
+    columns: Mapped[Optional[List[str]]] = mapped_column(
+        JSON, nullable=True
+    )  # null or empty list means access to all columns
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

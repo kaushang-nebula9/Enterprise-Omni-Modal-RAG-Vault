@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Database, 
@@ -76,10 +76,70 @@ export const DatabasesPage: React.FC = () => {
   // Access Modal State
   const [activeDbId, setActiveDbId] = useState<string | null>(null);
   const [activeDbName, setActiveDbName] = useState('');
-  const [selectedRoleId, setSelectedRoleId] = useState('');
-  const [selectedDeptId, setSelectedDeptId] = useState('');
-  const [selectedTable, setSelectedTable] = useState(''); // Empty string means "Whole Database"
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
+  const roleDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([]);
+  const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
+  const deptDropdownRef = useRef<HTMLDivElement>(null);
+  const [selectedTables, setSelectedTables] = useState<string[]>([]);
+  const [isTableDropdownOpen, setIsTableDropdownOpen] = useState(false);
+  const tableDropdownRef = useRef<HTMLDivElement>(null);
   const [dbTables, setDbTables] = useState<string[]>([]);
+  const [dbSchema, setDbSchema] = useState<any>(null);
+  const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
+  const [isColDropdownOpen, setIsColDropdownOpen] = useState(false);
+  const colDropdownRef = useRef<HTMLDivElement>(null);
+
+  const getAvailableColumns = () => {
+    if (!dbSchema || !dbSchema.tables) return [];
+    
+    const cols: any[] = [];
+    dbSchema.tables.forEach((tbl: any) => {
+      if (selectedTables.includes(tbl.name)) {
+        tbl.columns.forEach((c: any) => {
+          cols.push({
+            table: tbl.name,
+            column: c.name,
+            fullName: `${tbl.name}.${c.name}`
+          });
+        });
+      }
+    });
+    return cols;
+  };
+
+  const availableCols = getAvailableColumns();
+
+  useEffect(() => {
+    if (dbSchema) {
+      const cols = getAvailableColumns();
+      setSelectedColumns(cols.map((c: any) => c.fullName));
+    } else {
+      setSelectedColumns([]);
+    }
+    setIsColDropdownOpen(false);
+  }, [selectedTables, dbSchema]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (colDropdownRef.current && !colDropdownRef.current.contains(event.target as Node)) {
+        setIsColDropdownOpen(false);
+      }
+      if (tableDropdownRef.current && !tableDropdownRef.current.contains(event.target as Node)) {
+        setIsTableDropdownOpen(false);
+      }
+      if (roleDropdownRef.current && !roleDropdownRef.current.contains(event.target as Node)) {
+        setIsRoleDropdownOpen(false);
+      }
+      if (deptDropdownRef.current && !deptDropdownRef.current.contains(event.target as Node)) {
+        setIsDeptDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Schema Modal State
   const [schemaDbId, setSchemaDbId] = useState<string | null>(null);
@@ -136,9 +196,9 @@ export const DatabasesPage: React.FC = () => {
     mutationFn: ({ id, payload }: { id: string; payload: any }) => databaseService.grantAccess(id, payload),
     onSuccess: () => {
       refetchAccess();
-      setSelectedRoleId('');
-      setSelectedDeptId('');
-      setSelectedTable('');
+      setSelectedRoleIds([]);
+      setSelectedDeptIds([]);
+      setSelectedTables([]);
     },
   });
 
@@ -247,17 +307,22 @@ export const DatabasesPage: React.FC = () => {
   const handleOpenAccess = async (dbConn: any) => {
     setActiveDbId(dbConn.id);
     setActiveDbName(dbConn.name);
-    setSelectedRoleId('');
-    setSelectedDeptId('');
-    setSelectedTable('');
+    setSelectedRoleIds([]);
+    setSelectedDeptIds([]);
+    setSelectedTables([]);
+    setSelectedColumns([]);
+    setDbSchema(null);
     
     // Fetch tables for table-scoped grants from schema cache
     try {
       const schema = await databaseService.getDatabaseSchema(dbConn.id);
       const tablesList = schema.tables?.map((t: any) => t.name) || [];
       setDbTables(tablesList);
+      setDbSchema(schema);
+      setSelectedTables(tablesList);
     } catch (e) {
       setDbTables([]);
+      setDbSchema(null);
     }
     
     setIsAccessModalOpen(true);
@@ -265,15 +330,23 @@ export const DatabasesPage: React.FC = () => {
 
   const handleGrantAccess = () => {
     if (!activeDbId) return;
+    if (selectedTables.length === 0) {
+      alert("Please select at least one table.");
+      return;
+    }
+
+    const isAllTablesSelected = selectedTables.length === dbTables.length;
     const payload: any = {
-      table_name: selectedTable || null,
+      table_name: null,
+      table_names: isAllTablesSelected ? null : selectedTables,
+      columns: selectedColumns,
     };
-    if (selectedRoleId) {
-      payload.role_id = selectedRoleId;
-    } else if (selectedDeptId) {
-      payload.department_id = selectedDeptId;
+    if (selectedRoleIds.length > 0) {
+      payload.role_ids = selectedRoleIds;
+    } else if (selectedDeptIds.length > 0) {
+      payload.department_ids = selectedDeptIds;
     } else {
-      alert("Please select a role or department.");
+      alert("Please select at least one role or department.");
       return;
     }
 
@@ -755,21 +828,75 @@ export const DatabasesPage: React.FC = () => {
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                     Grant to Role
                   </label>
-                  <div className="relative">
-                    <select
-                      value={selectedRoleId}
-                      onChange={(e) => {
-                        setSelectedRoleId(e.target.value);
-                        setSelectedDeptId('');
-                      }}
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/25 peer appearance-none cursor-pointer transition-all"
+                  <div ref={roleDropdownRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsRoleDropdownOpen(!isRoleDropdownOpen)}
+                      className="w-full flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/25 cursor-pointer transition-all"
                     >
-                      <option value="">-- Select Role --</option>
-                      {roles.map((r: any) => (
-                        <option key={r.id} value={r.id}>{r.name} {r.is_admin ? '(Admin)' : ''}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+                      <span className="truncate">
+                        {selectedRoleIds.length === 0
+                          ? "-- Select Role(s) --"
+                          : selectedRoleIds.length === roles.length
+                          ? "All Roles Selected"
+                          : `${selectedRoleIds.length} / ${roles.length} Roles Selected`}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${isRoleDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {isRoleDropdownOpen && (
+                      <div className="absolute right-0 left-0 mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-20 max-h-60 overflow-y-auto p-2 space-y-1">
+                        <div className="flex items-center justify-between px-2 py-1 border-b border-slate-100 dark:border-slate-800 pb-1.5 mb-1.5 text-xs text-indigo-650 dark:text-indigo-400 font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedDeptIds([]);
+                              setSelectedRoleIds(roles.map((r: any) => r.id));
+                            }}
+                            className="hover:underline"
+                          >
+                            Select All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedRoleIds([])}
+                            className="hover:underline"
+                          >
+                            Clear All
+                          </button>
+                        </div>
+                        {roles.length === 0 ? (
+                          <p className="text-xs text-slate-400 text-center py-2">No roles available</p>
+                        ) : (
+                          roles.map((r: any) => {
+                            const isChecked = selectedRoleIds.includes(r.id);
+                            return (
+                              <label
+                                key={r.id}
+                                className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg cursor-pointer text-sm select-none"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    setSelectedDeptIds([]);
+                                    if (isChecked) {
+                                      setSelectedRoleIds(selectedRoleIds.filter(item => item !== r.id));
+                                    } else {
+                                      setSelectedRoleIds([...selectedRoleIds, r.id]);
+                                    }
+                                  }}
+                                  className="rounded border-slate-300 dark:border-slate-700 text-indigo-650 focus:ring-indigo-500/25 w-4 h-4 cursor-pointer"
+                                />
+                                <span className="text-slate-700 dark:text-slate-300 truncate font-semibold">
+                                  {r.name} {r.is_admin ? '(Admin)' : ''}
+                                </span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -777,41 +904,239 @@ export const DatabasesPage: React.FC = () => {
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                     OR Grant to Department
                   </label>
-                  <div className="relative">
-                    <select
-                      value={selectedDeptId}
-                      onChange={(e) => {
-                        setSelectedDeptId(e.target.value);
-                        setSelectedRoleId('');
-                      }}
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/25 peer appearance-none cursor-pointer transition-all"
+                  <div ref={deptDropdownRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)}
+                      className="w-full flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/25 cursor-pointer transition-all"
                     >
-                      <option value="">-- Select Department --</option>
-                      {departments.map((d: any) => (
-                        <option key={d.id} value={d.id}>{d.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+                      <span className="truncate">
+                        {selectedDeptIds.length === 0
+                          ? "-- Select Department(s) --"
+                          : selectedDeptIds.length === departments.length
+                          ? "All Departments Selected"
+                          : `${selectedDeptIds.length} / ${departments.length} Depts Selected`}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${isDeptDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {isDeptDropdownOpen && (
+                      <div className="absolute right-0 left-0 mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-20 max-h-60 overflow-y-auto p-2 space-y-1">
+                        <div className="flex items-center justify-between px-2 py-1 border-b border-slate-100 dark:border-slate-800 pb-1.5 mb-1.5 text-xs text-indigo-650 dark:text-indigo-400 font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedRoleIds([]);
+                              setSelectedDeptIds(departments.map((d: any) => d.id));
+                            }}
+                            className="hover:underline"
+                          >
+                            Select All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDeptIds([])}
+                            className="hover:underline"
+                          >
+                            Clear All
+                          </button>
+                        </div>
+                        {departments.length === 0 ? (
+                          <p className="text-xs text-slate-400 text-center py-2">No departments available</p>
+                        ) : (
+                          departments.map((d: any) => {
+                            const isChecked = selectedDeptIds.includes(d.id);
+                            return (
+                              <label
+                                key={d.id}
+                                className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg cursor-pointer text-sm select-none"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    setSelectedRoleIds([]);
+                                    if (isChecked) {
+                                      setSelectedDeptIds(selectedDeptIds.filter(item => item !== d.id));
+                                    } else {
+                                      setSelectedDeptIds([...selectedDeptIds, d.id]);
+                                    }
+                                  }}
+                                  className="rounded border-slate-300 dark:border-slate-700 text-indigo-650 focus:ring-indigo-500/25 w-4 h-4 cursor-pointer"
+                                />
+                                <span className="text-slate-700 dark:text-slate-300 truncate font-semibold">
+                                  {d.name}
+                                </span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                  Table Scope
-                </label>
-                <div className="relative">
-                  <select
-                    value={selectedTable}
-                    onChange={(e) => setSelectedTable(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/25 peer appearance-none cursor-pointer transition-all"
-                  >
-                    <option value="">Whole Database (All Tables)</option>
-                    {dbTables.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                    Table Scope
+                  </label>
+                  <div ref={tableDropdownRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsTableDropdownOpen(!isTableDropdownOpen)}
+                      className="w-full flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/25 cursor-pointer transition-all"
+                    >
+                      <span className="truncate">
+                        {selectedTables.length === dbTables.length
+                          ? "Whole Database (All Tables)"
+                          : selectedTables.length === 0
+                          ? "No Tables Selected"
+                          : `${selectedTables.length} / ${dbTables.length} Tables`}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${isTableDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {isTableDropdownOpen && (
+                      <div className="absolute right-0 left-0 mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-20 max-h-60 overflow-y-auto p-2 space-y-1">
+                        <div className="flex items-center justify-between px-2 py-1 border-b border-slate-100 dark:border-slate-800 pb-1.5 mb-1.5 text-xs text-indigo-650 dark:text-indigo-400 font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTables(dbTables)}
+                            className="hover:underline"
+                          >
+                            Select All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTables([])}
+                            className="hover:underline"
+                          >
+                            Clear All
+                          </button>
+                        </div>
+                        {dbTables.length === 0 ? (
+                          <p className="text-xs text-slate-400 text-center py-2">No tables available</p>
+                        ) : (
+                          dbTables.map((t) => {
+                            const isChecked = selectedTables.includes(t);
+                            return (
+                              <label
+                                key={t}
+                                className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg cursor-pointer text-sm select-none"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    if (isChecked) {
+                                      setSelectedTables(selectedTables.filter(item => item !== t));
+                                    } else {
+                                      setSelectedTables([...selectedTables, t]);
+                                    }
+                                  }}
+                                  className="rounded border-slate-300 dark:border-slate-700 text-indigo-650 focus:ring-indigo-500/25 w-4 h-4 cursor-pointer"
+                                />
+                                <span className="text-slate-700 dark:text-slate-300 truncate font-mono text-xs">
+                                  {t}
+                                </span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                    Column Scope
+                  </label>
+                  <div ref={colDropdownRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsColDropdownOpen(!isColDropdownOpen)}
+                      className="w-full flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/25 cursor-pointer transition-all"
+                    >
+                      <span className="truncate">
+                        {selectedColumns.length === availableCols.length
+                          ? "All Columns Selected"
+                          : `${selectedColumns.length} / ${availableCols.length} Columns`}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${isColDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {isColDropdownOpen && (
+                      <div className="absolute right-0 left-0 mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-20 max-h-60 overflow-y-auto p-2 space-y-1">
+                        <div className="flex items-center justify-between px-2 py-1 border-b border-slate-100 dark:border-slate-800 pb-1.5 mb-1.5 text-xs text-indigo-650 dark:text-indigo-400 font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedColumns(availableCols.map((c: any) => c.fullName))}
+                            className="hover:underline"
+                          >
+                            Select All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedColumns([])}
+                            className="hover:underline"
+                          >
+                            Clear All
+                          </button>
+                        </div>
+                        {availableCols.length === 0 ? (
+                          <p className="text-xs text-slate-400 text-center py-2">No columns available</p>
+                        ) : (
+                          (() => {
+                            const groups: { [key: string]: any[] } = {};
+                            availableCols.forEach((c: any) => {
+                              if (!groups[c.table]) {
+                                groups[c.table] = [];
+                              }
+                              groups[c.table].push(c);
+                            });
+
+                            return Object.keys(groups).map((tableName) => (
+                              <div key={tableName} className="space-y-1">
+                                {selectedTables.length > 1 && (
+                                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-2 pt-2 pb-1 border-t border-slate-100 dark:border-slate-800/50 first:border-0">
+                                    {tableName}
+                                  </div>
+                                )}
+                                {groups[tableName].map((c: any) => {
+                                  const isChecked = selectedColumns.includes(c.fullName);
+                                  return (
+                                    <label
+                                      key={c.fullName}
+                                      className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg cursor-pointer text-sm select-none"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => {
+                                          if (isChecked) {
+                                            setSelectedColumns(selectedColumns.filter(item => item !== c.fullName));
+                                          } else {
+                                            setSelectedColumns([...selectedColumns, c.fullName]);
+                                          }
+                                        }}
+                                        className="rounded border-slate-300 dark:border-slate-700 text-indigo-650 focus:ring-indigo-500/25 w-4 h-4 cursor-pointer"
+                                      />
+                                      <span className="text-slate-700 dark:text-slate-300 truncate font-mono text-xs" title={c.fullName}>
+                                        {c.column}
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            ));
+                          })()
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -854,7 +1179,7 @@ export const DatabasesPage: React.FC = () => {
                             <span className="text-[10px] text-emerald-500">dept: {policy.granted_via_department_name}</span>
                           )}
                         </div>
-                        <div className="col-span-3 font-mono text-xs text-slate-600 dark:text-slate-300">
+                        <div className="col-span-3 font-mono text-xs text-slate-600 dark:text-slate-300 flex flex-col items-start gap-1">
                           {policy.table_name ? (
                             <span className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[11px] font-bold">
                               <Lock className="w-2.5 h-2.5" />
@@ -864,6 +1189,11 @@ export const DatabasesPage: React.FC = () => {
                             <span className="inline-flex items-center gap-1 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded text-[11px] font-bold">
                               <Unlock className="w-2.5 h-2.5" />
                               db: all
+                            </span>
+                          )}
+                          {policy.columns && policy.columns.length > 0 && (
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-sans mt-0.5">
+                              Columns: {policy.columns.length} allowed
                             </span>
                           )}
                         </div>

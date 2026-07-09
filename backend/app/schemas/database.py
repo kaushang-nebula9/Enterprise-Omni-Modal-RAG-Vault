@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Optional, Any
+from typing import Optional, Any, List
 from pydantic import BaseModel, Field, model_validator
 from app.models.enums import DatabaseEngine
 
@@ -71,8 +71,12 @@ class DatabaseConnectionResponse(BaseModel):
 
 class DatabaseAccessPolicyCreate(BaseModel):
     role_id: Optional[uuid.UUID] = None
+    role_ids: Optional[List[uuid.UUID]] = None
     department_id: Optional[uuid.UUID] = None
+    department_ids: Optional[List[uuid.UUID]] = None
     table_name: Optional[str] = None  # null scopes to the whole DB
+    table_names: Optional[List[str]] = None
+    columns: Optional[List[str]] = None
 
 
 class DatabaseAccessPolicyResponse(BaseModel):
@@ -86,6 +90,7 @@ class DatabaseAccessPolicyResponse(BaseModel):
     granted_via_department_id: Optional[uuid.UUID] = None
     granted_via_department_name: Optional[str] = None
     table_name: Optional[str] = None
+    columns: Optional[List[str]] = None
     created_at: datetime
 
     class Config:

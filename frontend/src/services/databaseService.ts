@@ -40,13 +40,18 @@ export interface DatabaseAccessPolicyResponse {
   granted_via_department_id: string | null;
   granted_via_department_name: string | null;
   table_name: string | null;
+  columns?: string[] | null;
   created_at: string;
 }
 
 export interface DatabaseAccessPolicyCreatePayload {
   role_id?: string;
+  role_ids?: string[] | null;
   department_id?: string;
+  department_ids?: string[] | null;
   table_name?: string | null;
+  table_names?: string[] | null;
+  columns?: string[] | null;
 }
 
 export const databaseService = {
