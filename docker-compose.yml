@@ -69,6 +69,33 @@ services:
     depends_on:
       - backend
 
+  sample_postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sampleuser
+      POSTGRES_PASSWORD: samplepass
+      POSTGRES_DB: sales_retail
+    volumes:
+      - ./sample-data/postgres:/docker-entrypoint-initdb.d
+      - sample_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  sample_mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: saas_tech
+      MYSQL_USER: sampleuser
+      MYSQL_PASSWORD: samplepass
+    volumes:
+      - ./sample-data/mysql:/docker-entrypoint-initdb.d
+      - sample_mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+
 volumes:
   postgres_data:
   qdrant_data:
+  sample_postgres_data:
+  sample_mysql_data:

@@ -38,3 +38,4 @@ celery
 redis
 flower
 sqlglot
+pymysql
