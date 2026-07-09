@@ -558,8 +558,8 @@ async def translate_nl_to_sql(
             "4. Only query the tables and columns listed in the schema. Do not invent columns.\n"
             "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
             "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT).\n"
-            "7. Use the 'Prior Conversation Context' to resolve references (such as pronouns 'he', 'she', 'it', or referring phrases like 'that document', 'the same region', 'last quarter') to concrete values or conditions in the generated SQL query.\n"
-            "8. If a reference in the question cannot be resolved using the conversation context, or if there is no context and the question is too ambiguous to generate a query for, you MUST return exactly: 'I cannot generate a SQL query, this is ambiguous'\n"
+            "7. Use the 'Prior Conversation Context' to resolve references (pronouns like 'he', 'she', 'it', or phrases like 'that document', 'the same region', 'last quarter') to concrete values or conditions in the SQL query. If no context exists, treat the question as standalone and generate the best possible query from the schema alone.\n"
+            "8. Only return 'I cannot generate a SQL query, this is ambiguous' as an absolute last resort - specifically when the question refers to something that has multiple equally valid interpretations AND the schema provides no way to distinguish between them, AND there is no conversation context to resolve it. A question that is broad or open-ended (e.g. 'show me costs', 'which is the worst performing') is NOT ambiguous - map it to the most natural columns in the schema and generate a query. When in doubt, generate a query.\n"
             f"{rule_9}"
         )
 
@@ -587,8 +587,8 @@ SQL Query:"""
             "4. Only query the tables and columns listed in the schema. Do not invent columns.\n"
             "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
             "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT).\n"
-            "7. Use the 'Prior Conversation Context' to resolve references (such as pronouns 'he', 'she', 'it', or referring phrases like 'that document', 'the same region', 'last quarter') to concrete values or conditions in the generated SQL query.\n"
-            "8. If a reference in the question cannot be resolved using the conversation context, or if there is no context and the question is too ambiguous to generate a query for, you MUST return exactly: 'I cannot generate a SQL query, this is ambiguous'\n"
+            "7. Use the 'Prior Conversation Context' to resolve references (pronouns like 'he', 'she', 'it', or phrases like 'that document', 'the same region', 'last quarter') to concrete values or conditions in the SQL query. If no context exists, treat the question as standalone and generate the best possible query from the schema alone.\n"
+            "8. Only return 'I cannot generate a SQL query, this is ambiguous' as an absolute last resort - specifically when the question refers to something that has multiple equally valid interpretations AND the schema provides no way to distinguish between them, AND there is no conversation context to resolve it. A question that is broad or open-ended (e.g. 'show me costs', 'which is the worst performing') is NOT ambiguous - map it to the most natural columns in the schema and generate a query. When in doubt, generate a query.\n"
             f"{rule_9}"
         )
 
@@ -1011,6 +1011,7 @@ def check_sql_authorized_columns(
     engine_type: str,
     authorized_cols_by_table: Dict[str, Set[str]],
     valid_tables: Set[str],
+    all_physical_cols_by_table: Optional[Dict[str, Set[str]]] = None,
 ) -> None:
     """
     Parses a SQL query using sqlglot and checks if it accesses any unauthorized columns or tables.
@@ -1084,6 +1085,15 @@ def check_sql_authorized_columns(
 
         if resolved_table:
             resolved_table = resolved_table.strip('"`')
+            # If we know the physical columns of the table, only check if col_name is actually one of them
+            if (
+                all_physical_cols_by_table
+                and resolved_table in all_physical_cols_by_table
+            ):
+                if col_name not in all_physical_cols_by_table[resolved_table]:
+                    # This is an alias, CTE, function, or non-physical column. Skip validation.
+                    continue
+
             if resolved_table in authorized_cols_by_table:
                 allowed_cols = authorized_cols_by_table[resolved_table]
                 if col_name not in allowed_cols:

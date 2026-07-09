@@ -24,3 +24,6 @@ Thumbs.db
 .idea/
 .agent/
 .gemini
+
+# Docker environment override
+backend/.env.docker

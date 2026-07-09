@@ -578,6 +578,7 @@ async def run_rag_pipeline(
             )
 
         authorized_cols_by_table = {}
+        all_physical_cols_by_table = {}
         valid_tables = {
             t["name"].lower() for t in schema_cache.schema_data.get("tables", [])
         }
@@ -587,6 +588,9 @@ async def run_rag_pipeline(
             t_name = t["name"]
             if t_name in authorized_table_names:
                 all_cols = [c["name"] for c in t.get("columns", [])]
+                all_physical_cols_by_table[t_name.lower()] = set(
+                    c.lower() for c in all_cols
+                )
                 if user.role.is_admin:
                     auth_cols = set(c.lower() for c in all_cols)
                 else:
@@ -647,6 +651,7 @@ async def run_rag_pipeline(
                     engine_type=connection.engine,
                     authorized_cols_by_table=authorized_cols_by_table,
                     valid_tables=valid_tables,
+                    all_physical_cols_by_table=all_physical_cols_by_table,
                 )
             yield {
                 "type": "token",
@@ -707,6 +712,7 @@ async def run_rag_pipeline(
                             engine_type=connection.engine,
                             authorized_cols_by_table=authorized_cols_by_table,
                             valid_tables=valid_tables,
+                            all_physical_cols_by_table=all_physical_cols_by_table,
                         )
 
                     yield {

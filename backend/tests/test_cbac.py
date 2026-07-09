@@ -116,3 +116,16 @@ def test_check_sql_authorized_columns_failures():
             authorized_cols,
             valid_tables,
         )
+
+    # Aliases / Calculated Columns should pass when all_physical_cols_by_table is provided
+    all_physical_cols = {
+        "users": {"id", "email"},
+        "posts": {"id", "title"},
+    }
+    check_sql_authorized_columns(
+        "SELECT id, id + 5 AS total_tokens FROM users",
+        "postgresql",
+        authorized_cols,
+        valid_tables,
+        all_physical_cols_by_table=all_physical_cols,
+    )

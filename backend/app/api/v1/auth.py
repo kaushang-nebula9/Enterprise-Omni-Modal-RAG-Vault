@@ -148,8 +148,11 @@ def register_verify_otp(
     response: Response,
     db: Session = Depends(get_db),
 ):
-    """Open route to verify registration OTP and finalize user and tenant creation."""
+    print("[1] Route called")
+
     cookie_value = req_obj.cookies.get("registration_session")
+    print("[2] Cookie fetched")
+
     if not cookie_value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -158,65 +161,102 @@ def register_verify_otp(
 
     try:
         payload = serializer.loads(cookie_value, max_age=600)
+        print("[3] Cookie deserialized successfully")
     except (SignatureExpired, BadSignature):
+        print("[3] Cookie validation failed")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Registration session expired. Please start again.",
         )
 
     if payload.get("email") != request.email:
+        print("[4] Email mismatch")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OTP",
         )
+
+    print("[4] Email verified")
 
     otp_record = (
         db.query(OTPVerification)
         .filter(
             OTPVerification.email == request.email,
             OTPVerification.purpose == OTPPurpose.registration,
-            not OTPVerification.is_used,
+            OTPVerification.is_used.is_(False),
         )
         .order_by(OTPVerification.created_at.desc())
         .first()
     )
 
+    print("[5] OTP query executed")
+
     if not otp_record:
+        print("[5] No OTP record found")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OTP",
         )
+
+    print("[6] OTP record found")
 
     current_time = datetime.now(timezone.utc)
     expires_at = otp_record.expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
 
+    print("[7] Expiry checked")
+
     if expires_at < current_time:
+        print("[7] OTP expired")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OTP",
         )
 
+    print("[8] OTP not expired")
+
     if not verify_otp(request.otp, otp_record.otp_hash):
+        print("[8] OTP verification failed")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OTP",
         )
+
+    print("[9] OTP verified")
 
     try:
         org_name = payload["org_name"]
         base_slug = re.sub(r"[^a-z0-9\-]", "", org_name.lower().replace(" ", "-"))
         slug = base_slug or "tenant"
+
+        print("[10] Generating slug")
+
         while db.query(Tenant).filter(Tenant.slug == slug).first():
             slug = f"{base_slug}-{random.randint(1000, 9999)}"
 
-        tenant = Tenant(name=org_name, slug=slug, website=payload.get("org_website"))
+        print(f"[11] Final slug: {slug}")
+
+        tenant = Tenant(
+            name=org_name,
+            slug=slug,
+            website=payload.get("org_website"),
+        )
         db.add(tenant)
         db.flush()
 
-        # Create Admin default role for this tenant
+        print(f"[12] Tenant created: {tenant.id}")
+
         admin_role = Role(
-            tenant_id=tenant.id, name="Admin", is_admin=True, is_default=True
+            tenant_id=tenant.id,
+            name="Admin",
+            is_admin=True,
+            is_default=True,
         )
         db.add(admin_role)
         db.flush()
+
+        print(f"[13] Admin role created: {admin_role.id}")
 
         user = User(
             tenant_id=tenant.id,
@@ -228,19 +268,36 @@ def register_verify_otp(
         )
         db.add(user)
 
+        print("[14] User added to session")
+
         db.delete(otp_record)
+        print("[15] OTP record deleted")
+
         db.commit()
+        print("[16] Initial commit successful")
+
         db.refresh(user)
-        # Eager load user.role
+        print("[17] User refreshed")
+
         user = (
             db.query(User)
             .options(joinedload(User.role))
             .filter(User.id == user.id)
             .first()
         )
+
+        print("[18] User reloaded with role")
+
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        print(f"[ERROR] Exception during user creation: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
 
     access_token = create_access_token(
         {
@@ -250,19 +307,28 @@ def register_verify_otp(
             "is_admin": user.role.is_admin,
         }
     )
+
+    print("[19] Access token created")
+
     raw_refresh_token, hashed_refresh_token = create_refresh_token()
+    print("[20] Refresh token created")
 
     refresh_expires_at = datetime.now(timezone.utc) + timedelta(
         days=settings.REFRESH_TOKEN_EXPIRE_DAYS
     )
+
     db_refresh_token = RefreshToken(
         user_id=user.id,
         token_hash=hashed_refresh_token,
         expires_at=refresh_expires_at,
         is_revoked=False,
     )
+
     db.add(db_refresh_token)
+    print("[21] Refresh token added to DB")
+
     db.commit()
+    print("[22] Refresh token committed")
 
     response.set_cookie(
         key="access_token",
@@ -272,6 +338,9 @@ def register_verify_otp(
         samesite=cookie_samesite,
         secure=cookie_secure,
     )
+
+    print("[23] Access token cookie set")
+
     response.set_cookie(
         key="refresh_token",
         value=raw_refresh_token,
@@ -281,9 +350,17 @@ def register_verify_otp(
         secure=cookie_secure,
     )
 
+    print("[24] Refresh token cookie set")
+
     response.delete_cookie(
-        "registration_session", samesite=cookie_samesite, secure=cookie_secure
+        "registration_session",
+        samesite=cookie_samesite,
+        secure=cookie_secure,
     )
+
+    print("[25] Registration session cookie deleted")
+    print("[26] Returning user")
+
     return user
 
 

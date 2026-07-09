@@ -24,10 +24,10 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# VECTOR_SIZE = (
-#     1024  # BAAI/bge-large-en-v1.5 output dimension (sentence-transformers, active)
-# )
-VECTOR_SIZE = 3072  # gemini-embedding-2 output dimension
+VECTOR_SIZE = (
+    1024  # BAAI/bge-large-en-v1.5 output dimension (sentence-transformers, active)
+)
+# VECTOR_SIZE = 3072  # gemini-embedding-2 output dimension
 
 _sparse_model: Optional["SparseTextEmbedding"] = None  # noqa: F821
 
