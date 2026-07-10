@@ -18,6 +18,7 @@ import {
   Mic,
   Square,
   Database,
+  Lock,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { chatService } from '../../services/chatService'
@@ -89,6 +90,7 @@ const ChatPage: React.FC = () => {
   const modelDropdownRef = useRef<HTMLDivElement>(null)
 
   const [attachedDatabase, setAttachedDatabase] = useState<any | null>(null)
+  const [lockedDbConnectionId, setLockedDbConnectionId] = useState<string | null>(null)
   const [isDbDropdownOpen, setIsDbDropdownOpen] = useState(false)
   const dbDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -226,7 +228,7 @@ const ChatPage: React.FC = () => {
   })
 
   // Fetch authorized databases
-  const { data: userDatabases = [] } = useQuery({
+  const { data: userDatabases = [], isSuccess: isUserDatabasesLoaded } = useQuery({
     queryKey: ['authorized-databases'],
     queryFn: () => databaseService.getAuthorizedDatabases(),
   })
@@ -726,15 +728,25 @@ const ChatPage: React.FC = () => {
               )
             )
           },
-          (citations, messageId, followUpQuestions) => {
+          (citations, messageId, followUpQuestions, generatedSql, answer) => {
             controller.signal.removeEventListener('abort', handleAbort)
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === tempAssistantId
-                  ? { ...msg, id: messageId, citations, follow_up_questions: followUpQuestions }
+                  ? {
+                      ...msg,
+                      id: messageId,
+                      citations,
+                      follow_up_questions: followUpQuestions,
+                      generated_sql: generatedSql,
+                      content: answer || msg.content,
+                    }
                   : msg
               )
             )
+            if (generatedSql && attachedDatabase) {
+              setLockedDbConnectionId(attachedDatabase.id)
+            }
             queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
             resolve()
           },
@@ -804,6 +816,8 @@ const ChatPage: React.FC = () => {
       if (sessionId !== null) {
         activeSessionIdRef.current = null
         setSessionId(null)
+        setLockedDbConnectionId(null)
+        setAttachedDatabase(null)
         setMessages([])
         setUploadedFile(null)
         setAttachedDocument(null)
@@ -822,6 +836,7 @@ const ChatPage: React.FC = () => {
         const session = await chatService.getSession(urlSessionId)
         activeSessionIdRef.current = session.id
         setSessionId(session.id)
+        setLockedDbConnectionId(session.db_connection_id || null)
         // Sort chronologically, fallback to role for identical timestamps
         const sortedMessages = [...session.messages].sort((a, b) => {
           const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -849,6 +864,28 @@ const ChatPage: React.FC = () => {
     loadSession()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlSessionId, autoQuery])
+
+  // Synchronize attached database and lock state based on loaded session and userDatabases
+  useEffect(() => {
+    if (!sessionId || !isUserDatabasesLoaded) {
+      return
+    }
+
+    if (lockedDbConnectionId) {
+      const foundDb = userDatabases.find((dbConn: any) => dbConn.id === lockedDbConnectionId)
+      if (foundDb) {
+        setAttachedDatabase(foundDb)
+      } else {
+        setAttachedDatabase(null)
+        setToast({
+          message: 'Previously connected database is no longer available',
+          type: 'error'
+        })
+      }
+    } else {
+      setAttachedDatabase(null)
+    }
+  }, [sessionId, lockedDbConnectionId, userDatabases, isUserDatabasesLoaded])
 
   // Direct send that takes sessionId as parameter (for use before state updates)
   const handleSendDirect = async (sid: string, content: string) => {
@@ -914,6 +951,9 @@ const ChatPage: React.FC = () => {
               : msg
           )
         )
+        if (generatedSql && attachedDatabase) {
+          setLockedDbConnectionId(attachedDatabase.id)
+        }
         queryClient.invalidateQueries({ queryKey: ['chat-sessions'] })
         if (abortControllerRef.current === controller) {
           abortControllerRef.current = null
@@ -1911,22 +1951,40 @@ const ChatPage: React.FC = () => {
                       )}
                     </div>
                   )}
-
                   {/* Database selector */}
                   {userDatabases.length > 0 && !isRecording && (
-                    <div ref={dbDropdownRef} className="relative">
-                      <button
-                        onClick={() => setIsDbDropdownOpen(!isDbDropdownOpen)}
-                        disabled={isLoading || isStreaming}
-                        type="button"
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-650 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all font-semibold text-sm outline-none"
-                      >
-                        <Database className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                        <span>{attachedDatabase ? attachedDatabase.name : 'Select DB'}</span>
-                        <ChevronDown className={`w-3 h-3 text-slate-455 transition-transform duration-200 ${isDbDropdownOpen ? 'rotate-180' : ''}`} />
-                      </button>
+                    <div ref={dbDropdownRef} className="relative flex flex-col items-start gap-1">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            if (!lockedDbConnectionId) {
+                              setIsDbDropdownOpen(!isDbDropdownOpen)
+                            }
+                          }}
+                          disabled={isLoading || isStreaming}
+                          type="button"
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-650 dark:text-slate-350 transition-all font-semibold text-sm outline-none ${
+                            lockedDbConnectionId 
+                              ? 'cursor-default opacity-85' 
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <Database className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                          <span>{attachedDatabase ? attachedDatabase.name : 'Select DB'}</span>
+                          {lockedDbConnectionId ? (
+                            <Lock className="w-3 h-3 text-slate-400 dark:text-slate-500" />
+                          ) : (
+                            <ChevronDown className={`w-3 h-3 text-slate-455 transition-transform duration-200 ${isDbDropdownOpen ? 'rotate-180' : ''}`} />
+                          )}
+                        </button>
+                        {lockedDbConnectionId && (
+                          <span className="text-xs text-slate-400 dark:text-slate-500 font-medium select-none">
+                            Locked to this chat
+                          </span>
+                        )}
+                      </div>
 
-                      {isDbDropdownOpen && (
+                      {isDbDropdownOpen && !lockedDbConnectionId && (
                         <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-2 z-50 flex flex-col gap-1 text-slate-800 dark:text-slate-100 max-h-72 overflow-y-auto">
                           <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider select-none">
                             Query Database

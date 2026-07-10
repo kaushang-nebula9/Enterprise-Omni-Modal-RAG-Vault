@@ -4,6 +4,7 @@ export interface SessionResponse {
   tenant_id: string
   title: string
   is_pinned: boolean
+  db_connection_id?: string | null
   created_at: string
   updated_at: string
 }

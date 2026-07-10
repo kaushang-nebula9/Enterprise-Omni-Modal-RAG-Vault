@@ -408,6 +408,10 @@ async def send_query(
             detail="Session not found",
         )
 
+    # Server-side database connection lock enforcement
+    if session.db_connection_id is not None:
+        body.database_id = session.db_connection_id
+
     content = body.content
 
     # Parse command prefix and translate it into prompts/instructions
@@ -562,6 +566,14 @@ async def send_query(
                     follow_up_questions = event.get("follow_up_questions", [])
                     generated_sql = event.get("generated_sql")
                     query_results = event.get("query_results")
+
+            # Lock database connection to session if a DB query ran successfully for the first time
+            if (
+                body.database_id is not None
+                and session.db_connection_id is None
+                and generated_sql is not None
+            ):
+                session.db_connection_id = body.database_id
 
             # Store the assistant's response in the database after streaming completes
             assistant_message = QueryMessage(

@@ -6,6 +6,12 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB
+
+from app.db.base import Base
 from app.models.user import User
 from app.models.role import Role
 from app.models.tenant import Tenant
@@ -16,6 +22,26 @@ from app.models.external_database import (
 )
 from app.services.rag_service import run_rag_pipeline
 from tests.test_usage_logs import MockStream, MockCrossEncoder
+
+DATABASE_URL = "sqlite:///:memory:"
+
+
+@compiles(JSONB, "sqlite")
+def compile_jsonb_sqlite(element, compiler, **kw):
+    return "JSON"
+
+
+@pytest.fixture(name="db")
+def db_fixture():
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    session = TestingSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
 
 
 class MockMessages:
