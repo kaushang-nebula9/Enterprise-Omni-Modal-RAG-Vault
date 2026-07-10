@@ -549,21 +549,53 @@ async def translate_nl_to_sql(
     )
 
     if failed_sql and error_message:
-        system_prompt = (
-            "You are an expert SQL translation assistant. You previously generated a SQL query that failed with a database error.\n"
-            "Your task is to correct the SQL query based on the database error message and user's original question. Follow these strict rules:\n"
-            "1. Output ONLY the raw SQL query. Do not wrap it in markdown code blocks, do not add comments, and do not write any introductory or explanatory text.\n"
-            f"2. Use {engine_type} SQL syntax.\n"
-            "3. Pay attention to case-sensitivity and quote identifiers correctly if needed (e.g. backticks for MySQL, double quotes for PostgreSQL).\n"
-            "4. Only query the tables and columns listed in the schema. Do not invent columns.\n"
-            "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
-            "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT).\n"
-            "7. Use the 'Prior Conversation Context' to resolve references (pronouns like 'he', 'she', 'it', or phrases like 'that document', 'the same region', 'last quarter') to concrete values or conditions in the SQL query. If no context exists, treat the question as standalone and generate the best possible query from the schema alone.\n"
-            "8. Only return 'I cannot generate a SQL query, this is ambiguous' as an absolute last resort - specifically when the question refers to something that has multiple equally valid interpretations AND the schema provides no way to distinguish between them, AND there is no conversation context to resolve it. A question that is broad or open-ended (e.g. 'show me costs', 'which is the worst performing') is NOT ambiguous - map it to the most natural columns in the schema and generate a query. When in doubt, generate a query.\n"
-            f"{rule_9}"
-        )
+        is_access_denied = "access denied" in error_message.lower()
+        if is_access_denied:
+            system_prompt = (
+                "You are an expert SQL translation assistant. You previously generated a SQL query that accessed an unauthorized table or column (Access Denied).\n"
+                "Your task is to correct the SQL query by looking for an alternative path or query structure using other tables or columns in the schema that are authorized to answer the question.\n"
+                "Follow these strict rules:\n"
+                "1. Output ONLY the raw SQL query. Do not wrap it in markdown code blocks, do not add comments, and do not write any introductory or explanatory text.\n"
+                f"2. Use {engine_type} SQL syntax.\n"
+                "3. Pay attention to case-sensitivity and quote identifiers correctly if needed (e.g. backticks for MySQL, double quotes for PostgreSQL).\n"
+                "4. Only query the tables and columns listed in the schema. Do not invent columns.\n"
+                "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
+                "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT).\n"
+                "7. Use the 'Prior Conversation Context' to resolve references to concrete values or conditions in the SQL query. If no context exists, treat the question as standalone and generate the best possible query from the schema alone.\n"
+                "8. You MUST NOT return any workaround (such as returning dummy/constant values, placeholder fields, or inventing columns not present in the schema). You must strictly return what's being asked. If there is no alternative way to answer the question using only the allowed tables and columns, you must output 'I cannot generate a SQL query, this is ambiguous'.\n"
+                f"{rule_9}"
+            )
 
-        prompt = f"""Database Schema (Engine: {engine_type}):
+            prompt = f"""Database Schema (Engine: {engine_type}):
+{schema_str}
+{history_str}
+User Question: {query}
+
+Previously Generated SQL:
+{failed_sql}
+
+Database Error Message:
+{error_message}
+
+The previously generated query failed because it accessed an unauthorized table or column. Please find another way to query the database using other authorized tables or columns to answer the question. Do NOT use any unauthorized columns or tables mentioned in the error message. Do NOT return any workarounds (e.g. using dummy/constant values, placeholder fields, or inventing columns). You must strictly return what is asked. If there is no other way to answer the question, output "I cannot generate a SQL query, this is ambiguous".
+
+SQL Query:"""
+        else:
+            system_prompt = (
+                "You are an expert SQL translation assistant. You previously generated a SQL query that failed with a database error.\n"
+                "Your task is to correct the SQL query based on the database error message and user's original question. Follow these strict rules:\n"
+                "1. Output ONLY the raw SQL query. Do not wrap it in markdown code blocks, do not add comments, and do not write any introductory or explanatory text.\n"
+                f"2. Use {engine_type} SQL syntax.\n"
+                "3. Pay attention to case-sensitivity and quote identifiers correctly if needed (e.g. backticks for MySQL, double quotes for PostgreSQL).\n"
+                "4. Only query the tables and columns listed in the schema. Do not invent columns.\n"
+                "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
+                "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT).\n"
+                "7. Use the 'Prior Conversation Context' to resolve references (pronouns like 'he', 'she', 'it', or phrases like 'that document', 'the same region', 'last quarter') to concrete values or conditions in the SQL query. If no context exists, treat the question as standalone and generate the best possible query from the schema alone.\n"
+                "8. Only return 'I cannot generate a SQL query, this is ambiguous' as an absolute last resort - specifically when the question refers to something that has multiple equally valid interpretations AND the schema provides no way to distinguish between them, AND there is no conversation context to resolve it. A question that is broad or open-ended (e.g. 'show me costs', 'which is the worst performing') is NOT ambiguous - map it to the most natural columns in the schema and generate a query. When in doubt, generate a query.\n"
+                f"{rule_9}"
+            )
+
+            prompt = f"""Database Schema (Engine: {engine_type}):
 {schema_str}
 {history_str}
 User Question: {query}

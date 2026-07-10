@@ -632,6 +632,7 @@ async def run_rag_pipeline(
         if session_id:
             turns = get_recent_turns(db, session_id, settings.SQL_HISTORY_LIMIT)
 
+        access_denied_error = None
         try:
             sql_query = await translate_nl_to_sql(
                 query=query,
@@ -646,13 +647,63 @@ async def run_rag_pipeline(
 
             # Enforce guardrails on generated SQL
             if not user.role.is_admin:
-                check_sql_authorized_columns(
-                    sql_query=sql_query,
-                    engine_type=connection.engine,
-                    authorized_cols_by_table=authorized_cols_by_table,
-                    valid_tables=valid_tables,
-                    all_physical_cols_by_table=all_physical_cols_by_table,
+                try:
+                    check_sql_authorized_columns(
+                        sql_query=sql_query,
+                        engine_type=connection.engine,
+                        authorized_cols_by_table=authorized_cols_by_table,
+                        valid_tables=valid_tables,
+                        all_physical_cols_by_table=all_physical_cols_by_table,
+                    )
+                except ValueError as val_err:
+                    if "access denied" in str(val_err).lower():
+                        access_denied_error = val_err
+                    else:
+                        raise val_err
+
+            # If access denied occurred on the first attempt, try self-correction
+            if access_denied_error:
+                logger.warning(
+                    f"Connection {connection.id} - SQL translation accessed unauthorized columns: {str(access_denied_error)}. "
+                    f"Original SQL: {sql_query}. Attempting self-correction for alternative path..."
                 )
+                yield {
+                    "type": "token",
+                    "content": "\n*Attempting self-correction to find an alternative authorized query path...*\n\n",
+                }
+
+                try:
+                    # Regenerate SQL with access denied feedback
+                    sql_query = await translate_nl_to_sql(
+                        query=query,
+                        schema_data_filtered=filtered_schema_data,
+                        engine_type=connection.engine,
+                        db=db,
+                        model_id=model_id,
+                        failed_sql=sql_query,
+                        error_message=str(access_denied_error),
+                        conversation_history=turns,
+                        user_id=user.id,
+                        tenant_id=user.tenant_id,
+                    )
+
+                    # Re-verify guardrails on regenerated SQL
+                    if not user.role.is_admin:
+                        check_sql_authorized_columns(
+                            sql_query=sql_query,
+                            engine_type=connection.engine,
+                            authorized_cols_by_table=authorized_cols_by_table,
+                            valid_tables=valid_tables,
+                            all_physical_cols_by_table=all_physical_cols_by_table,
+                        )
+                except Exception as retry_exc:
+                    # If the self-correction failed, revert to the original access denied error
+                    logger.error(
+                        f"Connection {connection.id} - SQL self-correction for access denied failed: {str(retry_exc)}. "
+                        f"Reverting to original access denied error."
+                    )
+                    raise access_denied_error
+
             yield {
                 "type": "token",
                 "content": f"**Generated SQL Query:**\n```sql\n{sql_query}\n```\n\n*Executing query...*\n\n",
@@ -661,6 +712,9 @@ async def run_rag_pipeline(
             err_msg = str(e)
             if "I cannot generate a SQL query, this is ambiguous" in err_msg:
                 err_msg = "I cannot generate a SQL query, this is ambiguous"
+            elif "access denied" in err_msg.lower():
+                # Keep the exact access denied error message
+                pass
             else:
                 err_msg = f"Error during SQL generation: {str(e)}"
             yield {"type": "token", "content": err_msg}
