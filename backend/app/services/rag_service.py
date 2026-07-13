@@ -487,6 +487,125 @@ def get_recent_turns(db: Session, session_id: uuid.UUID, limit: int = 5) -> list
     return turns[-limit:]
 
 
+async def _execute_llm_stream(cfg, sys_prompt, user_prompt, max_tokens=8192):
+    """
+    Streams tokens and usage dict from the appropriate provider SDK based on configuration.
+    """
+    from app.core.utils import get_provider_by_id, get_llm_client
+
+    cfg_provider_id = cfg.provider_id
+    cfg_model_string = cfg.model_name or cfg.model_string
+    cfg_provider = get_provider_by_id(cfg_provider_id)
+    cfg_sdk_type = cfg_provider["sdk_type"]
+
+    if cfg_provider_id == "anthropic":
+        if cfg.api_key:
+            client = get_llm_client(cfg)
+        else:
+            client = _get_async_anthropic_client()
+
+        stream_kwargs = {
+            "model": cfg_model_string,
+            "max_tokens": max_tokens,
+            "system": sys_prompt,
+            "messages": [{"role": "user", "content": user_prompt}],
+        }
+        if "opus" not in cfg_model_string.lower():
+            stream_kwargs["temperature"] = 0
+
+        async with client.messages.stream(**stream_kwargs) as stream:
+            async for event in stream:
+                if event.type == "text":
+                    yield "token", event.text
+            final_msg = await stream.get_final_message()
+            if getattr(final_msg, "usage", None):
+                yield (
+                    "usage",
+                    {
+                        "input_tokens": getattr(final_msg.usage, "input_tokens", 0),
+                        "output_tokens": getattr(final_msg.usage, "output_tokens", 0),
+                    },
+                )
+
+    elif cfg_provider_id == "openrouter":
+        from app.services.openrouter_service import stream_openrouter_completion
+
+        async for chunk_type, data in stream_openrouter_completion(
+            model_string=cfg_model_string,
+            system_prompt=sys_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        ):
+            if chunk_type == "text":
+                yield "token", data
+            elif chunk_type == "usage":
+                yield (
+                    "usage",
+                    {
+                        "input_tokens": data.get("prompt_tokens", 0),
+                        "output_tokens": data.get("completion_tokens", 0),
+                    },
+                )
+
+    elif cfg_sdk_type == "openai_compat":
+        client = get_llm_client(cfg)
+        formatted_messages = []
+        if sys_prompt:
+            formatted_messages.append({"role": "system", "content": sys_prompt})
+        formatted_messages.append({"role": "user", "content": user_prompt})
+
+        response = await client.chat.completions.create(
+            model=cfg_model_string,
+            messages=formatted_messages,
+            temperature=0,
+            max_tokens=max_tokens,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+        async for chunk in response:
+            if chunk.choices:
+                delta = chunk.choices[0].delta
+                if getattr(delta, "content", None):
+                    yield "token", delta.content
+            if getattr(chunk, "usage", None) and chunk.usage:
+                yield (
+                    "usage",
+                    {
+                        "input_tokens": getattr(chunk.usage, "prompt_tokens", 0),
+                        "output_tokens": getattr(chunk.usage, "completion_tokens", 0),
+                    },
+                )
+
+    elif cfg_sdk_type == "google":
+        client = get_llm_client(cfg)
+        from google.genai import types
+
+        config = types.GenerateContentConfig(
+            system_instruction=sys_prompt,
+            temperature=0,
+            max_output_tokens=max_tokens,
+        )
+        response_stream = await client.aio.models.generate_content_stream(
+            model=cfg_model_string,
+            contents=user_prompt,
+            config=config,
+        )
+        async for chunk in response_stream:
+            text = chunk.text
+            if text:
+                yield "token", text
+            if chunk.usage_metadata:
+                yield (
+                    "usage",
+                    {
+                        "input_tokens": chunk.usage_metadata.prompt_token_count or 0,
+                        "output_tokens": chunk.usage_metadata.candidates_token_count
+                        or 0,
+                    },
+                )
+    else:
+        raise ValueError(f"Unsupported sdk_type: {cfg_sdk_type}")
+
+
 async def run_rag_pipeline(
     query: str,
     user: User,
@@ -929,6 +1048,7 @@ Please summarize and answer the user's question based on the query results. Do n
         selected_model_string = "claude-haiku-4-5"
         selected_provider_id = "anthropic"
         model_config = None
+        db_model = None
 
         if model_id:
             from app.models.available_model import AvailableModel
@@ -1003,97 +1123,43 @@ Please summarize and answer the user's question based on the query results. Do n
 
         input_tokens = 0
         output_tokens = 0
-
         full_answer_list = []
-        from app.core.utils import get_provider_by_id, get_llm_client
 
-        provider = get_provider_by_id(selected_provider_id)
-        sdk_type = provider["sdk_type"]
+        # Initialize fallback variables
+        was_fallback = False
+        fallback_model_name = None
 
-        if selected_provider_id == "anthropic":
-            if model_config.api_key:
-                client = get_llm_client(model_config)
-            else:
-                client = _get_async_anthropic_client()
+        # Fetch default model config
+        from app.services.model_router import get_default_model_config
 
-            async with client.messages.stream(
-                model=selected_model_string,
-                max_tokens=4096,
-                system=system_prompt,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0,
-            ) as stream:
-                async for event in stream:
-                    if event.type == "text":
-                        full_answer_list.append(event.text)
-                        yield {"type": "token", "content": event.text}
+        default_model = get_default_model_config(db, user.tenant_id)
 
-                final_msg = await stream.get_final_message()
-                if getattr(final_msg, "usage", None):
-                    input_tokens = getattr(final_msg.usage, "input_tokens", 0)
-                    output_tokens = getattr(final_msg.usage, "output_tokens", 0)
-        elif selected_provider_id == "openrouter":
-            from app.services.openrouter_service import stream_openrouter_completion
+        from app.core.utils import call_llm_with_fallback
 
-            async for chunk_type, data in stream_openrouter_completion(
-                model_string=selected_model_string,
-                system_prompt=system_prompt,
-                messages=[{"role": "user", "content": prompt}],
-            ):
-                if chunk_type == "text":
-                    full_answer_list.append(data)
-                    yield {"type": "token", "content": data}
-                elif chunk_type == "usage":
-                    input_tokens = data.get("prompt_tokens", 0)
-                    output_tokens = data.get("completion_tokens", 0)
-        elif sdk_type == "openai_compat":
-            client = get_llm_client(model_config)
-            formatted_messages = []
-            if system_prompt:
-                formatted_messages.append({"role": "system", "content": system_prompt})
-            formatted_messages.append({"role": "user", "content": prompt})
+        # Invoke LLM with fallback support
+        stream_result, was_fallback, fallback_model_name = await call_llm_with_fallback(
+            primary_model_config=model_config,
+            default_model_config=default_model,
+            call_fn=lambda cfg: _execute_llm_stream(
+                cfg, system_prompt, prompt, max_tokens=4096
+            ),
+        )
 
-            response = await client.chat.completions.create(
-                model=selected_model_string,
-                messages=formatted_messages,
-                temperature=0,
-                max_tokens=4096,
-                stream=True,
-                stream_options={"include_usage": True},
+        if was_fallback and default_model:
+            db_model = default_model
+            model_config = default_model
+            selected_model_string = (
+                default_model.model_name or default_model.model_string
             )
-            async for chunk in response:
-                if chunk.choices:
-                    delta = chunk.choices[0].delta
-                    if getattr(delta, "content", None):
-                        full_answer_list.append(delta.content)
-                        yield {"type": "token", "content": delta.content}
-                if getattr(chunk, "usage", None) and chunk.usage:
-                    input_tokens = getattr(chunk.usage, "prompt_tokens", 0)
-                    output_tokens = getattr(chunk.usage, "completion_tokens", 0)
-        elif sdk_type == "google":
-            client = get_llm_client(model_config)
-            from google.genai import types
+            selected_provider_id = default_model.provider_id
 
-            config = types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=0,
-                max_output_tokens=4096,
-            )
-            response_stream = await client.aio.models.generate_content_stream(
-                model=selected_model_string,
-                contents=prompt,
-                config=config,
-            )
-            async for chunk in response_stream:
-                text = chunk.text
-                if text:
-                    full_answer_list.append(text)
-                    yield {"type": "token", "content": text}
-                if chunk.usage_metadata:
-                    input_tokens = chunk.usage_metadata.prompt_token_count or 0
-                    output_tokens = chunk.usage_metadata.candidates_token_count or 0
-        else:
-            raise ValueError(f"Unsupported sdk_type: {sdk_type}")
+        async for event_type, data in stream_result:
+            if event_type == "token":
+                full_answer_list.append(data)
+                yield {"type": "token", "content": data}
+            elif event_type == "usage":
+                input_tokens = data["input_tokens"]
+                output_tokens = data["output_tokens"]
 
         # Save SQL summarization UsageLog row
         try:
@@ -1160,6 +1226,8 @@ Please summarize and answer the user's question based on the query results. Do n
             if db_model
             else selected_model_string,
             "resolved_model_id": db_model.id if db_model else None,
+            "was_fallback": was_fallback,
+            "fallback_model_name": fallback_model_name,
         }
         return
 
@@ -1352,6 +1420,7 @@ Please summarize and answer the user's question based on the query results. Do n
     selected_model_string = "claude-haiku-4-5"
     selected_provider_id = "anthropic"
     model_config = None
+    db_model = None
 
     if model_id:
         from app.models.available_model import AvailableModel
@@ -1432,99 +1501,41 @@ Please summarize and answer the user's question based on the query results. Do n
     input_tokens = 0
     output_tokens = 0
     try:
-        from app.core.utils import get_provider_by_id, get_llm_client
+        # Initialize fallback variables
+        was_fallback = False
+        fallback_model_name = None
 
-        provider = get_provider_by_id(selected_provider_id)
-        sdk_type = provider["sdk_type"]
+        # Fetch default model config
+        from app.services.model_router import get_default_model_config
 
-        if selected_provider_id == "anthropic":
-            if model_config.api_key:
-                client = get_llm_client(model_config)
-            else:
-                client = _get_async_anthropic_client()
+        default_model = get_default_model_config(db, user.tenant_id)
 
-            stream_kwargs = {
-                "model": selected_model_string,
-                "max_tokens": 8192,
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": final_prompt}],
-            }
-            # Omit temperature if model is Opus (deprecated)
-            if "opus" not in selected_model_string.lower():
-                stream_kwargs["temperature"] = 0
+        from app.core.utils import call_llm_with_fallback
 
-            async with client.messages.stream(**stream_kwargs) as stream:
-                async for event in stream:
-                    if event.type == "text":
-                        full_answer_list.append(event.text)
-                        yield {"type": "token", "content": event.text}
+        # Invoke LLM with fallback support
+        stream_result, was_fallback, fallback_model_name = await call_llm_with_fallback(
+            primary_model_config=model_config,
+            default_model_config=default_model,
+            call_fn=lambda cfg: _execute_llm_stream(
+                cfg, system_prompt, final_prompt, max_tokens=8192
+            ),
+        )
 
-                final_msg = await stream.get_final_message()
-                if getattr(final_msg, "usage", None):
-                    input_tokens = getattr(final_msg.usage, "input_tokens", 0)
-                    output_tokens = getattr(final_msg.usage, "output_tokens", 0)
-        elif selected_provider_id == "openrouter":
-            from app.services.openrouter_service import stream_openrouter_completion
-
-            async for chunk_type, data in stream_openrouter_completion(
-                model_string=selected_model_string,
-                system_prompt=system_prompt,
-                messages=[{"role": "user", "content": final_prompt}],
-            ):
-                if chunk_type == "text":
-                    full_answer_list.append(data)
-                    yield {"type": "token", "content": data}
-                elif chunk_type == "usage":
-                    input_tokens = data.get("prompt_tokens", 0)
-                    output_tokens = data.get("completion_tokens", 0)
-        elif sdk_type == "openai_compat":
-            client = get_llm_client(model_config)
-            formatted_messages = []
-            if system_prompt:
-                formatted_messages.append({"role": "system", "content": system_prompt})
-            formatted_messages.append({"role": "user", "content": final_prompt})
-
-            response = await client.chat.completions.create(
-                model=selected_model_string,
-                messages=formatted_messages,
-                temperature=0,
-                max_tokens=8192,
-                stream=True,
-                stream_options={"include_usage": True},
+        if was_fallback and default_model:
+            db_model = default_model
+            model_config = default_model
+            selected_model_string = (
+                default_model.model_name or default_model.model_string
             )
-            async for chunk in response:
-                if chunk.choices:
-                    delta = chunk.choices[0].delta
-                    if getattr(delta, "content", None):
-                        full_answer_list.append(delta.content)
-                        yield {"type": "token", "content": delta.content}
-                if getattr(chunk, "usage", None) and chunk.usage:
-                    input_tokens = getattr(chunk.usage, "prompt_tokens", 0)
-                    output_tokens = getattr(chunk.usage, "completion_tokens", 0)
-        elif sdk_type == "google":
-            client = get_llm_client(model_config)
-            from google.genai import types
+            selected_provider_id = default_model.provider_id
 
-            config = types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=0,
-                max_output_tokens=8192,
-            )
-            response_stream = await client.aio.models.generate_content_stream(
-                model=selected_model_string,
-                contents=final_prompt,
-                config=config,
-            )
-            async for chunk in response_stream:
-                text = chunk.text
-                if text:
-                    full_answer_list.append(text)
-                    yield {"type": "token", "content": text}
-                if chunk.usage_metadata:
-                    input_tokens = chunk.usage_metadata.prompt_token_count or 0
-                    output_tokens = chunk.usage_metadata.candidates_token_count or 0
-        else:
-            raise ValueError(f"Unsupported model provider SDK: {sdk_type}")
+        async for event_type, data in stream_result:
+            if event_type == "token":
+                full_answer_list.append(data)
+                yield {"type": "token", "content": data}
+            elif event_type == "usage":
+                input_tokens = data["input_tokens"]
+                output_tokens = data["output_tokens"]
 
         # Save UsageLog row
         try:
@@ -1610,4 +1621,6 @@ Please summarize and answer the user's question based on the query results. Do n
         "follow_up_questions": follow_up_questions,
         "resolved_model": db_model.display_name if db_model else selected_model_string,
         "resolved_model_id": db_model.id if db_model else None,
+        "was_fallback": was_fallback,
+        "fallback_model_name": fallback_model_name,
     }

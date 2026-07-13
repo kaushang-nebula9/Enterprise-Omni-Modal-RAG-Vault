@@ -750,7 +750,7 @@ const ChatPage: React.FC = () => {
               )
             )
           },
-          (citations, messageId, followUpQuestions, generatedSql, answer, chartSpec, resolvedModel) => {
+          (citations, messageId, followUpQuestions, generatedSql, answer, chartSpec, resolvedModel, wasFallback, fallbackModelName) => {
             controller.signal.removeEventListener('abort', handleAbort)
             setMessages((prev) =>
               prev.map((msg) =>
@@ -764,6 +764,8 @@ const ChatPage: React.FC = () => {
                       content: answer || msg.content,
                       chart_spec: chartSpec || null,
                       resolved_model: resolvedModel,
+                      was_fallback: wasFallback,
+                      fallback_model_name: fallbackModelName,
                     }
                   : msg
               )
@@ -958,7 +960,7 @@ const ChatPage: React.FC = () => {
           )
         )
       },
-      (citations, messageId, followUpQuestions, generatedSql, answer, chartSpec, resolvedModel) => {
+      (citations, messageId, followUpQuestions, generatedSql, answer, chartSpec, resolvedModel, wasFallback, fallbackModelName) => {
         setIsStreaming(false)
         setIsLoading(false)
         setMessages((prev) =>
@@ -973,6 +975,8 @@ const ChatPage: React.FC = () => {
                   content: answer || msg.content,
                   chart_spec: chartSpec || null,
                   resolved_model: resolvedModel,
+                  was_fallback: wasFallback,
+                  fallback_model_name: fallbackModelName,
                 }
               : msg
           )
@@ -1522,6 +1526,11 @@ const ChatPage: React.FC = () => {
                           </>
                         ) : null}
                       </div>
+                      {msg.was_fallback && msg.fallback_model_name && (
+                        <span className="text-xs text-amber-600 dark:text-amber-500 mt-1 block">
+                          Responded using fallback model: {msg.fallback_model_name}
+                        </span>
+                      )}
 
                       {msg.chart_spec && (
                         <ChartRenderer spec={msg.chart_spec} />

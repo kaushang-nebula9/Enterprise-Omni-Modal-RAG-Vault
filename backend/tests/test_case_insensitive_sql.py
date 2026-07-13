@@ -100,7 +100,9 @@ async def test_prompt_generation_postgresql(mock_anthropic_class):
     }
 
     # Call translation with postgresql
-    with patch("app.services.database_service.stream_openrouter_completion") as mock_or:
+    with patch(
+        "app.services.openrouter_service.stream_openrouter_completion"
+    ) as mock_or:
         # If openrouter is used instead of anthropic (depending on default settings/API keys)
         async def mock_generator(*args, **kwargs):
             yield "text", "SELECT * FROM roles WHERE name ILIKE 'Tech Lead'"
@@ -164,7 +166,9 @@ async def test_prompt_generation_mysql(mock_anthropic_class):
     }
 
     # Call translation with mysql
-    with patch("app.services.database_service.stream_openrouter_completion") as mock_or:
+    with patch(
+        "app.services.openrouter_service.stream_openrouter_completion"
+    ) as mock_or:
 
         async def mock_generator(*args, **kwargs):
             yield "text", "SELECT * FROM roles WHERE name LIKE 'Tech Lead'"

@@ -89,6 +89,8 @@ class MessageResponse(BaseModel):
     query_results: Optional[list[dict]] = None
     chart_spec: Optional[dict] = None
     resolved_model: Optional[str] = None
+    was_fallback: bool = False
+    fallback_model_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

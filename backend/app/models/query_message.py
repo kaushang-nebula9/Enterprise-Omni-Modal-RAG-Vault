@@ -1,6 +1,6 @@
 from datetime import datetime
 import uuid
-from sqlalchemy import Text, DateTime, Uuid, ForeignKey, func
+from sqlalchemy import Text, DateTime, Uuid, ForeignKey, func, Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from app.db.base import Base
@@ -40,6 +40,12 @@ class QueryMessage(Base):
     query_results: Mapped[Optional[List[dict]]] = mapped_column(JSONB, nullable=True)
     chart_spec: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     resolved_model: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    was_fallback: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
+    fallback_model_name: Mapped[Optional[str]] = mapped_column(
+        String(200), nullable=True
+    )
 
     # Relationships
     session: Mapped["QuerySession"] = relationship(

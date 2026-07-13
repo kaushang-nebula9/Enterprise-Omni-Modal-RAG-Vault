@@ -54,6 +54,8 @@ export interface MessageResponse {
   query_results?: any[]
   chart_spec?: ChartSpec | null
   resolved_model?: string | null
+  was_fallback?: boolean;
+  fallback_model_name?: string | null;
 }
 
 export interface ChartDataPoint {

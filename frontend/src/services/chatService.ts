@@ -46,7 +46,9 @@ export const chatService = {
       generatedSql?: string,
       answer?: string,
       chartSpec?: any,
-      resolvedModel?: string | null
+      resolvedModel?: string | null,
+      wasFallback?: boolean,
+      fallbackModelName?: string | null
     ) => void,
     onError: (error: string, status?: number) => void,
     documentId?: string,
@@ -113,7 +115,17 @@ export const chatService = {
                 if (parsed.type === 'token') {
                   onToken(parsed.content)
                 } else if (parsed.type === 'done') {
-                  onDone(parsed.citations, parsed.message_id, parsed.follow_up_questions, parsed.generated_sql, parsed.answer, parsed.chart_spec, parsed.resolved_model)
+                  onDone(
+                    parsed.citations,
+                    parsed.message_id,
+                    parsed.follow_up_questions,
+                    parsed.generated_sql,
+                    parsed.answer,
+                    parsed.chart_spec,
+                    parsed.resolved_model,
+                    parsed.was_fallback,
+                    parsed.fallback_model_name
+                  )
                 } else if (parsed.type === 'error') {
                   onError(parsed.content)
                 }
@@ -133,7 +145,17 @@ export const chatService = {
               if (parsed.type === 'token') {
                 onToken(parsed.content)
               } else if (parsed.type === 'done') {
-                onDone(parsed.citations, parsed.message_id, parsed.follow_up_questions, parsed.generated_sql, parsed.answer, parsed.chart_spec, parsed.resolved_model)
+                 onDone(
+                  parsed.citations,
+                  parsed.message_id,
+                  parsed.follow_up_questions,
+                  parsed.generated_sql,
+                  parsed.answer,
+                  parsed.chart_spec,
+                  parsed.resolved_model,
+                  parsed.was_fallback,
+                  parsed.fallback_model_name
+                )
               } else if (parsed.type === 'error') {
                 onError(parsed.content)
               }

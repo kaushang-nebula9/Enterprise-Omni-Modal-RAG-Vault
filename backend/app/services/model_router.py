@@ -71,6 +71,7 @@ def route_model(
         "analyse",
         "analyze",
         "evaluate",
+        "elaborate",
         "justify",
         "compare",
         "contrast",
@@ -145,3 +146,39 @@ def route_model(
         if m.get("is_default"):
             return m
     return available_models[0]
+
+
+def get_default_model_config(db: any, tenant_id: any) -> any:
+    """
+    Queries for the model configuration where is_default = True for the tenant.
+    If no default model is set, cascades to find any active model for the tenant.
+    """
+    from app.models.available_model import AvailableModel
+
+    if not tenant_id:
+        return None
+
+    # 1. Try tenant-specific default model
+    model = (
+        db.query(AvailableModel)
+        .filter(
+            AvailableModel.tenant_id == tenant_id,
+            AvailableModel.is_default.is_(True),
+            AvailableModel.is_active.is_(True),
+        )
+        .first()
+    )
+    if model:
+        return model
+
+    # 2. Try any tenant-specific active model
+    model = (
+        db.query(AvailableModel)
+        .filter(
+            AvailableModel.tenant_id == tenant_id,
+            AvailableModel.is_active.is_(True),
+        )
+        .first()
+    )
+    if model:
+        return model

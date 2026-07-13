@@ -126,3 +126,114 @@ def get_llm_client(model_config):
 
     else:
         raise ValueError(f"Unsupported sdk_type: {sdk_type}")
+
+
+async def call_llm_with_fallback(
+    primary_model_config: any,
+    default_model_config: any,
+    call_fn: any,
+) -> tuple[any, bool, str | None]:
+    """
+    Returns (result, was_fallback, fallback_model_name)
+    """
+    import inspect
+
+    async def make_call(cfg):
+        res = call_fn(cfg)
+        if inspect.iscoroutine(res):
+            res = await res
+        return res
+
+    try:
+        res = await make_call(primary_model_config)
+
+        # Check if the result is an async generator (streaming)
+        if inspect.isasyncgen(res):
+            iterator = res.__aiter__()
+            try:
+                first_item = await iterator.__anext__()
+
+                # Re-construct generator yielding first_item and then the rest
+                async def generator_wrapper():
+                    yield first_item
+                    async for item in iterator:
+                        yield item
+
+                return generator_wrapper(), False, None
+            except StopAsyncIteration:
+
+                async def empty_generator():
+                    if False:
+                        yield
+
+                return empty_generator(), False, None
+        else:
+            # Non-streaming call
+            return res, False, None
+
+    except Exception as e:
+        if not default_model_config:
+            raise e
+
+        # Compare models to see if they are the same
+        def _get_model_id(cfg) -> str:
+            if isinstance(cfg, dict):
+                return str(cfg.get("id") or cfg.get("model_name") or "")
+            return str(
+                getattr(cfg, "id", None) or getattr(cfg, "model_name", None) or ""
+            )
+
+        primary_id = _get_model_id(primary_model_config)
+        default_id = _get_model_id(default_model_config)
+
+        if primary_id == default_id:
+            raise e
+
+        logger.warning(
+            "Primary LLM call failed with error: %s. Retrying with default model fallback.",
+            e,
+            exc_info=True,
+        )
+
+        try:
+            fallback_res = await make_call(default_model_config)
+
+            # Display name or model name for fallback display
+            if isinstance(default_model_config, dict):
+                display_name = default_model_config.get(
+                    "display_name"
+                ) or default_model_config.get("model_name")
+            else:
+                display_name = getattr(
+                    default_model_config, "display_name", None
+                ) or getattr(default_model_config, "model_name", None)
+            display_name_str = (
+                str(display_name) if display_name else "Default fallback model"
+            )
+
+            if inspect.isasyncgen(fallback_res):
+                fallback_iterator = fallback_res.__aiter__()
+                try:
+                    fallback_first_item = await fallback_iterator.__anext__()
+
+                    async def fallback_generator_wrapper():
+                        yield fallback_first_item
+                        async for item in fallback_iterator:
+                            yield item
+
+                    return fallback_generator_wrapper(), True, display_name_str
+                except StopAsyncIteration:
+
+                    async def empty_generator():
+                        if False:
+                            yield
+
+                    return empty_generator(), True, display_name_str
+            else:
+                return fallback_res, True, display_name_str
+
+        except Exception as fallback_err:
+            logger.error(
+                "Fallback LLM call also failed: %s", fallback_err, exc_info=True
+            )
+            raise fallback_err

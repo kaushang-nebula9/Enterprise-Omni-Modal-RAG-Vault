@@ -568,6 +568,8 @@ async def send_query(
             error_type = None
             resolved_model = None
             actual_resolved_model_id = None
+            was_fallback = False
+            fallback_model_name = None
 
             async for event in generator:
                 if event["type"] == "token":
@@ -587,6 +589,8 @@ async def send_query(
                     error_type = event.get("error_type")
                     resolved_model = event.get("resolved_model")
                     actual_resolved_model_id = event.get("resolved_model_id")
+                    was_fallback = event.get("was_fallback", False)
+                    fallback_model_name = event.get("fallback_model_name")
 
             from app.core.utils import extract_chart_spec
 
@@ -614,6 +618,8 @@ async def send_query(
                 query_results=query_results,
                 chart_spec=chart_spec,
                 resolved_model=resolved_model if body.model_id == "auto" else None,
+                was_fallback=was_fallback,
+                fallback_model_name=fallback_model_name,
             )
             db.add(assistant_message)
             db.flush()
@@ -709,7 +715,7 @@ async def send_query(
                 )
 
             # Final event: data: {"type": "done", "citations": [...], "message_id": "...", "follow_up_questions": [...], "generated_sql": "...", "answer": "...", "chart_spec": ...}\n\n
-            yield f"data: {json.dumps({'type': 'done', 'citations': citation_responses, 'message_id': str(assistant_message.id), 'follow_up_questions': follow_up_questions, 'generated_sql': generated_sql, 'answer': cleaned_answer, 'chart_spec': chart_spec, 'resolved_model': assistant_message.resolved_model})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'citations': citation_responses, 'message_id': str(assistant_message.id), 'follow_up_questions': follow_up_questions, 'generated_sql': generated_sql, 'answer': cleaned_answer, 'chart_spec': chart_spec, 'resolved_model': assistant_message.resolved_model, 'was_fallback': was_fallback, 'fallback_model_name': fallback_model_name})}\n\n"
 
         except Exception as exc:
             logger.error("Error in event_generator: %s", exc)

@@ -72,3 +72,90 @@ def test_route_model_is_default():
     ]
     chosen = route_model("what is a cat?", [], False, models)
     assert chosen["id"] == "2"
+
+
+@pytest.fixture(name="db")
+def db_fixture():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.db.base import Base
+    from sqlalchemy.ext.compiler import compiles
+    from sqlalchemy.dialects.postgresql import JSONB
+
+    @compiles(JSONB, "sqlite")
+    def compile_jsonb_sqlite(element, compiler, **kw):
+        return "JSON"
+
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}
+    )
+    Base.metadata.create_all(bind=engine)
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    session = TestingSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+
+
+def test_get_default_model_config_cascade(db):
+    from app.services.model_router import get_default_model_config
+    from app.models.available_model import AvailableModel
+    import uuid
+
+    tenant_id = uuid.uuid4()
+
+    # 0. Empty DB
+    assert get_default_model_config(db, tenant_id) is None
+
+    # 1. Add active global model (non-default)
+    global_model = AvailableModel(
+        id=uuid.uuid4(),
+        display_name="Global Model",
+        provider_id="openai",
+        model_name="gpt-4o",
+        is_active=True,
+        is_default=False,
+        tenant_id=None,
+    )
+    db.add(global_model)
+    db.commit()
+
+    # Cascades to global active model
+    res = get_default_model_config(db, tenant_id)
+    assert res.id == global_model.id
+
+    # 2. Add tenant model (active, non-default)
+    tenant_model = AvailableModel(
+        id=uuid.uuid4(),
+        display_name="Tenant Model",
+        provider_id="anthropic",
+        model_name="claude-3-5",
+        is_active=True,
+        is_default=False,
+        tenant_id=tenant_id,
+    )
+    db.add(tenant_model)
+    db.commit()
+
+    # Cascades to tenant active model
+    res = get_default_model_config(db, tenant_id)
+    assert res.id == tenant_model.id
+
+    # 3. Add tenant default model
+    tenant_default = AvailableModel(
+        id=uuid.uuid4(),
+        display_name="Tenant Default Model",
+        provider_id="google",
+        model_name="gemini-1.5",
+        is_active=True,
+        is_default=True,
+        tenant_id=tenant_id,
+    )
+    db.add(tenant_default)
+    db.commit()
+
+    # Selects tenant default model
+    res = get_default_model_config(db, tenant_id)
+    assert res.id == tenant_default.id
