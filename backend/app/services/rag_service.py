@@ -221,6 +221,23 @@ You MUST format this section exactly like this:
 - Question 1?
 - Question 2?
 - Question 3?
+
+CHART OUTPUT RULE:
+If and only if your answer contains numerical data that can be meaningfully visualised (comparisons, trends, distributions, rankings, time series), append a chart specification at the very end of your response using this exact format:
+
+CHART_SPEC:{"chart_type":"bar","title":"<descriptive title>","x_key":"<field name>","y_keys":["<field name>"],"data":[{...},{...}]}
+
+Rules for the chart spec:
+- chart_type must be one of: bar, line, area, pie
+- Choose the most appropriate chart_type for the data
+- data must be a JSON array of flat objects, all objects must have the same keys
+- x_key is the categorical or time-based field
+- y_keys is an array of one or more numeric fields
+- For pie charts, y_keys must contain exactly one field
+- All values in y_keys fields must be numbers, not strings
+- The CHART_SPEC line must be on its own line at the very end of your response, after all text
+- Do not emit CHART_SPEC if the answer is narrative, qualitative, or contains no numerical comparisons
+- Do not wrap CHART_SPEC in markdown code fences
 """
 
 
@@ -884,7 +901,22 @@ async def run_rag_pipeline(
             "You are a helpful data analyst assistant. Your job is to analyze the executed SQL query and its returned results, "
             "and provide a clear, concise, and professional natural language answer to the user's original question. "
             "Make sure to format the output nicely (e.g. use markdown tables or bullet points where appropriate). "
-            "Always cite values directly from the query results. If the results are empty, explain that no matching records were found."
+            "Always cite values directly from the query results. If the results are empty, explain that no matching records were found.\n\n"
+            "CHART OUTPUT RULE:\n"
+            "If and only if your answer contains numerical data that can be meaningfully visualised (comparisons, trends, distributions, rankings, time series), "
+            "append a chart specification at the very end of your response using this exact format:\n\n"
+            'CHART_SPEC:{"chart_type":"bar","title":"<descriptive title>","x_key":"<field name>","y_keys":["<field name>"],"data":[{...},{...}]}\n\n'
+            "Rules for the chart spec:\n"
+            "- chart_type must be one of: bar, line, area, pie\n"
+            "- Choose the most appropriate chart_type for the data\n"
+            "- data must be a JSON array of flat objects, all objects must have the same keys\n"
+            "- x_key is the categorical or time-based field\n"
+            "- y_keys is an array of one or more numeric fields\n"
+            "- For pie charts, y_keys must contain exactly one field\n"
+            "- All values in y_keys fields must be numbers, not strings\n"
+            "- The CHART_SPEC line must be on its own line at the very end of your response, after all text\n"
+            "- Do not emit CHART_SPEC if the answer is narrative, qualitative, or contains no numerical comparisons\n"
+            "- Do not wrap CHART_SPEC in markdown code fences"
         )
 
         prompt = f"""User Question: {query}

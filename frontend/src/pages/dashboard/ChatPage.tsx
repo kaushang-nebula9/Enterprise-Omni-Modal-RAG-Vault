@@ -28,6 +28,7 @@ import type { MessageResponse, AvailableModel } from '../../types/chat'
 import type { DocumentResponse, FileType } from '../../types/document'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { ChartRenderer } from '../../components/dashboard/ChartRenderer'
 
 
 interface UploadedFile {
@@ -728,7 +729,7 @@ const ChatPage: React.FC = () => {
               )
             )
           },
-          (citations, messageId, followUpQuestions, generatedSql, answer) => {
+          (citations, messageId, followUpQuestions, generatedSql, answer, chartSpec) => {
             controller.signal.removeEventListener('abort', handleAbort)
             setMessages((prev) =>
               prev.map((msg) =>
@@ -740,6 +741,7 @@ const ChatPage: React.FC = () => {
                       follow_up_questions: followUpQuestions,
                       generated_sql: generatedSql,
                       content: answer || msg.content,
+                      chart_spec: chartSpec || null,
                     }
                   : msg
               )
@@ -934,7 +936,7 @@ const ChatPage: React.FC = () => {
           )
         )
       },
-      (citations, messageId, followUpQuestions, generatedSql, answer) => {
+      (citations, messageId, followUpQuestions, generatedSql, answer, chartSpec) => {
         setIsStreaming(false)
         setIsLoading(false)
         setMessages((prev) =>
@@ -947,6 +949,7 @@ const ChatPage: React.FC = () => {
                   follow_up_questions: followUpQuestions,
                   generated_sql: generatedSql,
                   content: answer || msg.content,
+                  chart_spec: chartSpec || null,
                 }
               : msg
           )
@@ -1479,7 +1482,9 @@ const ChatPage: React.FC = () => {
                         )}
                       </div>
 
-
+                      {msg.chart_spec && (
+                        <ChartRenderer spec={msg.chart_spec} />
+                      )}
 
                       {msg.citations.length > 0 && (
                         <div className="mt-2">

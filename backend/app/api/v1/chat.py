@@ -577,6 +577,10 @@ async def send_query(
                     error_message = event.get("error_message")
                     error_type = event.get("error_type")
 
+            from app.core.utils import extract_chart_spec
+
+            cleaned_answer, chart_spec = extract_chart_spec(full_answer)
+
             # Lock database connection to session if a DB query ran successfully for the first time
             if (
                 body.database_id is not None
@@ -589,12 +593,13 @@ async def send_query(
             assistant_message = QueryMessage(
                 session_id=session_id,
                 role=MessageRole.assistant,
-                content=full_answer,
+                content=cleaned_answer,
                 created_at=datetime.now(timezone.utc),
                 model_id=resolved_model_id,
                 follow_up_questions=follow_up_questions,
                 generated_sql=generated_sql,
                 query_results=query_results,
+                chart_spec=chart_spec,
             )
             db.add(assistant_message)
             db.flush()
@@ -637,7 +642,7 @@ async def send_query(
                 user_id=current_user.id,
                 question=clean_display_content,
                 contexts=[cit["chunk_text"] for cit in citations],
-                answer=full_answer,
+                answer=cleaned_answer,
                 model_string=actual_model_string,
                 created_at=datetime.now(timezone.utc),
             )
@@ -689,8 +694,8 @@ async def send_query(
                     }
                 )
 
-            # Final event: data: {"type": "done", "citations": [...], "message_id": "...", "follow_up_questions": [...], "generated_sql": "...", "answer": "..."}\n\n
-            yield f"data: {json.dumps({'type': 'done', 'citations': citation_responses, 'message_id': str(assistant_message.id), 'follow_up_questions': follow_up_questions, 'generated_sql': generated_sql, 'answer': full_answer})}\n\n"
+            # Final event: data: {"type": "done", "citations": [...], "message_id": "...", "follow_up_questions": [...], "generated_sql": "...", "answer": "...", "chart_spec": ...}\n\n
+            yield f"data: {json.dumps({'type': 'done', 'citations': citation_responses, 'message_id': str(assistant_message.id), 'follow_up_questions': follow_up_questions, 'generated_sql': generated_sql, 'answer': cleaned_answer, 'chart_spec': chart_spec})}\n\n"
 
         except Exception as exc:
             logger.error("Error in event_generator: %s", exc)

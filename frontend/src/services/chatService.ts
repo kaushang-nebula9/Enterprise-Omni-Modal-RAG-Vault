@@ -39,7 +39,7 @@ export const chatService = {
     sessionId: string,
     content: string,
     onToken: (token: string) => void,
-    onDone: (citations: CitationResponse[], messageId: string, followUpQuestions?: string[], generatedSql?: string, answer?: string) => void,
+    onDone: (citations: CitationResponse[], messageId: string, followUpQuestions?: string[], generatedSql?: string, answer?: string, chartSpec?: any) => void,
     onError: (error: string, status?: number) => void,
     documentId?: string,
     modelId?: string,
@@ -105,7 +105,7 @@ export const chatService = {
                 if (parsed.type === 'token') {
                   onToken(parsed.content)
                 } else if (parsed.type === 'done') {
-                  onDone(parsed.citations, parsed.message_id, parsed.follow_up_questions, parsed.generated_sql, parsed.answer)
+                  onDone(parsed.citations, parsed.message_id, parsed.follow_up_questions, parsed.generated_sql, parsed.answer, parsed.chart_spec)
                 } else if (parsed.type === 'error') {
                   onError(parsed.content)
                 }
@@ -125,7 +125,7 @@ export const chatService = {
               if (parsed.type === 'token') {
                 onToken(parsed.content)
               } else if (parsed.type === 'done') {
-                onDone(parsed.citations, parsed.message_id, parsed.follow_up_questions, parsed.generated_sql, parsed.answer)
+                onDone(parsed.citations, parsed.message_id, parsed.follow_up_questions, parsed.generated_sql, parsed.answer, parsed.chart_spec)
               } else if (parsed.type === 'error') {
                 onError(parsed.content)
               }

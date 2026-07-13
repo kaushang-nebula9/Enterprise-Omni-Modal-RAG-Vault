@@ -81,6 +81,7 @@ class MessageResponse(BaseModel):
     follow_up_questions: Optional[list[str]] = None
     generated_sql: Optional[str] = None
     query_results: Optional[list[dict]] = None
+    chart_spec: Optional[dict] = None
 
     model_config = {"from_attributes": True}
 

@@ -45,6 +45,19 @@ export interface MessageResponse {
   follow_up_questions?: string[]
   generated_sql?: string
   query_results?: any[]
+  chart_spec?: ChartSpec | null
+}
+
+export interface ChartDataPoint {
+  [key: string]: string | number;
+}
+
+export interface ChartSpec {
+  chart_type: 'bar' | 'line' | 'area' | 'pie';
+  title: string;
+  x_key: string;
+  y_keys: string[];
+  data: ChartDataPoint[];
 }
 
 export interface SessionDetailResponse extends SessionResponse {
