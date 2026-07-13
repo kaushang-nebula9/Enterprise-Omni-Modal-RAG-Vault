@@ -59,6 +59,15 @@ const COMMANDS = [
 ]
 
 
+const autoModel: AvailableModel = {
+  id: 'auto',
+  display_name: 'Auto',
+  is_active: true,
+  created_at: '',
+  tier: 'balanced',
+}
+
+
 const ChatPage: React.FC = () => {
   const { user } = useAuthStore()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -106,22 +115,26 @@ const ChatPage: React.FC = () => {
         // browser don't inherit each other's model choice.
         const storageKey = user?.id ? `selected_model_id_${user.id}` : 'selected_model_id'
         const savedModelId = localStorage.getItem(storageKey)
-        const found = savedModelId ? activeModels.find(m => m.id === savedModelId) : null
-
-        if (found) {
-          setSelectedModel(found)
+        
+        if (savedModelId === 'auto') {
+          setSelectedModel(autoModel)
         } else {
-          // Priority:
-          // 1. The admin-configured tenant default (is_tenant_default)
-          // 2. Any model flagged is_default
-          // 3. First available model
-          const defaultModel =
-            activeModels.find(m => m.is_tenant_default)
-            ?? activeModels.find(m => m.is_default)
-            ?? activeModels[0]
+          const found = savedModelId ? activeModels.find(m => m.id === savedModelId) : null
+          if (found) {
+            setSelectedModel(found)
+          } else {
+            // Priority:
+            // 1. The admin-configured tenant default (is_tenant_default)
+            // 2. Any model flagged is_default
+            // 3. First available model
+            const defaultModel =
+              activeModels.find(m => m.is_tenant_default)
+              ?? activeModels.find(m => m.is_default)
+              ?? activeModels[0]
 
-          if (defaultModel) {
-            setSelectedModel(defaultModel)
+            if (defaultModel) {
+              setSelectedModel(defaultModel)
+            }
           }
         }
       } catch (err) {
@@ -737,7 +750,7 @@ const ChatPage: React.FC = () => {
               )
             )
           },
-          (citations, messageId, followUpQuestions, generatedSql, answer, chartSpec) => {
+          (citations, messageId, followUpQuestions, generatedSql, answer, chartSpec, resolvedModel) => {
             controller.signal.removeEventListener('abort', handleAbort)
             setMessages((prev) =>
               prev.map((msg) =>
@@ -750,6 +763,7 @@ const ChatPage: React.FC = () => {
                       generated_sql: generatedSql,
                       content: answer || msg.content,
                       chart_spec: chartSpec || null,
+                      resolved_model: resolvedModel,
                     }
                   : msg
               )
@@ -944,7 +958,7 @@ const ChatPage: React.FC = () => {
           )
         )
       },
-      (citations, messageId, followUpQuestions, generatedSql, answer, chartSpec) => {
+      (citations, messageId, followUpQuestions, generatedSql, answer, chartSpec, resolvedModel) => {
         setIsStreaming(false)
         setIsLoading(false)
         setMessages((prev) =>
@@ -958,6 +972,7 @@ const ChatPage: React.FC = () => {
                   generated_sql: generatedSql,
                   content: answer || msg.content,
                   chart_spec: chartSpec || null,
+                  resolved_model: resolvedModel,
                 }
               : msg
           )
@@ -1395,7 +1410,7 @@ const ChatPage: React.FC = () => {
   }, [user?.full_name])
 
   const groupedModels = availableModels.reduce((groups, model) => {
-    const providerKey = model.provider_id || (model.provider === 'anthropic' ? 'anthropic' : 'openrouter');
+    const providerKey = model.provider_id || 'openai_compat';
     if (!groups[providerKey]) {
       groups[providerKey] = [];
     }
@@ -1403,20 +1418,7 @@ const ChatPage: React.FC = () => {
     return groups;
   }, {} as Record<string, AvailableModel[]>);
 
-  const getProviderGroupName = (providerKey: string) => {
-    switch (providerKey) {
-      case 'anthropic':
-        return 'Claude Models';
-      case 'openrouter':
-        return 'OpenRouter Models';
-      case 'openai_compat':
-        return 'OpenAI Compatible Models';
-      case 'gemini':
-        return 'Google Gemini Models';
-      default:
-        return `${providerKey.charAt(0).toUpperCase() + providerKey.slice(1)} Models`;
-    }
-  };
+
 
   return (
     <div className="flex flex-col -m-6 h-[calc(100vh-4rem)]">
@@ -1504,14 +1506,21 @@ const ChatPage: React.FC = () => {
                       </ReactMarkdown>
                       <div className="flex items-center gap-2 mt-1 select-none">
                         <span className="text-slate-400 dark:text-slate-500 text-xs">{formatTime(msg.created_at)}</span>
-                        {msg.model && (
+                        {msg.resolved_model ? (
+                          <>
+                            <span className="text-slate-300 dark:text-slate-700">•</span>
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400 border border-indigo-200/45 dark:border-indigo-900/50">
+                              <span className="font-bold">Auto: </span> {msg.resolved_model}
+                            </span>
+                          </>
+                        ) : msg.model ? (
                           <>
                             <span className="text-slate-300 dark:text-slate-700">•</span>
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200/40 dark:border-slate-700/50">
                               {msg.model.display_name}
                             </span>
                           </>
-                        )}
+                        ) : null}
                       </div>
 
                       {msg.chart_spec && (
@@ -1937,6 +1946,21 @@ const ChatPage: React.FC = () => {
 
                       {isModelDropdownOpen && (
                         <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-2 z-50 flex flex-col gap-1 text-slate-800 dark:text-slate-100 max-h-72 overflow-y-auto">
+                          <button
+                            type="button"
+                            onClick={() => handleSelectModel(autoModel)}
+                            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left text-xs transition-colors ${
+                              selectedModel?.id === 'auto'
+                                ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 font-semibold"
+                                : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                            }`}
+                          >
+                            <span className="text-slate-900 dark:text-slate-100">Auto</span>
+                            {selectedModel?.id === 'auto' && <span className="text-indigo-600 dark:text-indigo-400 font-bold">✓</span>}
+                          </button>
+                          
+                          <div className="border-t border-slate-200 dark:border-slate-800/60"></div>
+
                           {Object.entries(groupedModels).map(([providerKey, models], groupIdx) => (
                             <div 
                               key={providerKey}

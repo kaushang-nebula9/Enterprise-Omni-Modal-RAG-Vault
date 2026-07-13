@@ -33,6 +33,9 @@ class AvailableModel(Base):
     )
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     model_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    tier: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="balanced", server_default="balanced"
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

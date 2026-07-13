@@ -39,6 +39,7 @@ class QueryMessage(Base):
     generated_sql: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     query_results: Mapped[Optional[List[dict]]] = mapped_column(JSONB, nullable=True)
     chart_spec: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    resolved_model: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Relationships
     session: Mapped["QuerySession"] = relationship(

@@ -106,9 +106,9 @@ const AdminDashboardPage: React.FC = () => {
   const claudeModelCosts = React.useMemo(() => {
     if (!dbModels) return [];
     return dbModels
-      .filter(m => m.provider_id === 'anthropic' || m.provider === 'anthropic')
+      .filter(m => m.provider_id === 'anthropic')
       .map(m => {
-        const lower = (m.model_name || m.model_string || '').toLowerCase();
+        const lower = (m.model_name || '').toLowerCase();
         let inputKey = '';
         let outputKey = '';
         
@@ -126,18 +126,13 @@ const AdminDashboardPage: React.FC = () => {
         const inputTokens = inputKey ? (usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[inputKey as keyof typeof curr]) || 0), 0) || 0) : 0;
         const outputTokens = outputKey ? (usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[outputKey as keyof typeof curr]) || 0), 0) || 0) : 0;
         
-        const inputPrice = m.input_cost_per_million_tokens !== undefined && m.input_cost_per_million_tokens !== null 
-          ? Number(m.input_cost_per_million_tokens) 
-          : (m.input_price_per_million !== undefined && m.input_price_per_million !== null ? Number(m.input_price_per_million) : 0);
-          
-        const outputPrice = m.output_cost_per_million_tokens !== undefined && m.output_cost_per_million_tokens !== null 
-          ? Number(m.output_cost_per_million_tokens) 
-          : (m.output_price_per_million !== undefined && m.output_price_per_million !== null ? Number(m.output_price_per_million) : 0);
+        const inputPrice = m.input_cost_per_million_tokens != null ? Number(m.input_cost_per_million_tokens) : 0;
+        const outputPrice = m.output_cost_per_million_tokens != null ? Number(m.output_cost_per_million_tokens) : 0;
           
         const cost = (inputTokens * inputPrice) / 1000000 + (outputTokens * outputPrice) / 1000000;
         
         return {
-          key: m.model_name || m.model_string || '',
+          key: m.model_name || '',
           displayName: m.display_name,
           inputTokens,
           outputTokens,
@@ -151,9 +146,9 @@ const AdminDashboardPage: React.FC = () => {
   const openRouterModelCosts = React.useMemo(() => {
     if (!dbModels) return [];
     return dbModels
-      .filter(m => m.provider === 'openrouter')
+      .filter(m => m.provider_id === 'openrouter')
       .map(m => {
-        const lower = m.model_string.toLowerCase();
+        const lower = (m.model_name || '').toLowerCase();
         let inputKey = '';
         let outputKey = '';
         
@@ -177,8 +172,8 @@ const AdminDashboardPage: React.FC = () => {
         const inputTokens = inputKey ? (usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[inputKey as keyof typeof curr]) || 0), 0) || 0) : 0;
         const outputTokens = outputKey ? (usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[outputKey as keyof typeof curr]) || 0), 0) || 0) : 0;
         
-        const inputPrice = m.input_price_per_million !== undefined && m.input_price_per_million !== null ? Number(m.input_price_per_million) : 0;
-        const outputPrice = m.output_price_per_million !== undefined && m.output_price_per_million !== null ? Number(m.output_price_per_million) : 0;
+        const inputPrice = m.input_cost_per_million_tokens != null ? Number(m.input_cost_per_million_tokens) : 0;
+        const outputPrice = m.output_cost_per_million_tokens != null ? Number(m.output_cost_per_million_tokens) : 0;
         const cost = (inputTokens * inputPrice) / 1000000 + (outputTokens * outputPrice) / 1000000;
         
         let priceLabel = '(Free)';
@@ -187,7 +182,7 @@ const AdminDashboardPage: React.FC = () => {
         }
         
         return {
-          key: m.model_string,
+          key: m.model_name || '',
           displayName: m.display_name,
           inputTokens,
           outputTokens,

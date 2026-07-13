@@ -933,9 +933,47 @@ Please summarize and answer the user's question based on the query results. Do n
         if model_id:
             from app.models.available_model import AvailableModel
 
-            db_model = (
-                db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
-            )
+            if str(model_id) == "auto":
+                db_models = (
+                    db.query(AvailableModel)
+                    .filter(
+                        AvailableModel.is_active,
+                        (AvailableModel.tenant_id == user.tenant_id)
+                        | (AvailableModel.tenant_id.is_(None)),
+                    )
+                    .all()
+                )
+                available_models_list = [
+                    {
+                        "id": m.id,
+                        "display_name": m.display_name,
+                        "model_name": m.model_name,
+                        "tier": m.tier,
+                        "provider_id": m.provider_id,
+                        "base_url": m.base_url,
+                        "api_key": m.api_key,
+                        "is_default": m.is_default,
+                    }
+                    for m in db_models
+                ]
+                from app.services.model_router import route_model
+
+                chosen_dict = route_model(
+                    query=query,
+                    context_chunks=[],
+                    has_attachments=False,
+                    available_models=available_models_list,
+                )
+                db_model = next(
+                    (m for m in db_models if m.id == chosen_dict["id"]), None
+                )
+            else:
+                db_model = (
+                    db.query(AvailableModel)
+                    .filter(AvailableModel.id == model_id)
+                    .first()
+                )
+
             if db_model:
                 selected_model_string = db_model.model_name or db_model.model_string
                 selected_provider_id = db_model.provider_id
@@ -952,6 +990,7 @@ Please summarize and answer the user's question based on the query results. Do n
                         selected_provider_id = "openai_compat"
                 model_config = db_model
                 model_config.provider_id = selected_provider_id
+                model_id = db_model.id
 
         if not model_config:
             from app.models.available_model import AvailableModel
@@ -1117,6 +1156,10 @@ Please summarize and answer the user's question based on the query results. Do n
             "status": "success",
             "error_message": None,
             "error_type": None,
+            "resolved_model": db_model.display_name
+            if db_model
+            else selected_model_string,
+            "resolved_model_id": db_model.id if db_model else None,
         }
         return
 
@@ -1313,9 +1356,51 @@ Please summarize and answer the user's question based on the query results. Do n
     if model_id:
         from app.models.available_model import AvailableModel
 
-        db_model = (
-            db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
-        )
+        if str(model_id) == "auto":
+            db_models = (
+                db.query(AvailableModel)
+                .filter(
+                    AvailableModel.is_active,
+                    (AvailableModel.tenant_id == user.tenant_id)
+                    | (AvailableModel.tenant_id.is_(None)),
+                )
+                .all()
+            )
+            available_models_list = [
+                {
+                    "id": m.id,
+                    "display_name": m.display_name,
+                    "model_name": m.model_name,
+                    "tier": m.tier,
+                    "provider_id": m.provider_id,
+                    "base_url": m.base_url,
+                    "api_key": m.api_key,
+                    "is_default": m.is_default,
+                }
+                for m in db_models
+            ]
+
+            # Context chunks
+            context_chunks = []
+            for hit in qdrant_results:
+                context_chunks.append(hit.get("payload", {}).get("chunk_text", ""))
+            for er in excel_results:
+                context_chunks.append(str(er.get("result", "")))
+
+            from app.services.model_router import route_model
+
+            chosen_dict = route_model(
+                query=query,
+                context_chunks=context_chunks,
+                has_attachments=bool(document_id),
+                available_models=available_models_list,
+            )
+            db_model = next((m for m in db_models if m.id == chosen_dict["id"]), None)
+        else:
+            db_model = (
+                db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
+            )
+
         if db_model:
             selected_model_string = db_model.model_name or db_model.model_string
             selected_provider_id = db_model.provider_id
@@ -1332,6 +1417,7 @@ Please summarize and answer the user's question based on the query results. Do n
                     selected_provider_id = "openai_compat"
             model_config = db_model
             model_config.provider_id = selected_provider_id
+            model_id = db_model.id
 
     if not model_config:
         from app.models.available_model import AvailableModel
@@ -1522,4 +1608,6 @@ Please summarize and answer the user's question based on the query results. Do n
         "citations": citations,
         "model_string": selected_model_string,
         "follow_up_questions": follow_up_questions,
+        "resolved_model": db_model.display_name if db_model else selected_model_string,
+        "resolved_model_id": db_model.id if db_model else None,
     }

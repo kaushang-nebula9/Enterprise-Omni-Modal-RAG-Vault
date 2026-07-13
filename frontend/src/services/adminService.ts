@@ -87,6 +87,7 @@ export const adminService = {
     model_name: string;
     api_key?: string;
     is_default?: boolean;
+    tier?: 'fast' | 'balanced' | 'powerful';
   }): Promise<AvailableModel> => {
     const response = await api.post('/api/v1/admin/models', data);
     return response.data;
@@ -106,6 +107,7 @@ export const adminService = {
     model_name?: string;
     api_key?: string;
     is_default?: boolean;
+    tier?: 'fast' | 'balanced' | 'powerful';
   }): Promise<AvailableModel> => {
     const response = await api.patch(`/api/v1/admin/models/${modelId}`, data);
     return response.data;

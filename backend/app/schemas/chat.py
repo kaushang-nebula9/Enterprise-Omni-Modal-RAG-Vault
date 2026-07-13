@@ -23,6 +23,7 @@ class ModelResponse(BaseModel):
     model_name: Optional[str] = None
     # True when this model is the tenant's admin-configured default chat model
     is_tenant_default: bool = False
+    tier: str = "balanced"
 
     model_config = {"from_attributes": True}
 
@@ -87,6 +88,7 @@ class MessageResponse(BaseModel):
     generated_sql: Optional[str] = None
     query_results: Optional[list[dict]] = None
     chart_spec: Optional[dict] = None
+    resolved_model: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -124,7 +126,7 @@ class QueryRequest(BaseModel):
     content: str = Field(..., min_length=1, strip_whitespace=True)
     document_id: Optional[UUID] = None
     database_id: Optional[UUID] = None
-    model_id: Optional[UUID] = None
+    model_id: Optional[str] = None
 
 
 class QueryResponse(BaseModel):

@@ -30,6 +30,7 @@ export const OrganisationSettingsPage: React.FC = () => {
   const [inputCost, setInputCost] = useState('');
   const [outputCost, setOutputCost] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [tier, setTier] = useState<'fast' | 'balanced' | 'powerful'>('balanced');
 
   const [providers, setProviders] = useState<ProviderRegistryEntry[]>([]);
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
@@ -40,14 +41,27 @@ export const OrganisationSettingsPage: React.FC = () => {
   const [isProviderDropdownOpen, setIsProviderDropdownOpen] = useState(false);
   const providerDropdownRef = React.useRef<HTMLDivElement>(null);
 
+  // Custom tier select state
+  const [isTierDropdownOpen, setIsTierDropdownOpen] = useState(false);
+  const tierDropdownRef = React.useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const handleClickOutsideProvider = (e: MouseEvent) => {
       if (providerDropdownRef.current && !providerDropdownRef.current.contains(e.target as Node)) {
         setIsProviderDropdownOpen(false);
       }
     };
+    const handleClickOutsideTier = (e: MouseEvent) => {
+      if (tierDropdownRef.current && !tierDropdownRef.current.contains(e.target as Node)) {
+        setIsTierDropdownOpen(false);
+      }
+    };
     document.addEventListener('mousedown', handleClickOutsideProvider);
-    return () => document.removeEventListener('mousedown', handleClickOutsideProvider);
+    document.addEventListener('mousedown', handleClickOutsideTier);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutsideProvider);
+      document.removeEventListener('mousedown', handleClickOutsideTier);
+    };
   }, []);
 
   // Custom default model select state
@@ -90,8 +104,10 @@ export const OrganisationSettingsPage: React.FC = () => {
     setOutputCost('');
     setSelectedProvider(null);
     setIsActive(true);
+    setTier('balanced');
     setEditingModelId(null);
     setIsProviderDropdownOpen(false);
+    setIsTierDropdownOpen(false);
   };
 
   const { data: modelsData, refetch: refetchModels } = useQuery({
@@ -135,6 +151,7 @@ export const OrganisationSettingsPage: React.FC = () => {
       output_cost_per_million_tokens: outputCost === '' ? null : parseFloat(outputCost),
       model_name: modelName,
       api_key: apiKey,
+      tier: tier,
     };
 
     if (isEditing && editingModelId) {
@@ -314,7 +331,7 @@ export const OrganisationSettingsPage: React.FC = () => {
                               : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
                           }`}
                         >
-                          {m.display_name} ({m.model_name || m.model_string})
+                          {m.display_name} ({m.display_name || m.model_name})
                         </button>
                       ))}
                     </div>
@@ -396,20 +413,35 @@ export const OrganisationSettingsPage: React.FC = () => {
                 ) : (
                   modelsData.map((model) => (
                     <tr key={model.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20">
-                      <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">{model.display_name}</td>
+                      <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">
+                        <div className="flex items-center gap-2">
+                          <span>{model.display_name}</span>
+                          {model.tier && (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold border ${
+                              model.tier === 'fast'
+                                ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-450 border-emerald-205/20 dark:border-emerald-900/50'
+                                : model.tier === 'powerful'
+                                ? 'bg-purple-50 dark:bg-purple-950/20 text-purple-700 dark:text-purple-400 border-purple-205/20 dark:border-purple-900/50'
+                                : 'bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 border-blue-205/20 dark:border-blue-900/50'
+                            }`}>
+                              {model.tier.charAt(0).toUpperCase() + model.tier.slice(1)}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3.5">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                          (model.provider_id === 'anthropic' || model.provider === 'anthropic')
+                          model.provider_id === 'anthropic'
                             ? 'bg-orange-50 dark:bg-orange-950/20 text-orange-700 dark:text-orange-400'
                             : 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400'
                         }`}>
-                          {model.provider_id ? (providers.find(p => p.provider_id === model.provider_id)?.display_name || model.provider_id) : (model.provider === 'anthropic' ? 'Anthropic' : 'OpenRouter')}
+                          {providers.find(p => p.provider_id === model.provider_id)?.display_name || model.provider_id}
                         </span>
                       </td>
-                      <td className="px-4 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{model.model_name || model.model_string}</td>
+                      <td className="px-4 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{model.model_name}</td>
                       <td className="px-4 py-3.5">
                         <span className="text-xs text-slate-650 dark:text-slate-400 font-medium">
-                          {model.input_cost_per_million_tokens != null ? `$${Number(model.input_cost_per_million_tokens).toFixed(2)}` : (model.input_price_per_million != null ? `$${Number(model.input_price_per_million).toFixed(2)}` : 'N/A')} / {model.output_cost_per_million_tokens != null ? `$${Number(model.output_cost_per_million_tokens).toFixed(2)}` : (model.output_price_per_million != null ? `$${Number(model.output_price_per_million).toFixed(2)}` : 'N/A')}
+                          {model.input_cost_per_million_tokens != null ? `$${Number(model.input_cost_per_million_tokens).toFixed(2)}` : 'N/A'} / {model.output_cost_per_million_tokens != null ? `$${Number(model.output_cost_per_million_tokens).toFixed(2)}` : 'N/A'}
                         </span>
                       </td>
                       <td className="px-4 py-3.5">
@@ -433,12 +465,13 @@ export const OrganisationSettingsPage: React.FC = () => {
                             setProviderId(model.provider_id || '');
                             const foundProv = providers.find(p => p.provider_id === model.provider_id);
                             setSelectedProvider(foundProv || null);
-                            setModelName(model.model_name || model.model_string || '');
+                            setModelName(model.model_name || '');
                             setApiKey(model.api_key || '');
                             setBaseUrl(model.base_url || '');
                             setIsActive(model.is_active);
-                            setInputCost(model.input_cost_per_million_tokens != null ? model.input_cost_per_million_tokens.toString() : (model.input_price_per_million != null ? model.input_price_per_million.toString() : ''));
-                            setOutputCost(model.output_cost_per_million_tokens != null ? model.output_cost_per_million_tokens.toString() : (model.output_price_per_million != null ? model.output_price_per_million.toString() : ''));
+                            setInputCost(model.input_cost_per_million_tokens != null ? model.input_cost_per_million_tokens.toString() : '');
+                            setOutputCost(model.output_cost_per_million_tokens != null ? model.output_cost_per_million_tokens.toString() : '');
+                            setTier(model.tier || 'balanced');
                             setIsAddModalOpen(true);
                           }}
                           className="text-slate-500 hover:text-indigo-650 dark:text-slate-400 dark:hover:text-indigo-400 p-1"
@@ -587,6 +620,47 @@ export const OrganisationSettingsPage: React.FC = () => {
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Enter the exact model ID as listed by your provider.
                 </p>
+              </div>
+
+              <div className="space-y-1 relative" ref={tierDropdownRef}>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Model Tier</label>
+                <button
+                  type="button"
+                  onClick={() => setIsTierDropdownOpen(!isTierDropdownOpen)}
+                  className="w-full flex items-center justify-between px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all text-slate-800 dark:text-slate-100 text-left"
+                >
+                  <span className="text-slate-800 dark:text-slate-100 text-md">
+                    {tier.charAt(0).toUpperCase() + tier.slice(1)}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isTierDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isTierDropdownOpen && (
+                  <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-lg shadow-lg z-50 p-1 flex flex-col gap-0.5 max-h-60 overflow-y-auto">
+                    {[
+                      { value: 'fast', label: 'Fast', desc: 'Lightweight and cheap. Best for simple lookups and short questions.' },
+                      { value: 'balanced', label: 'Balanced', desc: 'General purpose. Handles summaries, comparisons, and multi-part questions.' },
+                      { value: 'powerful', label: 'Powerful', desc: 'Complex reasoning, long context, and multi-condition analysis.' },
+                    ].map(t => (
+                      <button
+                        key={t.value}
+                        type="button"
+                        onClick={() => {
+                          setTier(t.value as 'fast' | 'balanced' | 'powerful');
+                          setIsTierDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-md transition-colors ${
+                          tier === t.value
+                            ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 font-semibold"
+                            : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                        }`}
+                      >
+                        <div className="font-semibold text-sm">{t.label}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 font-normal mt-0.5 leading-normal">{t.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">

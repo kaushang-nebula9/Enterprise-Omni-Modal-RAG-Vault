@@ -45,6 +45,7 @@ class ModelCreateRequest(BaseModel):
     model_name: str = Field(..., min_length=1)
     api_key: Optional[str] = ""
     is_default: bool = False
+    tier: str = Field("balanced", description="Model tier")
 
 
 class ModelUpdateRequest(BaseModel):
@@ -57,6 +58,7 @@ class ModelUpdateRequest(BaseModel):
     model_name: Optional[str] = None
     api_key: Optional[str] = None
     is_default: Optional[bool] = None
+    tier: Optional[str] = None
 
 
 class UsageSummaryItem(BaseModel):

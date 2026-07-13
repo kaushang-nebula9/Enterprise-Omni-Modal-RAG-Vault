@@ -631,20 +631,15 @@ User Question: {query}
 SQL Query:"""
 
     db_model = None
-    if model_id:
-        db_model = (
-            db.query(AvailableModel)
-            .filter(AvailableModel.id == model_id, AvailableModel.is_active)
-            .first()
-        )
-
-    db_model = None
-    if model_id:
-        db_model = (
-            db.query(AvailableModel)
-            .filter(AvailableModel.id == model_id, AvailableModel.is_active)
-            .first()
-        )
+    if model_id and str(model_id) != "auto":
+        try:
+            db_model = (
+                db.query(AvailableModel)
+                .filter(AvailableModel.id == model_id, AvailableModel.is_active)
+                .first()
+            )
+        except Exception:
+            pass
 
     if not db_model:
         if tenant_id:

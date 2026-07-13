@@ -33,6 +33,7 @@ export interface AvailableModel {
   model_name?: string | null
   /** True when this is the tenant's admin-configured default chat model */
   is_tenant_default?: boolean
+  tier?: 'fast' | 'balanced' | 'powerful'
 }
 
 export interface MessageResponse {
@@ -52,6 +53,7 @@ export interface MessageResponse {
   generated_sql?: string
   query_results?: any[]
   chart_spec?: ChartSpec | null
+  resolved_model?: string | null
 }
 
 export interface ChartDataPoint {

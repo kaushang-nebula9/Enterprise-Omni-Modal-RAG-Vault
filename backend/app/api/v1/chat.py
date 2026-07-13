@@ -483,15 +483,23 @@ async def send_query(
     # Resolve the model to use
     resolved_model_id = None
     if body.model_id:
-        from app.models.available_model import AvailableModel
+        if body.model_id == "auto":
+            resolved_model_id = "auto"
+        else:
+            from app.models.available_model import AvailableModel
 
-        model_exists = (
-            db.query(AvailableModel)
-            .filter(AvailableModel.id == body.model_id, AvailableModel.is_active)
-            .first()
-        )
-        if model_exists:
-            resolved_model_id = body.model_id
+            try:
+                model_exists = (
+                    db.query(AvailableModel)
+                    .filter(
+                        AvailableModel.id == body.model_id, AvailableModel.is_active
+                    )
+                    .first()
+                )
+                if model_exists:
+                    resolved_model_id = body.model_id
+            except Exception:
+                pass
 
     if not resolved_model_id:
         from app.models.available_model import AvailableModel
@@ -558,6 +566,8 @@ async def send_query(
             status_str = None
             error_message = None
             error_type = None
+            resolved_model = None
+            actual_resolved_model_id = None
 
             async for event in generator:
                 if event["type"] == "token":
@@ -575,6 +585,8 @@ async def send_query(
                     status_str = event.get("status")
                     error_message = event.get("error_message")
                     error_type = event.get("error_type")
+                    resolved_model = event.get("resolved_model")
+                    actual_resolved_model_id = event.get("resolved_model_id")
 
             from app.core.utils import extract_chart_spec
 
@@ -594,11 +606,14 @@ async def send_query(
                 role=MessageRole.assistant,
                 content=cleaned_answer,
                 created_at=datetime.now(timezone.utc),
-                model_id=resolved_model_id,
+                model_id=actual_resolved_model_id
+                if actual_resolved_model_id
+                else (resolved_model_id if resolved_model_id != "auto" else None),
                 follow_up_questions=follow_up_questions,
                 generated_sql=generated_sql,
                 query_results=query_results,
                 chart_spec=chart_spec,
+                resolved_model=resolved_model if body.model_id == "auto" else None,
             )
             db.add(assistant_message)
             db.flush()
@@ -694,7 +709,7 @@ async def send_query(
                 )
 
             # Final event: data: {"type": "done", "citations": [...], "message_id": "...", "follow_up_questions": [...], "generated_sql": "...", "answer": "...", "chart_spec": ...}\n\n
-            yield f"data: {json.dumps({'type': 'done', 'citations': citation_responses, 'message_id': str(assistant_message.id), 'follow_up_questions': follow_up_questions, 'generated_sql': generated_sql, 'answer': cleaned_answer, 'chart_spec': chart_spec})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'citations': citation_responses, 'message_id': str(assistant_message.id), 'follow_up_questions': follow_up_questions, 'generated_sql': generated_sql, 'answer': cleaned_answer, 'chart_spec': chart_spec, 'resolved_model': assistant_message.resolved_model})}\n\n"
 
         except Exception as exc:
             logger.error("Error in event_generator: %s", exc)
@@ -890,6 +905,7 @@ def get_active_models(
                 tenant_default_model_id is not None
                 and model.id == tenant_default_model_id
             ),
+            "tier": model.tier,
         }
         result.append(ModelResponse(**model_dict))
 

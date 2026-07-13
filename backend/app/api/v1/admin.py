@@ -444,6 +444,7 @@ def admin_create_model(
         api_key=request.api_key,
         is_default=request.is_default,
         model_name=request.model_name,
+        tier=request.tier,
     )
     db.add(new_model)
     db.flush()
@@ -499,6 +500,8 @@ def admin_update_model(
         db_model.model_name = request.model_name
     if request.api_key is not None:
         db_model.api_key = request.api_key
+    if request.tier is not None:
+        db_model.tier = request.tier
     if request.is_default is not None:
         if request.is_default:
             db.query(AvailableModel).filter(
