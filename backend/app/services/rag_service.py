@@ -11,8 +11,8 @@ import asyncio
 import logging
 import threading
 import uuid
+import time
 from typing import Optional, AsyncGenerator
-
 import pandas as pd
 from RestrictedPython import compile_restricted, safe_globals
 from sqlalchemy.orm import Session
@@ -619,8 +619,20 @@ async def run_rag_pipeline(
                 "answer": "Error: Table access denied.",
                 "citations": [],
                 "follow_up_questions": [],
+                "db_connection_id": connection.id,
+                "generated_sql": None,
+                "execution_time_ms": 0,
+                "status": "failed",
+                "error_message": "Error: Table access denied.",
+                "error_type": "Unauthorized Column",
             }
             return
+
+        db_connection_id = connection.id
+        execution_time_ms = 0
+        status = "success"
+        error_message = None
+        error_type = None
 
         filtered_schema_data = {"tables": authorized_tables_info}
 
@@ -710,28 +722,41 @@ async def run_rag_pipeline(
             }
         except Exception as e:
             err_msg = str(e)
+            status = "failed"
+            error_message = err_msg
             if "I cannot generate a SQL query, this is ambiguous" in err_msg:
                 err_msg = "I cannot generate a SQL query, this is ambiguous"
+                error_type = "Ambiguous"
             elif "access denied" in err_msg.lower():
-                # Keep the exact access denied error message
-                pass
+                error_type = "Unauthorized Column"
+            elif "timeout" in err_msg.lower():
+                error_type = "Timeout"
             else:
-                err_msg = f"Error during SQL generation: {str(e)}"
+                error_type = "Other"
             yield {"type": "token", "content": err_msg}
             yield {
                 "type": "done",
                 "answer": err_msg,
                 "citations": [],
                 "follow_up_questions": [],
+                "db_connection_id": db_connection_id,
+                "generated_sql": None,
+                "execution_time_ms": 0,
+                "status": status,
+                "error_message": error_message,
+                "error_type": error_type,
             }
             return
 
         try:
+            start_time = time.perf_counter()
             query_results = run_query_on_connection(
                 connection=connection,
                 sql_query=sql_query,
                 schema_cache_tables=schema_cache.schema_data.get("tables", []),
             )
+            execution_time_ms = int((time.perf_counter() - start_time) * 1000)
+            status = "success"
         except Exception as e:
             if is_value_mismatch_error(connection.engine, e):
                 # Log retry event
@@ -775,11 +800,14 @@ async def run_rag_pipeline(
                     }
 
                     # Re-run execution and re-verify
+                    start_time = time.perf_counter()
                     query_results = run_query_on_connection(
                         connection=connection,
                         sql_query=sql_query,
                         schema_cache_tables=schema_cache.schema_data.get("tables", []),
                     )
+                    execution_time_ms = int((time.perf_counter() - start_time) * 1000)
+                    status = "success"
 
                     # Log successful retry
                     logger.info(
@@ -793,6 +821,15 @@ async def run_rag_pipeline(
                         f"Regenerated SQL: {sql_query}. Error: {str(retry_err)}"
                     )
                     err_msg = str(retry_err)
+                    status = "failed"
+                    error_message = err_msg
+                    if "access denied" in err_msg.lower():
+                        error_type = "Unauthorized Column"
+                    elif "timeout" in err_msg.lower():
+                        error_type = "Timeout"
+                    else:
+                        error_type = "SQL Error"
+
                     if "I cannot generate a SQL query, this is ambiguous" in err_msg:
                         err_msg = "I cannot generate a SQL query, this is ambiguous"
                     else:
@@ -803,10 +840,25 @@ async def run_rag_pipeline(
                         "answer": err_msg,
                         "citations": [],
                         "follow_up_questions": [],
+                        "db_connection_id": db_connection_id,
+                        "generated_sql": sql_query,
+                        "execution_time_ms": execution_time_ms,
+                        "status": status,
+                        "error_message": error_message,
+                        "error_type": error_type,
                     }
                     return
             else:
                 err_msg = str(e)
+                status = "failed"
+                error_message = err_msg
+                if "access denied" in err_msg.lower():
+                    error_type = "Unauthorized Column"
+                elif "timeout" in err_msg.lower():
+                    error_type = "Timeout"
+                else:
+                    error_type = "SQL Error"
+
                 if "I cannot generate a SQL query, this is ambiguous" in err_msg:
                     err_msg = "I cannot generate a SQL query, this is ambiguous"
                 else:
@@ -817,6 +869,12 @@ async def run_rag_pipeline(
                     "answer": err_msg,
                     "citations": [],
                     "follow_up_questions": [],
+                    "db_connection_id": db_connection_id,
+                    "generated_sql": sql_query,
+                    "execution_time_ms": execution_time_ms,
+                    "status": status,
+                    "error_message": error_message,
+                    "error_type": error_type,
                 }
                 return
 
@@ -944,6 +1002,11 @@ Please summarize and answer the user's question based on the query results. Do n
             "follow_up_questions": [],
             "generated_sql": sql_query,
             "query_results": serializable_results,
+            "db_connection_id": db_connection_id,
+            "execution_time_ms": execution_time_ms,
+            "status": "success",
+            "error_message": None,
+            "error_type": None,
         }
         return
 

@@ -19,6 +19,8 @@ import { ProfileSettingsPage } from './pages/dashboard/ProfileSettingsPage';
 import { AuditLogPage } from './pages/dashboard/AuditLogPage';
 import DocumentsPage from './pages/dashboard/DocumentsPage';
 import DatabasesPage from './pages/dashboard/DatabasesPage';
+import DatabaseAnalyticsPage from './pages/dashboard/DatabaseAnalyticsPage';
+import DatabaseDrillDownPage from './pages/dashboard/DatabaseDrillDownPage';
 import ChatPage from './pages/dashboard/ChatPage';
 import YourDocumentsPage from './pages/dashboard/YourDocumentsPage';
 import EvaluationResultsPage from './pages/dashboard/EvaluationResultsPage';
@@ -59,6 +61,8 @@ const App: React.FC = () => {
           <Route index element={<DashboardMainPage />} />
           <Route path="documents" element={<ProtectedAdminRoute><DocumentsPage /></ProtectedAdminRoute>} />
           <Route path="databases" element={<ProtectedAdminRoute><DatabasesPage /></ProtectedAdminRoute>} />
+          <Route path="databases/analytics" element={<ProtectedAdminRoute><DatabaseAnalyticsPage /></ProtectedAdminRoute>} />
+          <Route path="databases/analytics/:connectionId" element={<ProtectedAdminRoute><DatabaseDrillDownPage /></ProtectedAdminRoute>} />
           <Route path="team" element={<ProtectedAdminRoute><TeamManagementPage /></ProtectedAdminRoute>} />
           <Route path="roles" element={<ProtectedAdminRoute><RolesPermissionsPage /></ProtectedAdminRoute>} />
           <Route path="settings" element={<ProtectedAdminRoute><OrganisationSettingsPage /></ProtectedAdminRoute>} />

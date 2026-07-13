@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { 
   Database, 
   Plus, 
   RefreshCw, 
   Trash2, 
   ShieldCheck, 
-  Eye, 
   X, 
   CheckCircle2, 
   AlertCircle, 
@@ -19,7 +19,6 @@ import {
 import { databaseService } from '../../services/databaseService';
 import { roleService } from '../../services/roleService';
 import { departmentService } from '../../services/departmentService';
-
 // Format helper
 function formatDate(iso: string | null): string {
   if (!iso) return 'Never';
@@ -34,6 +33,7 @@ function formatDate(iso: string | null): string {
 
 export const DatabasesPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Queries
   const { data: databases = [], isLoading: isDbsLoading } = useQuery({
@@ -58,7 +58,6 @@ export const DatabasesPage: React.FC = () => {
   const [dateFilter, setDateFilter] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
-  const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false);
 
   // Form State
   const [connId, setConnId] = useState<string | null>(null); // null for create
@@ -141,22 +140,11 @@ export const DatabasesPage: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Schema Modal State
-  const [schemaDbId, setSchemaDbId] = useState<string | null>(null);
-  const [schemaDbName, setSchemaDbName] = useState('');
-
   // Access policies query
   const { data: accessPolicies = [], refetch: refetchAccess } = useQuery({
     queryKey: ['database-access', activeDbId],
     queryFn: () => databaseService.listAccessPolicies(activeDbId!),
     enabled: !!activeDbId,
-  });
-
-  // Schema query
-  const { data: schemaCache = { tables: [] } } = useQuery({
-    queryKey: ['database-schema', schemaDbId],
-    queryFn: () => databaseService.getDatabaseSchema(schemaDbId!),
-    enabled: !!schemaDbId,
   });
 
   // Mutations
@@ -353,11 +341,6 @@ export const DatabasesPage: React.FC = () => {
     grantAccessMutation.mutate({ id: activeDbId, payload });
   };
 
-  const handleOpenSchema = (dbConn: any) => {
-    setSchemaDbId(dbConn.id);
-    setSchemaDbName(dbConn.name);
-    setIsSchemaModalOpen(true);
-  };
 
   // Filter connections list
   const filteredDbs = databases.filter(db => {
@@ -387,13 +370,21 @@ export const DatabasesPage: React.FC = () => {
             Connect and manage external PostgreSQL and MySQL databases. Authorized employees can query them via chat.
           </p>
         </div>
-        <button 
-          onClick={handleOpenCreate}
-          className="flex items-center gap-2 bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-800 dark:hover:bg-indigo-600 text-white px-4 py-2.5 rounded-xl transition-colors font-semibold shadow-sm"
-        >
-          <Plus className="w-4 h-4" />
-          Add Database
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/dashboard/databases/analytics')}
+            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline transition-all cursor-pointer font-sans bg-transparent border-0 px-2 py-1"
+          >
+            Show Analytics
+          </button>
+          <button 
+            onClick={handleOpenCreate}
+            className="flex items-center gap-2 bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-800 dark:hover:bg-indigo-600 text-white px-4 py-2.5 rounded-xl transition-colors font-semibold shadow-sm cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            Add Database
+          </button>
+        </div>
       </div>
 
       {/* Recommended control banner */}
@@ -528,11 +519,11 @@ export const DatabasesPage: React.FC = () => {
 
                 <button
                   onClick={() => refreshSchemaMutation.mutate(dbConn.id)}
-                  disabled={refreshSchemaMutation.isPending}
+                  disabled={refreshSchemaMutation.isPending && refreshSchemaMutation.variables === dbConn.id}
                   className="flex items-center justify-center gap-1 p-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs rounded-lg font-semibold transition-colors shrink-0 disabled:opacity-50"
                   title="Force schema refresh sync"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${refreshSchemaMutation.isPending ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 ${refreshSchemaMutation.isPending && refreshSchemaMutation.variables === dbConn.id ? 'animate-spin' : ''}`} />
                   Refresh
                 </button>
                 </div>
@@ -571,21 +562,14 @@ export const DatabasesPage: React.FC = () => {
               <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-2 mt-auto">
                 <div className="flex items-center gap-2">
 
-                <button
-                  onClick={() => handleOpenSchema(dbConn)}
-                  className="flex items-center gap-1 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 p-2 rounded-lg text-xs font-semibold transition-colors"
-                  title="View reflected schema"
-                  >
-                  <Eye className="w-3.5 h-3.5" />
-                  Schema
-                </button>
+
                 <button
                   onClick={() => handleOpenAccess(dbConn)}
                   className="flex items-center justify-center gap-1 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 p-2 rounded-lg text-xs font-semibold transition-colors"
                   title="Manage access grants"
                   >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Access
+                  {/* <ShieldCheck className="w-3.5 h-3.5" /> */}
+                  Manage Access
                 </button>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1217,97 +1201,6 @@ export const DatabasesPage: React.FC = () => {
         </div>
       )}
 
-      {/* ─── SCHEMA VIEWER MODAL ─── */}
-      {isSchemaModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden">
-            {/* Header */}
-            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-t-2xl z-10">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <Database className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                  Reflected Database Schema: {schemaDbName}
-                </h2>
-                <p className="text-sm text-slate-500 mt-0.5">
-                  Reflected list of <b>{schemaCache?.tables?.length || 0}</b> tables, columns, primary keys, and foreign keys.
-                </p>
-              </div>
-              <button onClick={() => setIsSchemaModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex-shrink-0">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Schema Tables List */}
-            <div className="p-6 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
-              {!schemaCache.tables || schemaCache.tables.length === 0 ? (
-                <div className="text-center py-12">
-                  <Database className="w-12 h-12 text-slate-350 dark:text-slate-650 mx-auto mb-3 animate-bounce" />
-                  <p className="text-sm text-slate-400 italic">No schema cache reflected yet. Try running 'Refresh Schema'.</p>
-                </div>
-              ) : (
-                schemaCache.tables.map((table: any) => (
-                  <div key={table.name} className="border border-slate-150 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
-                    {/* Table Title */}
-                    <div className="bg-slate-50 dark:bg-slate-900/60 px-5 py-3 border-b border-slate-150 dark:border-slate-800 flex justify-between items-center">
-                      <h3 className="font-bold text-indigo-600 dark:text-indigo-400 font-mono text-sm">
-                        {table.name}
-                      </h3>
-                      <span className="text-[11px] px-2 py-0.5 bg-slate-200 dark:bg-slate-800 rounded font-semibold text-slate-500">
-                        {table.columns.length} columns
-                      </span>
-                    </div>
-
-                    {/* Columns List */}
-                    <div className="p-4 bg-white dark:bg-slate-900 space-y-3">
-                      <div className="grid grid-cols-12 gap-2 text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 dark:border-slate-800/40 pb-2">
-                        <div className="col-span-5">Column Name</div>
-                        <div className="col-span-4">Type</div>
-                        <div className="col-span-3">Properties</div>
-                      </div>
-                      <div className="space-y-2.5 divide-y divide-slate-100/50 dark:divide-slate-800/20">
-                        {table.columns.map((col: any) => {
-                          const isPk = table.primary_key?.includes(col.name);
-                          const fkRef = table.foreign_keys?.find((fk: any) => fk.constrained_columns.includes(col.name));
-                          return (
-                            <div key={col.name} className="grid grid-cols-12 gap-2 text-xs pt-2.5 font-mono">
-                              <div className="col-span-5 font-semibold text-slate-800 dark:text-slate-200">
-                                {col.name}
-                              </div>
-                              <div className="col-span-4 text-slate-500 dark:text-slate-400">
-                                {col.type}
-                              </div>
-                              <div className="col-span-3 flex flex-wrap gap-1">
-                                {isPk && (
-                                  <span className="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/30 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                                    PK
-                                  </span>
-                                )}
-                                {!col.nullable && (
-                                  <span className="bg-slate-150 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                                    NOT NULL
-                                  </span>
-                                )}
-                                {fkRef && (
-                                  <span 
-                                    className="bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900/30 px-1.5 py-0.5 rounded text-[10px] font-bold cursor-help"
-                                    title={`References ${fkRef.referred_table}(${fkRef.referred_columns})`}
-                                  >
-                                    FK: {fkRef.referred_table}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

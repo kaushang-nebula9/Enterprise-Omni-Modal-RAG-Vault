@@ -19,4 +19,5 @@ from .external_database import (
     DatabaseSchemaCache,
     DatabaseAccessPolicy,
 )
+from .db_query_log import DBQueryLog
 

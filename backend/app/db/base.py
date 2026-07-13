@@ -29,5 +29,6 @@ from app.models.external_database import (
     DatabaseSchemaCache,
     DatabaseAccessPolicy,
 )
+from app.models.db_query_log import DBQueryLog
 
 

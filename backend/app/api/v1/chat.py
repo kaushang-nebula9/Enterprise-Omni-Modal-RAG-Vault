@@ -554,6 +554,11 @@ async def send_query(
             follow_up_questions = []
             generated_sql = None
             query_results = None
+            db_connection_id = None
+            execution_time_ms = 0
+            status_str = None
+            error_message = None
+            error_type = None
 
             async for event in generator:
                 if event["type"] == "token":
@@ -566,6 +571,11 @@ async def send_query(
                     follow_up_questions = event.get("follow_up_questions", [])
                     generated_sql = event.get("generated_sql")
                     query_results = event.get("query_results")
+                    db_connection_id = event.get("db_connection_id")
+                    execution_time_ms = event.get("execution_time_ms", 0)
+                    status_str = event.get("status")
+                    error_message = event.get("error_message")
+                    error_type = event.get("error_type")
 
             # Lock database connection to session if a DB query ran successfully for the first time
             if (
@@ -632,6 +642,24 @@ async def send_query(
                 created_at=datetime.now(timezone.utc),
             )
             db.add(query_log)
+
+            # Create DBQueryLog entry for DB Health & Analytics if database was queried
+            if db_connection_id is not None:
+                from app.models.db_query_log import DBQueryLog
+
+                db_query_log = DBQueryLog(
+                    tenant_id=session.tenant_id,
+                    user_id=current_user.id,
+                    db_connection_id=db_connection_id,
+                    natural_language_query=clean_display_content,
+                    generated_sql=generated_sql,
+                    execution_time_ms=execution_time_ms,
+                    status=status_str or ("success" if not error_message else "failed"),
+                    error_message=error_message,
+                    error_type=error_type,
+                    created_at=datetime.now(timezone.utc),
+                )
+                db.add(db_query_log)
 
             # Update session timestamp
             session.updated_at = datetime.now(timezone.utc)
