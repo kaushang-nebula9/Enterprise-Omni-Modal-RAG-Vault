@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { adminService } from '../../services/adminService';
-import { Plus, Trash2, Edit } from 'lucide-react';
+import { Plus, Trash2, Edit, ChevronDown } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useNavigate } from 'react-router-dom';
 
@@ -9,26 +9,89 @@ export const OrganisationSettingsPage: React.FC = () => {
   const { logout } = useAuthStore();
   const navigate = useNavigate();
 
+  interface ProviderRegistryEntry {
+    provider_id: string;
+    display_name: string;
+    sdk_type: string;
+    requires_base_url: boolean;
+    default_base_url?: string;
+  }
+
   // Models CRUD state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   
   const [displayName, setDisplayName] = useState('');
-  const [provider, setProvider] = useState<'anthropic' | 'openrouter'>('anthropic');
-  const [modelString, setModelString] = useState('');
+  const [providerId, setProviderId] = useState('');
+  const [modelName, setModelName] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [inputCost, setInputCost] = useState('');
+  const [outputCost, setOutputCost] = useState('');
   const [isActive, setIsActive] = useState(true);
-  const [inputPrice, setInputPrice] = useState('');
-  const [outputPrice, setOutputPrice] = useState('');
+
+  const [providers, setProviders] = useState<ProviderRegistryEntry[]>([]);
+  const [isLoadingProviders, setIsLoadingProviders] = useState(false);
+  const [providersError, setProvidersError] = useState<string | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<ProviderRegistryEntry | null>(null);
+
+  // Custom provider select state
+  const [isProviderDropdownOpen, setIsProviderDropdownOpen] = useState(false);
+  const providerDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutsideProvider = (e: MouseEvent) => {
+      if (providerDropdownRef.current && !providerDropdownRef.current.contains(e.target as Node)) {
+        setIsProviderDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutsideProvider);
+    return () => document.removeEventListener('mousedown', handleClickOutsideProvider);
+  }, []);
+
+  // Custom default model select state
+  const [isDefaultModelDropdownOpen, setIsDefaultModelDropdownOpen] = useState(false);
+  const defaultModelDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutsideDefaultModel = (e: MouseEvent) => {
+      if (defaultModelDropdownRef.current && !defaultModelDropdownRef.current.contains(e.target as Node)) {
+        setIsDefaultModelDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutsideDefaultModel);
+    return () => document.removeEventListener('mousedown', handleClickOutsideDefaultModel);
+  }, []);
+
+  useEffect(() => {
+    const fetchProviders = async () => {
+      setIsLoadingProviders(true);
+      setProvidersError(null);
+      try {
+        const data = await adminService.getProviders();
+        setProviders(data);
+      } catch (err: any) {
+        setProvidersError(err.message || 'Failed to fetch providers');
+      } finally {
+        setIsLoadingProviders(false);
+      }
+    };
+    fetchProviders();
+  }, []);
 
   const resetForm = () => {
     setDisplayName('');
-    setProvider('anthropic');
-    setModelString('');
+    setProviderId('');
+    setModelName('');
+    setApiKey('');
+    setBaseUrl('');
+    setInputCost('');
+    setOutputCost('');
+    setSelectedProvider(null);
     setIsActive(true);
-    setInputPrice('');
-    setOutputPrice('');
     setEditingModelId(null);
+    setIsProviderDropdownOpen(false);
   };
 
   const { data: modelsData, refetch: refetchModels } = useQuery({
@@ -65,11 +128,13 @@ export const OrganisationSettingsPage: React.FC = () => {
     e.preventDefault();
     const payload = {
       display_name: displayName,
-      provider,
-      model_string: modelString,
       is_active: isActive,
-      input_price_per_million: inputPrice === '' ? null : parseFloat(inputPrice),
-      output_price_per_million: outputPrice === '' ? null : parseFloat(outputPrice)
+      provider_id: providerId,
+      base_url: selectedProvider?.requires_base_url ? baseUrl : null,
+      input_cost_per_million_tokens: inputCost === '' ? null : parseFloat(inputCost),
+      output_cost_per_million_tokens: outputCost === '' ? null : parseFloat(outputCost),
+      model_name: modelName,
+      api_key: apiKey,
     };
 
     if (isEditing && editingModelId) {
@@ -204,18 +269,56 @@ export const OrganisationSettingsPage: React.FC = () => {
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Website</label>
                   <input type="url" value={orgWebsite} onChange={e=>setOrgWebsite(e.target.value)} className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all" />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 relative" ref={defaultModelDropdownRef}>
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Default Chat Model</label>
-                  <select
-                    value={defaultModelId}
-                    onChange={(e) => setDefaultModelId(e.target.value)}
-                    className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 outline-none transition-all cursor-pointer"
+                  <button
+                    type="button"
+                    onClick={() => setIsDefaultModelDropdownOpen(!isDefaultModelDropdownOpen)}
+                    className="w-full flex items-center justify-between px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 text-slate-800 dark:text-slate-100 text-left outline-none transition-all"
                   >
-                    <option value="">System Default (Oldest Active Anthropic Model)</option>
-                    {modelsData?.filter(m => m.is_active).map(m => (
-                      <option key={m.id} value={m.id}>{m.display_name} ({m.model_string})</option>
-                    ))}
-                  </select>
+                    <span>
+                      {defaultModelId 
+                        ? (modelsData?.find(m => m.id === defaultModelId)?.display_name || defaultModelId)
+                        : "System Default (Oldest Active Anthropic Model)"}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isDefaultModelDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isDefaultModelDropdownOpen && (
+                    <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto p-1 flex flex-col gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDefaultModelId('');
+                          setIsDefaultModelDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                          defaultModelId === ''
+                            ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 font-semibold"
+                            : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                        }`}
+                      >
+                        System Default (Oldest Active Anthropic Model)
+                      </button>
+                      {modelsData?.filter(m => m.is_active).map(m => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => {
+                            setDefaultModelId(m.id);
+                            setIsDefaultModelDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                            defaultModelId === m.id
+                              ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 font-semibold"
+                              : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                          }`}
+                        >
+                          {m.display_name} ({m.model_name || m.model_string})
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <button type="submit" disabled={updateGeneralMutation.isPending} className="mt-2 w-fit px-6 bg-indigo-700 dark:bg-indigo-500 text-white rounded-lg py-2.5 font-medium hover:bg-indigo-600 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50">
                   {updateGeneralMutation.isPending ? 'Saving...' : 'Save Changes'}
@@ -296,17 +399,17 @@ export const OrganisationSettingsPage: React.FC = () => {
                       <td className="px-4 py-3.5 font-medium text-slate-800 dark:text-slate-200">{model.display_name}</td>
                       <td className="px-4 py-3.5">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                          model.provider === 'anthropic'
+                          (model.provider_id === 'anthropic' || model.provider === 'anthropic')
                             ? 'bg-orange-50 dark:bg-orange-950/20 text-orange-700 dark:text-orange-400'
                             : 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400'
                         }`}>
-                          {model.provider === 'anthropic' ? 'Anthropic' : 'OpenRouter'}
+                          {model.provider_id ? (providers.find(p => p.provider_id === model.provider_id)?.display_name || model.provider_id) : (model.provider === 'anthropic' ? 'Anthropic' : 'OpenRouter')}
                         </span>
                       </td>
-                      <td className="px-4 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{model.model_string}</td>
+                      <td className="px-4 py-3.5 font-mono text-xs text-slate-500 dark:text-slate-400">{model.model_name || model.model_string}</td>
                       <td className="px-4 py-3.5">
                         <span className="text-xs text-slate-650 dark:text-slate-400 font-medium">
-                          {model.input_price_per_million != null ? `$${Number(model.input_price_per_million).toFixed(2)}` : 'N/A'} / {model.output_price_per_million != null ? `$${Number(model.output_price_per_million).toFixed(2)}` : 'N/A'}
+                          {model.input_cost_per_million_tokens != null ? `$${Number(model.input_cost_per_million_tokens).toFixed(2)}` : (model.input_price_per_million != null ? `$${Number(model.input_price_per_million).toFixed(2)}` : 'N/A')} / {model.output_cost_per_million_tokens != null ? `$${Number(model.output_cost_per_million_tokens).toFixed(2)}` : (model.output_price_per_million != null ? `$${Number(model.output_price_per_million).toFixed(2)}` : 'N/A')}
                         </span>
                       </td>
                       <td className="px-4 py-3.5">
@@ -327,11 +430,15 @@ export const OrganisationSettingsPage: React.FC = () => {
                             setIsEditing(true);
                             setEditingModelId(model.id);
                             setDisplayName(model.display_name);
-                            setProvider(model.provider);
-                            setModelString(model.model_string);
+                            setProviderId(model.provider_id || '');
+                            const foundProv = providers.find(p => p.provider_id === model.provider_id);
+                            setSelectedProvider(foundProv || null);
+                            setModelName(model.model_name || model.model_string || '');
+                            setApiKey(model.api_key || '');
+                            setBaseUrl(model.base_url || '');
                             setIsActive(model.is_active);
-                            setInputPrice(model.input_price_per_million != null ? model.input_price_per_million.toString() : '');
-                            setOutputPrice(model.output_price_per_million != null ? model.output_price_per_million.toString() : '');
+                            setInputCost(model.input_cost_per_million_tokens != null ? model.input_cost_per_million_tokens.toString() : (model.input_price_per_million != null ? model.input_price_per_million.toString() : ''));
+                            setOutputCost(model.output_cost_per_million_tokens != null ? model.output_cost_per_million_tokens.toString() : (model.output_price_per_million != null ? model.output_price_per_million.toString() : ''));
                             setIsAddModalOpen(true);
                           }}
                           className="text-slate-500 hover:text-indigo-650 dark:text-slate-400 dark:hover:text-indigo-400 p-1"
@@ -405,71 +512,142 @@ export const OrganisationSettingsPage: React.FC = () => {
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl w-full max-w-md p-6 text-slate-800 dark:text-slate-100">
             <h3 className="text-xl font-semibold mb-4 font-sora">{isEditing ? 'Edit Model' : 'Add Model'}</h3>
             <form onSubmit={handleSubmitModel} className="space-y-4">
+              {isLoadingProviders && (
+                <div className="text-sm text-slate-500 dark:text-slate-400">Loading providers...</div>
+              )}
+              
+              {providersError && (
+                <div className="p-3 text-sm text-red-650 bg-red-50 dark:bg-red-950/20 dark:text-red-400 rounded-lg">
+                  {providersError}
+                </div>
+              )}
+
+              <div className="space-y-1 relative" ref={providerDropdownRef}>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Provider</label>
+                <button
+                  type="button"
+                  onClick={() => setIsProviderDropdownOpen(!isProviderDropdownOpen)}
+                  className="w-full flex items-center justify-between px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all text-slate-800 dark:text-slate-100 text-left"
+                >
+                  <span className={providerId ? "text-slate-800 dark:text-slate-100" : "text-slate-400"}>
+                    {providerId ? (providers.find(p => p.provider_id === providerId)?.display_name || providerId) : "Select a provider"}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isProviderDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isProviderDropdownOpen && (
+                  <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto p-1 flex flex-col gap-0.5">
+                    {providers.map(p => (
+                      <button
+                        key={p.provider_id}
+                        type="button"
+                        onClick={() => {
+                          setProviderId(p.provider_id);
+                          setBaseUrl('');
+                          setSelectedProvider(p);
+                          setIsProviderDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                          providerId === p.provider_id
+                            ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 font-semibold"
+                            : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                        }`}
+                      >
+                        {p.display_name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Display Name</label>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Display Name (optional)</label>
                 <input
-                  required
                   type="text"
-                  placeholder="e.g. Claude 4.5 Haiku"
+                  placeholder="e.g. Our GPT-4o"
                   value={displayName}
                   onChange={e => setDisplayName(e.target.value)}
                   className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all text-slate-800 dark:text-slate-100"
                 />
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Friendly name shown across the app. Defaults to model name if left blank.
+                </p>
               </div>
 
               <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Provider</label>
-                <select
-                  value={provider}
-                  onChange={e => setProvider(e.target.value as 'anthropic' | 'openrouter')}
-                  className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all text-slate-800 dark:text-slate-100"
-                >
-                  <option value="anthropic">Anthropic</option>
-                  <option value="openrouter">OpenRouter</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Model Identifier String</label>
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Model ID</label>
                 <input
                   required
                   type="text"
-                  placeholder="e.g. claude-haiku-4-5-20251001"
-                  value={modelString}
-                  onChange={e => setModelString(e.target.value)}
-                  className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all font-mono text-sm text-slate-800 dark:text-slate-100"
+                  placeholder="e.g. claude-haiku-4-5, gpt-4o, gemini-2.0-flash"
+                  value={modelName}
+                  onChange={e => setModelName(e.target.value)}
+                  className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all text-slate-800 dark:text-slate-100"
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Enter the exact model ID as listed by your provider.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">API Key</label>
+                <input
+                  required
+                  type="password"
+                  placeholder="Paste your API key here"
+                  value={apiKey}
+                  onChange={e => setApiKey(e.target.value)}
+                  className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all text-slate-800 dark:text-slate-100"
                 />
               </div>
 
+              {selectedProvider?.requires_base_url === true && (
+                <div className="space-y-1">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Base URL</label>
+                  <input
+                    required
+                    type="text"
+                    placeholder="e.g. https://your-deployment.example.com/v1"
+                    value={baseUrl}
+                    onChange={e => setBaseUrl(e.target.value)}
+                    className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all text-slate-800 dark:text-slate-100"
+                  />
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Input Price ($ / M tokens)</label>
+                  <div className='flex flex-col'>
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Input cost</label>
+                    <label className="text-xs text-slate-500 dark:text-slate-400">(per 1M tokens, USD)</label>
+                  </div>
+                    
                   <input
                     type="number"
                     step="0.0001"
                     min="0"
-                    placeholder="Leave blank to skip"
-                    value={inputPrice}
-                    onChange={e => setInputPrice(e.target.value)}
+                    placeholder="e.g. 0.80"
+                    value={inputCost}
+                    onChange={e => setInputCost(e.target.value)}
                     className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all text-slate-800 dark:text-slate-100"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Output Price ($ / M tokens)</label>
+                  <div className='flex flex-col'>
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Output cost</label>
+                    <label className="text-xs text-slate-500 dark:text-slate-400">(per 1M tokens, USD)</label>
+                  </div>
                   <input
                     type="number"
                     step="0.0001"
                     min="0"
-                    placeholder="Leave blank to skip"
-                    value={outputPrice}
-                    onChange={e => setOutputPrice(e.target.value)}
+                    placeholder="e.g. 4.00"
+                    value={outputCost}
+                    onChange={e => setOutputCost(e.target.value)}
                     className="w-full px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none transition-all text-slate-800 dark:text-slate-100"
                   />
                 </div>
               </div>
-              <p className="text-xs text-slate-550 dark:text-slate-400 -mt-2">
-                Leave blank to use a rough fallback estimate.
-              </p>
 
               <div className="flex items-center gap-2 pt-2">
                 <input
@@ -488,13 +666,13 @@ export const OrganisationSettingsPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-650 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium transition-colors"
+                  className="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-655 dark:text-slate-300 hover:bg-slate-55 dark:hover:bg-slate-800 font-medium transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={createModelMutation.isPending || updateModelMutation.isPending}
+                  disabled={createModelMutation.isPending || updateModelMutation.isPending || isLoadingProviders || !!providersError}
                   className="flex-1 py-2 rounded-lg bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-medium transition-colors disabled:opacity-50"
                 >
                   {createModelMutation.isPending || updateModelMutation.isPending ? 'Saving...' : 'Save'}

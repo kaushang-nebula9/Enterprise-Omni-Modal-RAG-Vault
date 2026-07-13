@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
 from app.models.available_model import AvailableModel
-from app.models.enums import ModelProvider
+
 from app.models.query_message import QueryMessage
 from app.models.enums import MessageRole
 from sqlalchemy.ext.compiler import compiles
@@ -45,8 +45,8 @@ def test_create_available_model(db):
     model = AvailableModel(
         id=model_id,
         display_name="Claude 4.5 Haiku",
-        provider=ModelProvider.anthropic,
-        model_string="claude-haiku-4-5-20251001",
+        provider_id="anthropic",
+        model_name="claude-haiku-4-5",
         is_active=True,
     )
     db.add(model)
@@ -56,8 +56,8 @@ def test_create_available_model(db):
     db_model = db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
     assert db_model is not None
     assert db_model.display_name == "Claude 4.5 Haiku"
-    assert db_model.provider == ModelProvider.anthropic
-    assert db_model.model_string == "claude-haiku-4-5-20251001"
+    assert db_model.provider_id == "anthropic"
+    assert db_model.model_name == "claude-haiku-4-5"
     assert db_model.is_active is True
 
 
@@ -66,8 +66,8 @@ def test_query_message_model_relationship(db):
     model = AvailableModel(
         id=uuid.uuid4(),
         display_name="Llama 3.3 70B",
-        provider=ModelProvider.openrouter,
-        model_string="meta-llama/llama-3.3-70b-instruct:free",
+        provider_id="openrouter",
+        model_name="meta-llama/llama-3.3-70b-instruct",
         is_active=True,
     )
     db.add(model)
@@ -92,7 +92,7 @@ def test_query_message_model_relationship(db):
     assert db_message.model_id == model.id
     assert db_message.model is not None
     assert db_message.model.display_name == "Llama 3.3 70B"
-    assert db_message.model.provider == ModelProvider.openrouter
+    assert db_message.model.provider_id == "openrouter"
 
 
 def test_model_update_and_deactivate(db):
@@ -101,8 +101,8 @@ def test_model_update_and_deactivate(db):
     model = AvailableModel(
         id=model_id,
         display_name="GPT OSS 120B",
-        provider=ModelProvider.openrouter,
-        model_string="openai/gpt-oss-120b:free",
+        provider_id="openrouter",
+        model_name="openai/gpt-oss-120b",
         is_active=True,
     )
     db.add(model)

@@ -48,4 +48,6 @@ class Tenant(Base):
     roles: Mapped[list["Role"]] = relationship(
         "Role", back_populates="tenant", cascade="all, delete-orphan"
     )
-    default_model: Mapped[Optional["AvailableModel"]] = relationship("AvailableModel")
+    default_model: Mapped[Optional["AvailableModel"]] = relationship(
+        "AvailableModel", foreign_keys=[default_model_id]
+    )

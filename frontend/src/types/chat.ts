@@ -21,12 +21,18 @@ export interface CitationResponse {
 export interface AvailableModel {
   id: string
   display_name: string
-  provider: 'anthropic' | 'openrouter'
-  model_string: string
   is_active: boolean
-  input_price_per_million?: number | null
-  output_price_per_million?: number | null
   created_at: string
+  provider_id?: string | null
+  base_url?: string | null
+  input_cost_per_million_tokens?: number | null
+  output_cost_per_million_tokens?: number | null
+  tenant_id?: string | null
+  api_key?: string
+  is_default?: boolean
+  model_name?: string | null
+  /** True when this is the tenant's admin-configured default chat model */
+  is_tenant_default?: boolean
 }
 
 export interface MessageResponse {

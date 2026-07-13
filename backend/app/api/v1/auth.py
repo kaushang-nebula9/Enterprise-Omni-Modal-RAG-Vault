@@ -52,6 +52,39 @@ from app.services.email_service import (
 from app.schemas.auth import UpdateProfileRequest
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 import logging
+import uuid
+
+
+def seed_default_tenant_model(db: Session, tenant_id) -> uuid.UUID:
+    from app.models.available_model import AvailableModel
+
+    # Check if a default model config already exists for that tenant
+    existing = (
+        db.query(AvailableModel)
+        .filter(
+            AvailableModel.tenant_id == tenant_id, AvailableModel.is_default.is_(True)
+        )
+        .first()
+    )
+    if existing:
+        return existing.id
+
+    default_model = AvailableModel(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        provider_id="anthropic",
+        model_name="claude-haiku-4-5",
+        display_name="Claude Haiku (Default)",
+        api_key="",
+        is_default=True,
+        input_cost_per_million_tokens=0.80,
+        output_cost_per_million_tokens=4.00,
+        is_active=True,
+    )
+    db.add(default_model)
+    db.flush()
+    return default_model.id
+
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +276,11 @@ def register_verify_otp(
             website=payload.get("org_website"),
         )
         db.add(tenant)
+        db.flush()
+
+        # Seed default model config for the tenant
+        default_model_id = seed_default_tenant_model(db, tenant.id)
+        tenant.default_model_id = default_model_id
         db.flush()
 
         print(f"[12] Tenant created: {tenant.id}")
@@ -927,6 +965,11 @@ def google_complete_setup(
 
         tenant = Tenant(name=org_name, slug=slug, website=str(request.org_website))
         db.add(tenant)
+        db.flush()
+
+        # Seed default model config for the tenant
+        default_model_id = seed_default_tenant_model(db, tenant.id)
+        tenant.default_model_id = default_model_id
         db.flush()
 
         # Create Admin default role for this tenant

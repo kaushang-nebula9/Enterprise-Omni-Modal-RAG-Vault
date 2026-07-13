@@ -926,8 +926,9 @@ Query Results:
 
 Please summarize and answer the user's question based on the query results. Do not make up any facts."""
 
-        selected_model_string = "claude-haiku-4-5-20251001"
-        selected_provider = "anthropic"
+        selected_model_string = "claude-haiku-4-5"
+        selected_provider_id = "anthropic"
+        model_config = None
 
         if model_id:
             from app.models.available_model import AvailableModel
@@ -936,15 +937,46 @@ Please summarize and answer the user's question based on the query results. Do n
                 db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
             )
             if db_model:
-                selected_model_string = db_model.model_string
-                selected_provider = db_model.provider
+                selected_model_string = db_model.model_name or db_model.model_string
+                selected_provider_id = db_model.provider_id
+                if not selected_provider_id:
+                    # Fallback for legacy models / tests
+                    provider_val = db_model.provider
+                    if hasattr(provider_val, "value"):
+                        provider_val = provider_val.value
+                    if provider_val == "anthropic":
+                        selected_provider_id = "anthropic"
+                    elif provider_val == "openrouter":
+                        selected_provider_id = "openrouter"
+                    else:
+                        selected_provider_id = "openai_compat"
+                model_config = db_model
+                model_config.provider_id = selected_provider_id
+
+        if not model_config:
+            from app.models.available_model import AvailableModel
+
+            model_config = AvailableModel(
+                provider_id=selected_provider_id,
+                model_name=selected_model_string,
+                api_key="",
+            )
 
         input_tokens = 0
         output_tokens = 0
 
         full_answer_list = []
-        if selected_provider == "anthropic":
-            client = _get_async_anthropic_client()
+        from app.core.utils import get_provider_by_id, get_llm_client
+
+        provider = get_provider_by_id(selected_provider_id)
+        sdk_type = provider["sdk_type"]
+
+        if selected_provider_id == "anthropic":
+            if model_config.api_key:
+                client = get_llm_client(model_config)
+            else:
+                client = _get_async_anthropic_client()
+
             async with client.messages.stream(
                 model=selected_model_string,
                 max_tokens=4096,
@@ -961,7 +993,7 @@ Please summarize and answer the user's question based on the query results. Do n
                 if getattr(final_msg, "usage", None):
                     input_tokens = getattr(final_msg.usage, "input_tokens", 0)
                     output_tokens = getattr(final_msg.usage, "output_tokens", 0)
-        elif selected_provider == "openrouter":
+        elif selected_provider_id == "openrouter":
             from app.services.openrouter_service import stream_openrouter_completion
 
             async for chunk_type, data in stream_openrouter_completion(
@@ -975,6 +1007,54 @@ Please summarize and answer the user's question based on the query results. Do n
                 elif chunk_type == "usage":
                     input_tokens = data.get("prompt_tokens", 0)
                     output_tokens = data.get("completion_tokens", 0)
+        elif sdk_type == "openai_compat":
+            client = get_llm_client(model_config)
+            formatted_messages = []
+            if system_prompt:
+                formatted_messages.append({"role": "system", "content": system_prompt})
+            formatted_messages.append({"role": "user", "content": prompt})
+
+            response = await client.chat.completions.create(
+                model=selected_model_string,
+                messages=formatted_messages,
+                temperature=0,
+                max_tokens=4096,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+            async for chunk in response:
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+                    if getattr(delta, "content", None):
+                        full_answer_list.append(delta.content)
+                        yield {"type": "token", "content": delta.content}
+                if getattr(chunk, "usage", None) and chunk.usage:
+                    input_tokens = getattr(chunk.usage, "prompt_tokens", 0)
+                    output_tokens = getattr(chunk.usage, "completion_tokens", 0)
+        elif sdk_type == "google":
+            client = get_llm_client(model_config)
+            from google.genai import types
+
+            config = types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0,
+                max_output_tokens=4096,
+            )
+            response_stream = await client.aio.models.generate_content_stream(
+                model=selected_model_string,
+                contents=prompt,
+                config=config,
+            )
+            async for chunk in response_stream:
+                text = chunk.text
+                if text:
+                    full_answer_list.append(text)
+                    yield {"type": "token", "content": text}
+                if chunk.usage_metadata:
+                    input_tokens = chunk.usage_metadata.prompt_token_count or 0
+                    output_tokens = chunk.usage_metadata.candidates_token_count or 0
+        else:
+            raise ValueError(f"Unsupported sdk_type: {sdk_type}")
 
         # Save SQL summarization UsageLog row
         try:
@@ -983,9 +1063,7 @@ Please summarize and answer the user's question based on the query results. Do n
             usage_log = UsageLog(
                 tenant_id=user.tenant_id,
                 user_id=user.id,
-                provider=selected_provider.value
-                if hasattr(selected_provider, "value")
-                else selected_provider,
+                provider=selected_provider_id,
                 model_string=selected_model_string,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -1228,8 +1306,9 @@ Please summarize and answer the user's question based on the query results. Do n
         system_prompt += f"\n\n[Instructions]\n{command_instruction}"
 
     # Resolve model and provider
-    selected_model_string = "claude-haiku-4-5-20251001"
-    selected_provider = "anthropic"
+    selected_model_string = "claude-haiku-4-5"
+    selected_provider_id = "anthropic"
+    model_config = None
 
     if model_id:
         from app.models.available_model import AvailableModel
@@ -1238,15 +1317,46 @@ Please summarize and answer the user's question based on the query results. Do n
             db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
         )
         if db_model:
-            selected_model_string = db_model.model_string
-            selected_provider = db_model.provider
+            selected_model_string = db_model.model_name or db_model.model_string
+            selected_provider_id = db_model.provider_id
+            if not selected_provider_id:
+                # Fallback for legacy models / tests
+                provider_val = db_model.provider
+                if hasattr(provider_val, "value"):
+                    provider_val = provider_val.value
+                if provider_val == "anthropic":
+                    selected_provider_id = "anthropic"
+                elif provider_val == "openrouter":
+                    selected_provider_id = "openrouter"
+                else:
+                    selected_provider_id = "openai_compat"
+            model_config = db_model
+            model_config.provider_id = selected_provider_id
+
+    if not model_config:
+        from app.models.available_model import AvailableModel
+
+        model_config = AvailableModel(
+            provider_id=selected_provider_id,
+            model_name=selected_model_string,
+            api_key="",
+        )
 
     full_answer_list = []
     input_tokens = 0
     output_tokens = 0
     try:
-        if selected_provider == "anthropic":
-            client = _get_async_anthropic_client()
+        from app.core.utils import get_provider_by_id, get_llm_client
+
+        provider = get_provider_by_id(selected_provider_id)
+        sdk_type = provider["sdk_type"]
+
+        if selected_provider_id == "anthropic":
+            if model_config.api_key:
+                client = get_llm_client(model_config)
+            else:
+                client = _get_async_anthropic_client()
+
             stream_kwargs = {
                 "model": selected_model_string,
                 "max_tokens": 8192,
@@ -1267,7 +1377,7 @@ Please summarize and answer the user's question based on the query results. Do n
                 if getattr(final_msg, "usage", None):
                     input_tokens = getattr(final_msg.usage, "input_tokens", 0)
                     output_tokens = getattr(final_msg.usage, "output_tokens", 0)
-        elif selected_provider == "openrouter":
+        elif selected_provider_id == "openrouter":
             from app.services.openrouter_service import stream_openrouter_completion
 
             async for chunk_type, data in stream_openrouter_completion(
@@ -1281,8 +1391,54 @@ Please summarize and answer the user's question based on the query results. Do n
                 elif chunk_type == "usage":
                     input_tokens = data.get("prompt_tokens", 0)
                     output_tokens = data.get("completion_tokens", 0)
+        elif sdk_type == "openai_compat":
+            client = get_llm_client(model_config)
+            formatted_messages = []
+            if system_prompt:
+                formatted_messages.append({"role": "system", "content": system_prompt})
+            formatted_messages.append({"role": "user", "content": final_prompt})
+
+            response = await client.chat.completions.create(
+                model=selected_model_string,
+                messages=formatted_messages,
+                temperature=0,
+                max_tokens=8192,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+            async for chunk in response:
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+                    if getattr(delta, "content", None):
+                        full_answer_list.append(delta.content)
+                        yield {"type": "token", "content": delta.content}
+                if getattr(chunk, "usage", None) and chunk.usage:
+                    input_tokens = getattr(chunk.usage, "prompt_tokens", 0)
+                    output_tokens = getattr(chunk.usage, "completion_tokens", 0)
+        elif sdk_type == "google":
+            client = get_llm_client(model_config)
+            from google.genai import types
+
+            config = types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0,
+                max_output_tokens=8192,
+            )
+            response_stream = await client.aio.models.generate_content_stream(
+                model=selected_model_string,
+                contents=final_prompt,
+                config=config,
+            )
+            async for chunk in response_stream:
+                text = chunk.text
+                if text:
+                    full_answer_list.append(text)
+                    yield {"type": "token", "content": text}
+                if chunk.usage_metadata:
+                    input_tokens = chunk.usage_metadata.prompt_token_count or 0
+                    output_tokens = chunk.usage_metadata.candidates_token_count or 0
         else:
-            raise ValueError(f"Unsupported model provider: {selected_provider}")
+            raise ValueError(f"Unsupported model provider SDK: {sdk_type}")
 
         # Save UsageLog row
         try:
@@ -1291,7 +1447,7 @@ Please summarize and answer the user's question based on the query results. Do n
             usage_log = UsageLog(
                 tenant_id=user.tenant_id,
                 user_id=user.id,
-                provider=selected_provider,
+                provider=selected_provider_id,
                 model_string=selected_model_string,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -1316,7 +1472,7 @@ Please summarize and answer the user's question based on the query results. Do n
             db.rollback()
     except Exception as exc:
         logger.error(
-            "%s streaming answer generation failed: %s", selected_provider, exc
+            "%s streaming answer generation failed: %s", selected_provider_id, exc
         )
         error_msg = (
             "I encountered an error while generating an answer. Please try again."

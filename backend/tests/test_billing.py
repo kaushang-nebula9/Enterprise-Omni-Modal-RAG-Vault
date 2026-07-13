@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 
 from app.db.base import Base
 from app.models.tenant import Tenant
-from app.models.available_model import AvailableModel, ModelProvider
+from app.models.available_model import AvailableModel
 from app.models.usage_log import UsageLog
 from app.services.billing_service import calculate_tenant_monthly_cost
 from app.tasks.billing_tasks import check_tenant_budgets_task
@@ -55,11 +55,11 @@ def test_calculate_tenant_monthly_cost_configured_pricing(db):
     model = AvailableModel(
         id=uuid.uuid4(),
         display_name="Claude Test Model",
-        provider=ModelProvider.anthropic,
-        model_string="claude-test-model",
+        provider_id="anthropic",
+        model_name="claude-test-model",
         is_active=True,
-        input_price_per_million=Decimal("2.5000"),
-        output_price_per_million=Decimal("10.0000"),
+        input_cost_per_million_tokens=Decimal("2.5000"),
+        output_cost_per_million_tokens=Decimal("10.0000"),
     )
     db.add(model)
     db.commit()
@@ -90,11 +90,11 @@ def test_calculate_tenant_monthly_cost_unconfigured_pricing(db):
     model = AvailableModel(
         id=uuid.uuid4(),
         display_name="OpenRouter Test Model",
-        provider=ModelProvider.openrouter,
-        model_string="openrouter-test-model",
+        provider_id="openrouter",
+        model_name="openrouter-test-model",
         is_active=True,
-        input_price_per_million=None,
-        output_price_per_million=None,
+        input_cost_per_million_tokens=None,
+        output_cost_per_million_tokens=None,
     )
     db.add(model)
     db.commit()

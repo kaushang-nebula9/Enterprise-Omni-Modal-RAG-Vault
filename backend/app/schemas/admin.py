@@ -1,7 +1,6 @@
 from pydantic import BaseModel, Field, HttpUrl
 from uuid import UUID
 from typing import Optional
-from app.models.enums import ModelProvider
 from datetime import date, datetime
 
 
@@ -38,20 +37,26 @@ class TenantResponse(BaseModel):
 
 class ModelCreateRequest(BaseModel):
     display_name: str = Field(..., min_length=1)
-    provider: ModelProvider
-    model_string: str = Field(..., min_length=1)
     is_active: bool = True
-    input_price_per_million: Optional[float] = None
-    output_price_per_million: Optional[float] = None
+    provider_id: str = Field(..., min_length=1)
+    base_url: Optional[str] = None
+    input_cost_per_million_tokens: Optional[float] = None
+    output_cost_per_million_tokens: Optional[float] = None
+    model_name: str = Field(..., min_length=1)
+    api_key: Optional[str] = ""
+    is_default: bool = False
 
 
 class ModelUpdateRequest(BaseModel):
     display_name: Optional[str] = Field(None, min_length=1)
-    provider: Optional[ModelProvider] = None
-    model_string: Optional[str] = Field(None, min_length=1)
     is_active: Optional[bool] = None
-    input_price_per_million: Optional[float] = None
-    output_price_per_million: Optional[float] = None
+    provider_id: Optional[str] = None
+    base_url: Optional[str] = None
+    input_cost_per_million_tokens: Optional[float] = None
+    output_cost_per_million_tokens: Optional[float] = None
+    model_name: Optional[str] = None
+    api_key: Optional[str] = None
+    is_default: Optional[bool] = None
 
 
 class UsageSummaryItem(BaseModel):

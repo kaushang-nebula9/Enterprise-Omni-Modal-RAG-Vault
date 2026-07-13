@@ -510,13 +510,12 @@ async def send_query(
 
     if not resolved_model_id:
         from app.models.available_model import AvailableModel
-        from app.models.enums import ModelProvider
 
         default_model = (
             db.query(AvailableModel)
             .filter(
                 AvailableModel.is_active,
-                AvailableModel.provider == ModelProvider.anthropic,
+                AvailableModel.provider_id == "anthropic",
             )
             .order_by(AvailableModel.created_at.asc())
             .first()
@@ -854,11 +853,44 @@ def get_active_models(
 ):
     """
     Get all active models for the user model selector.
+    Each model has `is_tenant_default=True` if it is the tenant's
+    admin-configured default chat model (Tenant.default_model_id).
     """
     models = (
         db.query(AvailableModel)
-        .filter(AvailableModel.is_active)
+        .filter(
+            AvailableModel.is_active,
+            (AvailableModel.tenant_id == current_user.tenant_id)
+            | (AvailableModel.tenant_id.is_(None)),
+        )
         .order_by(AvailableModel.created_at.asc())
         .all()
     )
-    return models
+
+    tenant_default_model_id = (
+        current_user.tenant.default_model_id if current_user.tenant else None
+    )
+
+    result = []
+    for model in models:
+        model_dict = {
+            "id": model.id,
+            "display_name": model.display_name,
+            "is_active": model.is_active,
+            "created_at": model.created_at,
+            "provider_id": model.provider_id,
+            "base_url": model.base_url,
+            "input_cost_per_million_tokens": model.input_cost_per_million_tokens,
+            "output_cost_per_million_tokens": model.output_cost_per_million_tokens,
+            "tenant_id": model.tenant_id,
+            "api_key": model.api_key,
+            "is_default": model.is_default,
+            "model_name": model.model_name,
+            "is_tenant_default": (
+                tenant_default_model_id is not None
+                and model.id == tenant_default_model_id
+            ),
+        }
+        result.append(ModelResponse(**model_dict))
+
+    return result

@@ -402,7 +402,15 @@ def admin_get_models(
     """
     Returns all models (active and inactive) for management.
     """
-    models = db.query(AvailableModel).order_by(AvailableModel.created_at.asc()).all()
+    models = (
+        db.query(AvailableModel)
+        .filter(
+            (AvailableModel.tenant_id == current_admin.tenant_id)
+            | (AvailableModel.tenant_id.is_(None))
+        )
+        .order_by(AvailableModel.created_at.asc())
+        .all()
+    )
     return models
 
 
@@ -417,15 +425,32 @@ def admin_create_model(
     """
     Create a new available model configuration.
     """
+    if request.is_default:
+        db.query(AvailableModel).filter(
+            AvailableModel.tenant_id == current_admin.tenant_id,
+            AvailableModel.is_default.is_(True),
+        ).update({AvailableModel.is_default: False})
+
     new_model = AvailableModel(
         display_name=request.display_name,
-        provider=request.provider,
-        model_string=request.model_string,
         is_active=request.is_active,
-        input_price_per_million=request.input_price_per_million,
-        output_price_per_million=request.output_price_per_million,
+        # Provider registry fields
+        provider_id=request.provider_id,
+        base_url=request.base_url,
+        input_cost_per_million_tokens=request.input_cost_per_million_tokens,
+        output_cost_per_million_tokens=request.output_cost_per_million_tokens,
+        # Tenant scoping fields
+        tenant_id=current_admin.tenant_id,
+        api_key=request.api_key,
+        is_default=request.is_default,
+        model_name=request.model_name,
     )
     db.add(new_model)
+    db.flush()
+
+    if request.is_default:
+        current_admin.tenant.default_model_id = new_model.id
+
     db.commit()
     db.refresh(new_model)
     return new_model
@@ -441,7 +466,14 @@ def admin_update_model(
     """
     Update an available model configuration.
     """
-    db_model = db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
+    db_model = (
+        db.query(AvailableModel)
+        .filter(
+            AvailableModel.id == model_id,
+            AvailableModel.tenant_id == current_admin.tenant_id,
+        )
+        .first()
+    )
     if not db_model:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Model not found"
@@ -449,16 +481,33 @@ def admin_update_model(
 
     if request.display_name is not None:
         db_model.display_name = request.display_name
-    if request.provider is not None:
-        db_model.provider = request.provider
-    if request.model_string is not None:
-        db_model.model_string = request.model_string
     if request.is_active is not None:
         db_model.is_active = request.is_active
-    if "input_price_per_million" in request.model_fields_set:
-        db_model.input_price_per_million = request.input_price_per_million
-    if "output_price_per_million" in request.model_fields_set:
-        db_model.output_price_per_million = request.output_price_per_million
+
+    # Provider registry fields
+    if request.provider_id is not None:
+        db_model.provider_id = request.provider_id
+    if "base_url" in request.model_fields_set:
+        db_model.base_url = request.base_url
+    if "input_cost_per_million_tokens" in request.model_fields_set:
+        db_model.input_cost_per_million_tokens = request.input_cost_per_million_tokens
+    if "output_cost_per_million_tokens" in request.model_fields_set:
+        db_model.output_cost_per_million_tokens = request.output_cost_per_million_tokens
+
+    # Tenant scoping fields
+    if request.model_name is not None:
+        db_model.model_name = request.model_name
+    if request.api_key is not None:
+        db_model.api_key = request.api_key
+    if request.is_default is not None:
+        if request.is_default:
+            db.query(AvailableModel).filter(
+                AvailableModel.tenant_id == current_admin.tenant_id,
+                AvailableModel.is_default.is_(True),
+                AvailableModel.id != model_id,
+            ).update({AvailableModel.is_default: False})
+            current_admin.tenant.default_model_id = db_model.id
+        db_model.is_default = request.is_default
 
     db.commit()
     db.refresh(db_model)
@@ -474,7 +523,14 @@ def admin_delete_model(
     """
     Delete an available model configuration.
     """
-    db_model = db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
+    db_model = (
+        db.query(AvailableModel)
+        .filter(
+            AvailableModel.id == model_id,
+            AvailableModel.tenant_id == current_admin.tenant_id,
+        )
+        .first()
+    )
     if not db_model:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Model not found"

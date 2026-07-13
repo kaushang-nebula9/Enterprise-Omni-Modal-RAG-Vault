@@ -18,7 +18,6 @@ from app.models.user import User
 from app.models.enums import DatabaseEngine
 from app.models.available_model import AvailableModel
 from anthropic import AsyncAnthropic
-from app.services.openrouter_service import stream_openrouter_completion
 
 logger = logging.getLogger(__name__)
 
@@ -639,18 +638,35 @@ SQL Query:"""
             .first()
         )
 
-    if not db_model:
-        from app.models.enums import ModelProvider
-
+    db_model = None
+    if model_id:
         db_model = (
             db.query(AvailableModel)
-            .filter(
-                AvailableModel.is_active,
-                AvailableModel.provider == ModelProvider.anthropic,
-            )
-            .order_by(AvailableModel.created_at.asc())
+            .filter(AvailableModel.id == model_id, AvailableModel.is_active)
             .first()
         )
+
+    if not db_model:
+        if tenant_id:
+            db_model = (
+                db.query(AvailableModel)
+                .filter(
+                    AvailableModel.tenant_id == tenant_id,
+                    AvailableModel.is_active,
+                    AvailableModel.is_default,
+                )
+                .first()
+            )
+        if not db_model:
+            db_model = (
+                db.query(AvailableModel)
+                .filter(
+                    AvailableModel.is_active,
+                    AvailableModel.provider_id == "anthropic",
+                )
+                .order_by(AvailableModel.created_at.asc())
+                .first()
+            )
         if not db_model:
             db_model = (
                 db.query(AvailableModel)
@@ -660,17 +676,42 @@ SQL Query:"""
             )
 
     if db_model:
-        selected_model_string = db_model.model_string
-        selected_provider = db_model.provider
+        selected_model_string = db_model.model_name or db_model.model_string
+        selected_provider_id = db_model.provider_id
+        if not selected_provider_id:
+            # Fallback for legacy models / tests
+            provider_val = db_model.provider
+            if hasattr(provider_val, "value"):
+                provider_val = provider_val.value
+            if provider_val == "anthropic":
+                selected_provider_id = "anthropic"
+            elif provider_val == "openrouter":
+                selected_provider_id = "openrouter"
+            else:
+                selected_provider_id = "openai_compat"
+        model_config = db_model
+        model_config.provider_id = selected_provider_id
     else:
-        selected_model_string = "claude-haiku-4-5-20251001"
-        selected_provider = "anthropic"
+        selected_model_string = "claude-haiku-4-5"
+        selected_provider_id = "anthropic"
+        model_config = AvailableModel(
+            provider_id="anthropic", model_name="claude-haiku-4-5", api_key=""
+        )
 
     input_tokens = 0
     output_tokens = 0
 
-    if selected_provider == "anthropic":
-        client = _get_async_anthropic_client()
+    from app.core.utils import get_provider_by_id, get_llm_client
+
+    provider = get_provider_by_id(selected_provider_id)
+    sdk_type = provider["sdk_type"]
+
+    if selected_provider_id == "anthropic":
+        if model_config.api_key:
+            client = get_llm_client(model_config)
+        else:
+            client = _get_async_anthropic_client()
+
         response = await client.messages.create(
             model=selected_model_string,
             max_tokens=2048,
@@ -682,8 +723,9 @@ SQL Query:"""
         if getattr(response, "usage", None):
             input_tokens = getattr(response.usage, "input_tokens", 0)
             output_tokens = getattr(response.usage, "output_tokens", 0)
-    elif selected_provider == "openrouter":
-        # Simple non-stream fallback
+    elif selected_provider_id == "openrouter":
+        from app.services.openrouter_service import stream_openrouter_completion
+
         sql = ""
         async for chunk_type, data in stream_openrouter_completion(
             model_string=selected_model_string,
@@ -696,8 +738,43 @@ SQL Query:"""
                 input_tokens = data.get("prompt_tokens", 0)
                 output_tokens = data.get("completion_tokens", 0)
         sql = sql.strip()
+    elif sdk_type == "openai_compat":
+        client = get_llm_client(model_config)
+        formatted_messages = []
+        if system_prompt:
+            formatted_messages.append({"role": "system", "content": system_prompt})
+        formatted_messages.append({"role": "user", "content": prompt})
+
+        response = await client.chat.completions.create(
+            model=selected_model_string,
+            messages=formatted_messages,
+            temperature=0,
+            max_tokens=2048,
+        )
+        sql = response.choices[0].message.content.strip()
+        if getattr(response, "usage", None):
+            input_tokens = getattr(response.usage, "prompt_tokens", 0)
+            output_tokens = getattr(response.usage, "completion_tokens", 0)
+    elif sdk_type == "google":
+        client = get_llm_client(model_config)
+        from google.genai import types
+
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            temperature=0,
+            max_output_tokens=2048,
+        )
+        response = await client.aio.models.generate_content(
+            model=selected_model_string,
+            contents=prompt,
+            config=config,
+        )
+        sql = response.text.strip()
+        if getattr(response, "usage_metadata", None):
+            input_tokens = response.usage_metadata.prompt_token_count or 0
+            output_tokens = response.usage_metadata.candidates_token_count or 0
     else:
-        raise ValueError(f"Unsupported provider: {selected_provider}")
+        raise ValueError(f"Unsupported sdk_type: {sdk_type}")
 
     # Save SQL translation UsageLog row
     if user_id and tenant_id:
@@ -707,9 +784,7 @@ SQL Query:"""
             usage_log = UsageLog(
                 tenant_id=tenant_id,
                 user_id=user_id,
-                provider=selected_provider.value
-                if hasattr(selected_provider, "value")
-                else selected_provider,
+                provider=selected_provider_id,
                 model_string=selected_model_string,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,

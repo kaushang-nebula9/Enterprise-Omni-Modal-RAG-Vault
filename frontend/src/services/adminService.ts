@@ -63,6 +63,11 @@ export const adminService = {
     return response.data;
   },
 
+  getProviders: async (): Promise<any[]> => {
+    const response = await api.get('/api/providers');
+    return response.data;
+  },
+
   getModels: async (): Promise<AvailableModel[]> => {
     const response = await api.get('/api/v1/admin/models');
     return response.data;
@@ -70,11 +75,18 @@ export const adminService = {
 
   createModel: async (data: { 
     display_name: string; 
-    provider: 'anthropic' | 'openrouter'; 
-    model_string: string; 
+    provider?: 'anthropic' | 'openrouter' | null; 
+    model_string?: string | null; 
     is_active: boolean;
     input_price_per_million?: number | null;
     output_price_per_million?: number | null;
+    provider_id: string;
+    base_url?: string | null;
+    input_cost_per_million_tokens?: number | null;
+    output_cost_per_million_tokens?: number | null;
+    model_name: string;
+    api_key?: string;
+    is_default?: boolean;
   }): Promise<AvailableModel> => {
     const response = await api.post('/api/v1/admin/models', data);
     return response.data;
@@ -82,11 +94,18 @@ export const adminService = {
 
   updateModel: async (modelId: string, data: { 
     display_name?: string; 
-    provider?: 'anthropic' | 'openrouter'; 
-    model_string?: string; 
+    provider?: 'anthropic' | 'openrouter' | null; 
+    model_string?: string | null; 
     is_active?: boolean;
     input_price_per_million?: number | null;
     output_price_per_million?: number | null;
+    provider_id?: string;
+    base_url?: string | null;
+    input_cost_per_million_tokens?: number | null;
+    output_cost_per_million_tokens?: number | null;
+    model_name?: string;
+    api_key?: string;
+    is_default?: boolean;
   }): Promise<AvailableModel> => {
     const response = await api.patch(`/api/v1/admin/models/${modelId}`, data);
     return response.data;

@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 from uuid import UUID
-from sqlalchemy import and_, cast, String
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from app.models.usage_log import UsageLog
 from app.models.available_model import AvailableModel
@@ -23,14 +23,14 @@ def calculate_tenant_monthly_cost(db: Session, tenant_id: UUID) -> float:
             UsageLog.output_tokens,
             UsageLog.model_string,
             UsageLog.provider,
-            AvailableModel.input_price_per_million,
-            AvailableModel.output_price_per_million,
+            AvailableModel.input_cost_per_million_tokens,
+            AvailableModel.output_cost_per_million_tokens,
         )
         .outerjoin(
             AvailableModel,
             and_(
-                UsageLog.model_string == AvailableModel.model_string,
-                cast(AvailableModel.provider, String) == UsageLog.provider,
+                UsageLog.model_string == AvailableModel.model_name,
+                UsageLog.provider == AvailableModel.provider_id,
             ),
         )
         .filter(UsageLog.tenant_id == tenant_id, UsageLog.created_at >= start_of_month)
@@ -61,7 +61,7 @@ def calculate_tenant_monthly_cost(db: Session, tenant_id: UUID) -> float:
 
         if input_price is None or output_price is None:
             logger.warning(
-                f"Pricing not fully configured for model_string='{model_string}', provider='{provider}'. "
+                f"Pricing not fully configured for model='{model_string}', provider='{provider}'. "
                 f"Treating unconfigured price as $0.00."
             )
         total_cost += input_cost + output_cost

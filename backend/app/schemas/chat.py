@@ -6,18 +6,23 @@ from pydantic import BaseModel, Field, model_validator
 from uuid import UUID
 from datetime import datetime
 from typing import Optional, Any
-from app.models.enums import ModelProvider
 
 
 class ModelResponse(BaseModel):
     id: UUID
     display_name: str
-    provider: ModelProvider
-    model_string: str
     is_active: bool
-    input_price_per_million: Optional[float] = None
-    output_price_per_million: Optional[float] = None
     created_at: datetime
+    provider_id: Optional[str] = None
+    base_url: Optional[str] = None
+    input_cost_per_million_tokens: Optional[float] = None
+    output_cost_per_million_tokens: Optional[float] = None
+    tenant_id: Optional[UUID] = None
+    api_key: Optional[str] = ""
+    is_default: bool = False
+    model_name: Optional[str] = None
+    # True when this model is the tenant's admin-configured default chat model
+    is_tenant_default: bool = False
 
     model_config = {"from_attributes": True}
 

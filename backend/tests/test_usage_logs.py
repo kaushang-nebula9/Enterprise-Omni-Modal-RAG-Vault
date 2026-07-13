@@ -179,14 +179,13 @@ async def test_run_rag_pipeline_openrouter_success(db):
     db.commit()
 
     # Mock AvailableModel querying in run_rag_pipeline to resolve openrouter provider
-    from app.models.enums import ModelProvider
 
     model_id = uuid.uuid4()
     db_model = AvailableModel(
         id=model_id,
         display_name="OpenRouter Model",
-        provider=ModelProvider.openrouter,
-        model_string="meta-llama/llama-3",
+        provider_id="openrouter",
+        model_name="meta-llama/llama-3",
         is_active=True,
     )
     db.add(db_model)

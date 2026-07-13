@@ -102,17 +102,24 @@ const ChatPage: React.FC = () => {
         const activeModels = await chatService.getModels()
         setAvailableModels(activeModels)
         
-        // Load last chosen model or select default
-        const savedModelId = localStorage.getItem('selected_model_id')
-        const found = activeModels.find(m => m.id === savedModelId)
+        // localStorage key is scoped per-user so different users on the same
+        // browser don't inherit each other's model choice.
+        const storageKey = user?.id ? `selected_model_id_${user.id}` : 'selected_model_id'
+        const savedModelId = localStorage.getItem(storageKey)
+        const found = savedModelId ? activeModels.find(m => m.id === savedModelId) : null
+
         if (found) {
           setSelectedModel(found)
         } else {
-          // Default to the cheapest/fastest Claude model (claude-haiku-4-5-20251001)
-          const defaultModel = activeModels.find(m => m.model_string === 'claude-haiku-4-5-20251001') 
-            || activeModels.find(m => m.provider === 'anthropic') 
-            || activeModels[0]
-          
+          // Priority:
+          // 1. The admin-configured tenant default (is_tenant_default)
+          // 2. Any model flagged is_default
+          // 3. First available model
+          const defaultModel =
+            activeModels.find(m => m.is_tenant_default)
+            ?? activeModels.find(m => m.is_default)
+            ?? activeModels[0]
+
           if (defaultModel) {
             setSelectedModel(defaultModel)
           }
@@ -122,7 +129,7 @@ const ChatPage: React.FC = () => {
       }
     }
     fetchModels()
-  }, [])
+  }, [user?.id])
 
   // Click outside to close model dropdown
   useEffect(() => {
@@ -148,7 +155,8 @@ const ChatPage: React.FC = () => {
 
   const handleSelectModel = (model: AvailableModel) => {
     setSelectedModel(model)
-    localStorage.setItem('selected_model_id', model.id)
+    const storageKey = user?.id ? `selected_model_id_${user.id}` : 'selected_model_id'
+    localStorage.setItem(storageKey, model.id)
     setIsModelDropdownOpen(false)
   }
 
@@ -1386,6 +1394,30 @@ const ChatPage: React.FC = () => {
     return `${randomGreeting} ${firstName}, good ${timeGreeting}!`
   }, [user?.full_name])
 
+  const groupedModels = availableModels.reduce((groups, model) => {
+    const providerKey = model.provider_id || (model.provider === 'anthropic' ? 'anthropic' : 'openrouter');
+    if (!groups[providerKey]) {
+      groups[providerKey] = [];
+    }
+    groups[providerKey].push(model);
+    return groups;
+  }, {} as Record<string, AvailableModel[]>);
+
+  const getProviderGroupName = (providerKey: string) => {
+    switch (providerKey) {
+      case 'anthropic':
+        return 'Claude Models';
+      case 'openrouter':
+        return 'OpenRouter Models';
+      case 'openai_compat':
+        return 'OpenAI Compatible Models';
+      case 'gemini':
+        return 'Google Gemini Models';
+      default:
+        return `${providerKey.charAt(0).toUpperCase() + providerKey.slice(1)} Models`;
+    }
+  };
+
   return (
     <div className="flex flex-col -m-6 h-[calc(100vh-4rem)]">
       {/* Toast notification */}
@@ -1905,13 +1937,12 @@ const ChatPage: React.FC = () => {
 
                       {isModelDropdownOpen && (
                         <div className="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-2 z-50 flex flex-col gap-1 text-slate-800 dark:text-slate-100 max-h-72 overflow-y-auto">
-                          {/* Anthropic / Claude models */}
-                          {availableModels.some(m => m.provider === 'anthropic') && (
-                            <div>
-                              <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider select-none">
-                                Claude Models
-                              </div>
-                              {availableModels.filter(m => m.provider === 'anthropic').map(model => (
+                          {Object.entries(groupedModels).map(([providerKey, models], groupIdx) => (
+                            <div 
+                              key={providerKey}
+                              className={groupIdx > 0 ? "border-slate-100 dark:border-slate-800/60" : ""}
+                            >
+                              {models.map(model => (
                                 <button
                                   key={model.id}
                                   type="button"
@@ -1927,31 +1958,7 @@ const ChatPage: React.FC = () => {
                                 </button>
                               ))}
                             </div>
-                          )}
-
-                          {/* OpenRouter models */}
-                          {availableModels.some(m => m.provider === 'openrouter') && (
-                            <div className="border-t border-slate-100 dark:border-slate-800/60 mt-1 pt-1">
-                              <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider select-none">
-                                Other Models
-                              </div>
-                              {availableModels.filter(m => m.provider === 'openrouter').map(model => (
-                                <button
-                                  key={model.id}
-                                  type="button"
-                                  onClick={() => handleSelectModel(model)}
-                                  className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left text-xs transition-colors ${
-                                    selectedModel?.id === model.id
-                                      ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 font-semibold"
-                                      : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
-                                  }`}
-                                >
-                                  <span>{model.display_name}</span>
-                                  {selectedModel?.id === model.id && <span className="text-indigo-600 dark:text-indigo-400 font-bold">✓</span>}
-                                </button>
-                              ))}
-                            </div>
-                          )}
+                          ))}
                         </div>
                       )}
                     </div>
