@@ -182,3 +182,30 @@ def get_default_model_config(db: any, tenant_id: any) -> any:
     )
     if model:
         return model
+
+    # 3. Try global default model
+    model = (
+        db.query(AvailableModel)
+        .filter(
+            AvailableModel.tenant_id.is_(None),
+            AvailableModel.is_default.is_(True),
+            AvailableModel.is_active.is_(True),
+        )
+        .first()
+    )
+    if model:
+        return model
+
+    # 4. Try any global active model
+    model = (
+        db.query(AvailableModel)
+        .filter(
+            AvailableModel.tenant_id.is_(None),
+            AvailableModel.is_active.is_(True),
+        )
+        .first()
+    )
+    if model:
+        return model
+
+    return None

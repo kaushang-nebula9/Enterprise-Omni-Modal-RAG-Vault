@@ -13,3 +13,9 @@ from .chat import (
     QueryRequest,
     QueryResponse,
 )
+from .report import (
+    ReportCreateResponse,
+    ReportStepResponse,
+    ReportStatusResponse,
+)
+

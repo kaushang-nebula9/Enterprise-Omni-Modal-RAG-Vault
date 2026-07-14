@@ -124,7 +124,7 @@ def test_get_default_model_config_cascade(db):
 
     # Cascades to global active model
     res = get_default_model_config(db, tenant_id)
-    assert res.id == global_model.id
+    assert res is not None and res.id == global_model.id
 
     # 2. Add tenant model (active, non-default)
     tenant_model = AvailableModel(
@@ -141,7 +141,7 @@ def test_get_default_model_config_cascade(db):
 
     # Cascades to tenant active model
     res = get_default_model_config(db, tenant_id)
-    assert res.id == tenant_model.id
+    assert res is not None and res.id == tenant_model.id
 
     # 3. Add tenant default model
     tenant_default = AvailableModel(
@@ -158,4 +158,4 @@ def test_get_default_model_config_cascade(db):
 
     # Selects tenant default model
     res = get_default_model_config(db, tenant_id)
-    assert res.id == tenant_default.id
+    assert res is not None and res.id == tenant_default.id

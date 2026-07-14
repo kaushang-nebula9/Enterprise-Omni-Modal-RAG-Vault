@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     SQL_HISTORY_LIMIT: int = 5
     SQL_RESULT_SUMMARY_THRESHOLD: int = 20
+    REPORTS_DIR: str = "./reports"
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
