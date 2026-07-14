@@ -67,6 +67,115 @@ const autoModel: AvailableModel = {
   tier: 'balanced',
 }
 
+const markdownComponents = {
+  table: ({ ...props }: any) => (
+    <div className="my-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm custom-scrollbar">
+      <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left border-collapse" {...props} />
+    </div>
+  ),
+  thead: ({ ...props }: any) => (
+    <thead className="bg-slate-50 dark:bg-slate-800/50" {...props} />
+  ),
+  tbody: ({ ...props }: any) => (
+    <tbody className="divide-y divide-slate-100 dark:divide-slate-850 bg-white dark:bg-slate-900" {...props} />
+  ),
+  tr: ({ ...props }: any) => (
+    <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors duration-150" {...props} />
+  ),
+  th: ({ ...props }: any) => (
+    <th className="px-4 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-850" {...props} />
+  ),
+  td: ({ ...props }: any) => (
+    <td className="px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 whitespace-nowrap" {...props} />
+  ),
+  p: ({ ...props }: any) => (
+    <p className="mb-2 last:mb-0 leading-relaxed" {...props} />
+  ),
+  ul: ({ ...props }: any) => (
+    <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />
+  ),
+  ol: ({ ...props }: any) => (
+    <ol className="list-decimal pl-5 mb-2 space-y-1" {...props} />
+  ),
+  li: ({ ...props }: any) => (
+    <li className="text-sm" {...props} />
+  ),
+}
+
+function parseDbQueryMessage(
+  msg: MessageResponse,
+  isLatestAssistant: boolean,
+  hasAttachedDb: boolean
+) {
+  if (msg.generated_sql) {
+    return {
+      isDbQuery: true,
+      status: 'completed' as const,
+      sql: msg.generated_sql,
+      answer: msg.content.split('[FOLLOW_UP]')[0]
+    }
+  }
+
+  const content = msg.content
+  const hasSqlMarker = content.includes("**Generated SQL Query:**") || content.includes("**Regenerated SQL Query:**");
+  const hasExecutingMarker = content.includes("*Executing query...*") || content.includes("*Executing corrected query...*");
+  const hasThinkingMarker = content.includes("*Thinking... Translating your request to SQL...*");
+
+  if (hasSqlMarker || hasExecutingMarker) {
+    let sql = ""
+    const sqlMatch = content.match(/\*\*(?:Generated|Regenerated) SQL Query:\*\*\s*\n```sql\n([\s\S]*?)\n```/)
+    if (sqlMatch) {
+      sql = sqlMatch[1]
+    }
+
+    let status: 'executing_query' | 'completed' = 'executing_query'
+    let answer = ""
+
+    if (hasExecutingMarker) {
+      const parts = content.split(/\*(?:Executing query|Executing corrected query)\.\.\.\*\s*/)
+      if (parts.length > 1) {
+        const after = parts[1]
+        if (after.trim().length > 0) {
+          status = 'completed'
+          answer = after
+        }
+      }
+    }
+
+    return {
+      isDbQuery: true,
+      status,
+      sql,
+      answer
+    }
+  }
+
+  if (hasThinkingMarker) {
+    return {
+      isDbQuery: true,
+      status: 'generating_sql' as const,
+      sql: null,
+      answer: ""
+    }
+  }
+
+  if (content === "" && isLatestAssistant && hasAttachedDb) {
+    return {
+      isDbQuery: true,
+      status: 'generating_sql' as const,
+      sql: null,
+      answer: ""
+    }
+  }
+
+  return {
+    isDbQuery: false,
+    status: null,
+    sql: null,
+    answer: content.split('[FOLLOW_UP]')[0]
+  }
+}
+
 
 const ChatPage: React.FC = () => {
   const { user } = useAuthStore()
@@ -85,6 +194,7 @@ const ChatPage: React.FC = () => {
   const abortControllerRef = useRef<AbortController | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [expandedCitations, setExpandedCitations] = useState<Set<string>>(new Set())
+  const [expandedSqls, setExpandedSqls] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   const [attachedDocument, setAttachedDocument] = useState<DocumentResponse | null>(null)
@@ -1023,6 +1133,18 @@ const ChatPage: React.FC = () => {
     })
   }
 
+  const toggleSql = (messageId: string) => {
+    setExpandedSqls((prev) => {
+      const next = new Set(prev)
+      if (next.has(messageId)) {
+        next.delete(messageId)
+      } else {
+        next.add(messageId)
+      }
+      return next
+    })
+  }
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1444,143 +1566,166 @@ const ChatPage: React.FC = () => {
           </div>
         ) : (
           <div className="max-w-3xl mx-auto w-full space-y-4">
-            {messages.map((msg, index) => (
-              <div key={msg.id}>
-                {msg.role === 'user' ? (
-                  <div className="ml-auto max-w-2xl flex flex-col items-end gap-2">
-                    {msg.attached_file && (
-                      <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-sm shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-150">
-                        <FileText className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
-                        <span className="max-w-[180px] truncate font-bold">{msg.attached_file.name}</span>
-                        <span className="text-slate-400 dark:text-slate-500">{formatFileSize(msg.attached_file.size)}</span>
-                      </div>
-                    )}
-                    <div className="bg-indigo-700 dark:bg-indigo-600 text-white rounded-2xl rounded-br-md px-4 py-3">
-                      <p className="whitespace-pre-wrap">{renderMessageContentWithHighlights(msg)}</p>
-                      <p className="text-indigo-300 dark:text-indigo-200 text-xs mt-1 text-right">{formatTime(msg.created_at)}</p>
-                    </div>
-                  </div>
-                ) : msg.content === '' && msg.citations.length === 0 ? null : (
-                  <>
-                    <div className="mr-auto max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm text-slate-800 dark:text-slate-100">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          table: ({ ...props }) => (
-                            <div className="my-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm custom-scrollbar">
-                              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left border-collapse" {...props} />
-                            </div>
-                          ),
-                          thead: ({ ...props }) => (
-                            <thead className="bg-slate-50 dark:bg-slate-800/50" {...props} />
-                          ),
-                          tbody: ({ ...props }) => (
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-850 bg-white dark:bg-slate-900" {...props} />
-                          ),
-                          tr: ({ ...props }) => (
-                            <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors duration-150" {...props} />
-                          ),
-                          th: ({ ...props }) => (
-                            <th className="px-4 py-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-850" {...props} />
-                          ),
-                          td: ({ ...props }) => (
-                            <td className="px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 whitespace-nowrap" {...props} />
-                          ),
-                          p: ({ ...props }) => (
-                            <p className="mb-2 last:mb-0 leading-relaxed" {...props} />
-                          ),
-                          ul: ({ ...props }) => (
-                            <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />
-                          ),
-                          ol: ({ ...props }) => (
-                            <ol className="list-decimal pl-5 mb-2 space-y-1" {...props} />
-                          ),
-                          li: ({ ...props }) => (
-                            <li className="text-sm" {...props} />
-                          ),
-                        }}
-                      >
-                        {(() => {
-                          const mainContent = msg.content.split('[FOLLOW_UP]')[0];
-                          if (msg.generated_sql) {
-                            return `*Thinking... Translating your request to SQL...*\n\n**Generated SQL Query:**\n\`\`\`sql\n${msg.generated_sql}\n\`\`\`\n\n*Executing query...*\n\n${mainContent}`;
-                          }
-                          return mainContent;
-                        })()}
-                      </ReactMarkdown>
-                      <div className="flex items-center gap-2 mt-1 select-none">
-                        <span className="text-slate-400 dark:text-slate-500 text-xs">{formatTime(msg.created_at)}</span>
-                        {msg.resolved_model ? (
-                          <>
-                            <span className="text-slate-300 dark:text-slate-700">•</span>
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400 border border-indigo-200/45 dark:border-indigo-900/50">
-                              <span className="font-bold">Auto: </span> {msg.resolved_model}
-                            </span>
-                          </>
-                        ) : msg.model ? (
-                          <>
-                            <span className="text-slate-300 dark:text-slate-700">•</span>
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200/40 dark:border-slate-700/50">
-                              {msg.model.display_name}
-                            </span>
-                          </>
-                        ) : null}
-                      </div>
-                      {msg.was_fallback && msg.fallback_model_name && (
-                        <span className="text-xs text-amber-600 dark:text-amber-500 mt-1 block">
-                          Responded using fallback model: {msg.fallback_model_name}
-                        </span>
-                      )}
+            {messages.map((msg, index) => {
+              const isLatestAssistant = index === messages.length - 1 && isStreaming;
+              const parsed = parseDbQueryMessage(msg, isLatestAssistant, !!attachedDatabase);
 
-                      {msg.chart_spec && (
-                        <ChartRenderer spec={msg.chart_spec} />
-                      )}
-
-                      {msg.citations.length > 0 && (
-                        <div className="mt-2">
-                          <button
-                            onClick={() => toggleCitations(msg.id)}
-                            className="text-indigo-600 dark:text-indigo-400 text-sm hover:underline cursor-pointer flex items-center gap-1"
-                          >
-                            Sources ({msg.citations.length})
-                            {expandedCitations.has(msg.id) ? (
-                              <ChevronUp className="w-4 h-4" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4" />
-                            )}
-                          </button>
-
-                          {expandedCitations.has(msg.id) && (
-                            <div className="mt-2 space-y-2">
-                              {msg.citations.map((cite) => (
-                                <div key={cite.id} className="bg-slate-50 dark:bg-slate-950 rounded-lg p-3 space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <FileText className="w-4 h-4 text-indigo-500 dark:text-indigo-400 flex-shrink-0" />
-                                    <span className="text-slate-700 dark:text-slate-300 font-medium text-sm">{cite.filename}</span>
-                                    {cite.page_number !== null && (
-                                      <span className="text-slate-500 dark:text-slate-400 text-xs">Page {cite.page_number}</span>
-                                    )}
-                                  </div>
-                                  <p className="text-slate-500 dark:text-slate-400 text-xs italic">
-                                    {cite.chunk_text.length > 150
-                                      ? `${cite.chunk_text.slice(0, 150)}...`
-                                      : cite.chunk_text}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+              if (msg.role === 'user') {
+                return (
+                  <div key={msg.id}>
+                    <div className="ml-auto max-w-2xl flex flex-col items-end gap-2">
+                      {msg.attached_file && (
+                        <div className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 text-sm shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-150">
+                          <FileText className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+                          <span className="max-w-[180px] truncate font-bold">{msg.attached_file.name}</span>
+                          <span className="text-slate-400 dark:text-slate-500">{formatFileSize(msg.attached_file.size)}</span>
                         </div>
                       )}
+                      <div className="bg-indigo-700 dark:bg-indigo-600 text-white rounded-2xl rounded-br-md px-4 py-3">
+                        <p className="whitespace-pre-wrap">{renderMessageContentWithHighlights(msg)}</p>
+                        <p className="text-indigo-300 dark:text-indigo-200 text-xs mt-1 text-right">{formatTime(msg.created_at)}</p>
+                      </div>
                     </div>
-                    {msg.role === 'assistant' && renderFollowUpQuestions(msg, index)}
-                  </>
-                )}
-              </div>
-            ))}
+                  </div>
+                )
+              }
+
+              if (!parsed.isDbQuery && msg.content === '' && msg.citations.length === 0) {
+                return null
+              }
+
+              return (
+                <div key={msg.id}>
+                  <div className="mr-auto max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm text-slate-800 dark:text-slate-100">
+                    {(() => {
+                      if (parsed.isDbQuery) {
+                        return (
+                          <div className="flex flex-col gap-2.5">
+                            {parsed.status === 'generating_sql' && (
+                              <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 italic text-sm select-none py-1">
+                                <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                                <span>Thinking... Translating your request to SQL...</span>
+                              </div>
+                            )}
+                            
+                            {parsed.sql && (
+                              <div>
+                                <button
+                                  onClick={() => toggleSql(msg.id)}
+                                  className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 font-medium py-1 transition-colors duration-150 focus:outline-none w-full text-left select-none"
+                                >
+                                  <span>View SQL</span>
+                                  {expandedSqls.has(msg.id) ? (
+                                    <ChevronUp className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                                {expandedSqls.has(msg.id) && (
+                                  <pre className="mt-2 p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-lg text-xs font-mono text-slate-700 dark:text-slate-300 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                                    <code>{parsed.sql}</code>
+                                  </pre>
+                                )}
+                              </div>
+                            )}
+                            
+                            {parsed.status === 'executing_query' && (
+                              <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400 italic text-sm select-none py-1">
+                                <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
+                                <span>Executing query...</span>
+                              </div>
+                            )}
+                            
+                            {parsed.answer && (
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={markdownComponents}
+                              >
+                                {parsed.answer}
+                              </ReactMarkdown>
+                            )}
+                          </div>
+                        )
+                      }
+
+                      return (
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={markdownComponents}
+                        >
+                          {parsed.answer}
+                        </ReactMarkdown>
+                      )
+                    })()}
+
+                    <div className="flex items-center gap-2 mt-1 select-none">
+                      <span className="text-slate-400 dark:text-slate-500 text-xs">{formatTime(msg.created_at)}</span>
+                      {msg.resolved_model ? (
+                        <>
+                          <span className="text-slate-300 dark:text-slate-700">•</span>
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400 border border-indigo-200/45 dark:border-indigo-900/50">
+                            <span className="font-bold">Auto: </span> {msg.resolved_model}
+                          </span>
+                        </>
+                      ) : msg.model ? (
+                        <>
+                          <span className="text-slate-300 dark:text-slate-700">•</span>
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200/40 dark:border-slate-700/50">
+                            {msg.model.display_name}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+                    {msg.was_fallback && msg.fallback_model_name && (
+                      <span className="text-xs text-amber-600 dark:text-amber-500 mt-1 block">
+                        Responded using fallback model: {msg.fallback_model_name}
+                      </span>
+                    )}
+
+                    {msg.chart_spec && (
+                      <ChartRenderer spec={msg.chart_spec} />
+                    )}
+
+                    {msg.citations.length > 0 && (
+                      <div className="mt-2">
+                        <button
+                          onClick={() => toggleCitations(msg.id)}
+                          className="text-indigo-600 dark:text-indigo-400 text-sm hover:underline cursor-pointer flex items-center gap-1"
+                        >
+                          Sources ({msg.citations.length})
+                          {expandedCitations.has(msg.id) ? (
+                            <ChevronUp className="w-4 h-4" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4" />
+                          )}
+                        </button>
+                        {expandedCitations.has(msg.id) && (
+                          <div className="mt-2 p-3 bg-slate-50 dark:bg-slate-850 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                            {msg.citations.map((cite) => (
+                              <div key={cite.id} className="text-xs text-slate-600 dark:text-slate-300 pb-2 border-b border-slate-200/60 dark:border-slate-800/80 last:border-b-0 last:pb-0">
+                                <p className="font-semibold text-slate-700 dark:text-slate-200 mb-1 flex items-center gap-1">
+                                  <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                                  {cite.filename}
+                                </p>
+                                <p className="leading-relaxed whitespace-pre-wrap text-slate-500 dark:text-slate-400">
+                                  {cite.chunk_text.length > 150
+                                    ? `${cite.chunk_text.slice(0, 150)}...`
+                                    : cite.chunk_text}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {msg.role === 'assistant' && renderFollowUpQuestions(msg, index)}
+                </div>
+              )
+            })}
 
             {/* Typing indicator */}
-            {isLoading && (
+            {isLoading && !attachedDatabase && (
               <div className="mr-auto w-fit bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
                 <div className="flex items-center gap-1.5">
                   <span
