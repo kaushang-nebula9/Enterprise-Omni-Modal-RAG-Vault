@@ -70,6 +70,53 @@ def create_report(
     )
 
 
+@router.get(
+    "/sessions/{session_id}/reports/latest", response_model=ReportStatusResponse
+)
+def get_latest_report_status(
+    session_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get the latest report generation status and agent run steps of a session.
+    """
+    report = (
+        db.query(GeneratedReport)
+        .options(joinedload(GeneratedReport.runs))
+        .filter(GeneratedReport.session_id == session_id)
+        .order_by(GeneratedReport.created_at.desc())
+        .first()
+    )
+    if not report or report.tenant_id != current_user.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No report found for this session",
+        )
+
+    # Sort runs by created_at to preserve execution order
+    sorted_runs = sorted(report.runs, key=lambda r: r.created_at)
+
+    steps = [
+        ReportStepResponse(
+            step_name=r.step_name,
+            status=r.status,
+            duration_ms=r.duration_ms,
+            error_message=r.error_message,
+        )
+        for r in sorted_runs
+    ]
+
+    return ReportStatusResponse(
+        report_id=report.id,
+        status=report.status,
+        title=report.title,
+        created_at=report.created_at,
+        completed_at=report.completed_at,
+        steps=steps,
+    )
+
+
 @router.get("/reports/{report_id}/status", response_model=ReportStatusResponse)
 def get_report_status(
     report_id: uuid.UUID,

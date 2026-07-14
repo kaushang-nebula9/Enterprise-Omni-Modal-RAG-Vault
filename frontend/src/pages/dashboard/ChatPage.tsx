@@ -29,6 +29,7 @@ import type { DocumentResponse, FileType } from '../../types/document'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ChartRenderer } from '../../components/dashboard/ChartRenderer'
+import { ReportGenerationPanel } from '../../components/dashboard/ReportGenerationPanel'
 
 
 interface UploadedFile {
@@ -1547,7 +1548,7 @@ const ChatPage: React.FC = () => {
 
 
   return (
-    <div className="flex flex-col -m-6 h-[calc(100vh-4rem)]">
+    <div className="flex flex-col -m-6 h-[calc(100vh-4rem)] relative">
       {/* Toast notification */}
       {toast && (
         <div
@@ -1556,6 +1557,13 @@ const ChatPage: React.FC = () => {
           }`}
         >
           {toast.message}
+        </div>
+      )}
+
+      {/* Chat Session Header */}
+      {sessionId && (
+        <div className="absolute top-4 right-6 z-20 select-none">
+          <ReportGenerationPanel sessionId={sessionId} />
         </div>
       )}
 

@@ -79,3 +79,19 @@ export interface QueryResponse {
   citations: CitationResponse[]
   message_id: string
 }
+
+export interface ReportAgentStep {
+  step_name: 'gather' | 'cluster' | 'synthesize' | 'assemble' | 'render' | 'deliver';
+  status: 'running' | 'success' | 'failed';
+  duration_ms: number | null;
+  error_message: string | null;
+}
+
+export interface ReportStatus {
+  report_id: string;
+  status: 'generating' | 'complete' | 'failed';
+  title: string;
+  created_at: string;
+  completed_at: string | null;
+  steps: ReportAgentStep[];
+}

@@ -18,7 +18,12 @@ from app.models.query_message import QueryMessage
 from app.models.enums import MessageRole
 from app.models.generated_report import GeneratedReport
 from app.models.report_agent_run import ReportAgentRun
-from app.api.reports import create_report, get_report_status, download_report
+from app.api.reports import (
+    create_report,
+    get_report_status,
+    download_report,
+    get_latest_report_status,
+)
 from fastapi import HTTPException, status
 from fastapi.responses import FileResponse
 
@@ -64,6 +69,14 @@ def db_fixture():
     finally:
         session.close()
         Base.metadata.drop_all(bind=engine)
+
+
+@pytest.fixture(autouse=True)
+def mock_celery_agent():
+    from unittest.mock import patch
+
+    with patch("app.tasks.report_agent.run_report_generation_agent") as mock:
+        yield mock
 
 
 def test_create_report_empty_session(db):
@@ -332,3 +345,74 @@ def test_download_report_success(db):
     finally:
         if os.path.exists(temp_pdf_path):
             os.remove(temp_pdf_path)
+
+
+def test_get_latest_report_status_success(db):
+    user = db.user
+    tenant = db.tenant
+
+    query_session = QuerySession(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        tenant_id=tenant.id,
+        title="Session for latest report",
+    )
+    db.add(query_session)
+    db.commit()
+
+    # Create two reports to verify we get the latest (descending by created_at)
+    report_old = GeneratedReport(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        session_id=query_session.id,
+        generated_by=user.id,
+        title="Old Report",
+        status="complete",
+        created_at=datetime(2026, 7, 14, 12, 0, 0, tzinfo=timezone.utc),
+    )
+    report_new = GeneratedReport(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        session_id=query_session.id,
+        generated_by=user.id,
+        title="New Report",
+        status="generating",
+        created_at=datetime(2026, 7, 14, 13, 0, 0, tzinfo=timezone.utc),
+    )
+    db.add_all([report_old, report_new])
+    db.commit()
+
+    # Add agent run to the new report
+    run = ReportAgentRun(
+        id=uuid.uuid4(),
+        report_id=report_new.id,
+        step_name="gather",
+        status="success",
+        duration_ms=150,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(run)
+    db.commit()
+
+    response = get_latest_report_status(
+        session_id=query_session.id, current_user=user, db=db
+    )
+    assert response.report_id == report_new.id
+    assert response.status == "generating"
+    assert response.title == "New Report"
+    assert len(response.steps) == 1
+    assert response.steps[0].step_name == "gather"
+    assert response.steps[0].duration_ms == 150
+
+
+def test_get_latest_report_status_not_found(db):
+    user = db.user
+    non_existent_session_id = uuid.uuid4()
+
+    with pytest.raises(HTTPException) as exc_info:
+        get_latest_report_status(
+            session_id=non_existent_session_id, current_user=user, db=db
+        )
+
+    assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+    assert "No report found for this session" in exc_info.value.detail
