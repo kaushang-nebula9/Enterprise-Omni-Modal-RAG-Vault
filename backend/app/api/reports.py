@@ -59,10 +59,10 @@ def create_report(
     db.commit()
     db.refresh(report)
 
-    # 4. Dispatch Celery task (placeholder for now)
-    # TODO: Import the Celery task for report generation and dispatch it:
-    # from app.tasks.report_tasks import generate_report_task
-    # generate_report_task.delay(report.id)
+    # 4. Dispatch Celery task
+    from app.tasks.report_agent import run_report_generation_agent
+
+    run_report_generation_agent.delay(str(report.id))
 
     return ReportCreateResponse(
         report_id=report.id,

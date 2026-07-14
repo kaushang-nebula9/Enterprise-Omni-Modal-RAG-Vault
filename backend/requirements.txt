@@ -39,3 +39,5 @@ redis
 flower
 sqlglot
 pymysql
+matplotlib
+reportlab

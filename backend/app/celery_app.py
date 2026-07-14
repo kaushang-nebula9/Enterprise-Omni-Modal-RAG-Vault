@@ -35,4 +35,5 @@ celery_app.autodiscover_tasks(["app.tasks"])
 # Explicitly import task modules to guarantee registration regardless of autodiscovery timing
 import app.tasks.document_tasks  # noqa: E402
 import app.tasks.billing_tasks  # noqa: E402
-import app.tasks.evaluation_tasks  # noqa: E402, F401
+import app.tasks.evaluation_tasks  # noqa: E402
+import app.tasks.report_agent  # noqa: E402 F401
