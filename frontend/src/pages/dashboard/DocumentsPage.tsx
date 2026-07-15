@@ -18,6 +18,9 @@ import {
   Square,
   AlertTriangle,
   ChevronDown,
+  Folder,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { documentService } from "../../services/documentService";
 import { roleService } from "../../services/roleService";
@@ -31,6 +34,10 @@ import type {
   DocumentStatus,
 } from "../../types/document";
 import type { RoleResponse } from "../../types/auth";
+import { useAuthStore } from "../../store/authStore";
+import { useCollections } from "../../hooks/useCollections";
+import { CollectionsSidebar } from "../../components/dashboard/CollectionsSidebar";
+import { MoveToCollectionMenu } from "../../components/dashboard/MoveToCollectionMenu";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -939,10 +946,50 @@ export default function DocumentsPage() {
     }
   }, [location]);
 
-  const { data: documents = [], isLoading: docsLoading } = useQuery({
-    queryKey: ["documents"],
-    queryFn: documentService.getDocuments,
+  const { user } = useAuthStore();
+  const isAdmin = user?.role?.is_admin ?? false;
+
+  const {
+    collections,
+    uncategorizedCount,
+    totalDocuments,
+    fetchCollections,
+    handleCreateCollection,
+    handleRenameCollection,
+    handleDeleteCollection,
+    handleMoveDocument,
+  } = useCollections();
+
+  const [selectedFilter, setSelectedFilter] = useState<{
+    type: "all" | "uncategorized" | "collection";
+    collectionId?: string;
+  }>({ type: "all" });
+
+  const [isCollectionsCollapsed, setIsCollectionsCollapsed] = useState(() => {
+    return localStorage.getItem("collections_sidebar_collapsed") === "true";
   });
+
+  const toggleCollectionsCollapse = () => {
+    setIsCollectionsCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("collections_sidebar_collapsed", String(next));
+      return next;
+    });
+  };
+
+  const { data: documents = [], isLoading: docsLoading } = useQuery({
+    queryKey: ["documents", selectedFilter],
+    queryFn: () => {
+      const collectionId = selectedFilter.type === "collection" ? selectedFilter.collectionId : undefined;
+      const uncategorized = selectedFilter.type === "uncategorized" ? true : undefined;
+      return documentService.getDocuments(collectionId, uncategorized);
+    },
+  });
+
+  const onMoveDocument = async (documentId: string, collectionId: string | null) => {
+    await handleMoveDocument(documentId, collectionId);
+    queryClient.invalidateQueries({ queryKey: ["documents"] });
+  };
 
   const { data: roles = [] } = useQuery({
     queryKey: ["roles"],
@@ -991,6 +1038,7 @@ export default function DocumentsPage() {
   function handleSuccess(message: string) {
     setModal({ type: "none" });
     queryClient.invalidateQueries({ queryKey: ["documents"] });
+    fetchCollections();
     setSuccessMessage(message);
     setTimeout(() => setSuccessMessage(null), 4000);
   }
@@ -999,8 +1047,36 @@ export default function DocumentsPage() {
     documentService.downloadDocument(doc.id, doc.filename);
   }
 
+  const currentHeading = useMemo(() => {
+    if (selectedFilter.type === "all") return "All Documents";
+    if (selectedFilter.type === "uncategorized") return "Uncategorized";
+    if (selectedFilter.type === "collection") {
+      const col = collections.find((c) => c.id === selectedFilter.collectionId);
+      return col ? col.name : "Collection Documents";
+    }
+    return "Documents";
+  }, [selectedFilter, collections]);
+
   return (
-    <div className="space-y-6 text-slate-800 dark:text-slate-100 animate-in fade-in duration-300">
+    <div className="flex h-full min-h-[calc(100vh-8rem)] text-slate-800 dark:text-slate-100 animate-in fade-in duration-300 gap-6">
+      {/* Left Column: Collections Sidebar */}
+      {!isCollectionsCollapsed && (
+        <CollectionsSidebar
+          collections={collections}
+          uncategorizedCount={uncategorizedCount}
+          totalDocuments={totalDocuments}
+          selectedFilter={selectedFilter}
+          onFilterChange={setSelectedFilter}
+          onCreateCollection={handleCreateCollection}
+          onRenameCollection={handleRenameCollection}
+          onDeleteCollection={handleDeleteCollection}
+          isAdmin={isAdmin}
+        />
+      )}
+
+
+      {/* Right Column: Existing Document List */}
+      <div className="flex-1 flex flex-col space-y-6 min-w-0">
       {/* Success toast */}
       {successMessage && (
         <div className="fixed top-6 right-6 z-50 flex items-center gap-3 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium animate-fade-in">
@@ -1019,13 +1095,26 @@ export default function DocumentsPage() {
 
       {/* Page Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-            Documents
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            Manage your organisation's knowledge base
-          </p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={toggleCollectionsCollapse}
+            className="rounded-full text-slate-600 hover:text-slate-650 dark:hover:text-slate-300  transition-all shrink-0 cursor-pointer"
+            title={isCollectionsCollapsed ? "Show collections" : "Hide collections"}
+          >
+            {isCollectionsCollapsed ? (
+              <ChevronRight className="w-5 h-5" />
+            ) : (
+              <ChevronLeft className="w-5 h-5" />
+            )}
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+              {currentHeading}
+            </h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+              Manage your organisation's knowledge base
+            </p>
+          </div>
         </div>
         <button
           id="new-document-btn"
@@ -1261,14 +1350,24 @@ export default function DocumentsPage() {
                     >
                       {/* File Name */}
                       <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <TypeIcon className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0" />
-                          <span
-                            className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[200px]"
-                            title={doc.filename}
-                          >
-                            {doc.filename}
-                          </span>
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <TypeIcon className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0 mt-0.5" />
+                          <div className="flex flex-col min-w-0">
+                            <span
+                              className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[200px]"
+                              title={doc.filename}
+                            >
+                              {doc.filename}
+                            </span>
+                            {doc.collection_name && (
+                              <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500 dark:text-slate-455 bg-slate-100/70 dark:bg-slate-800/80 px-2 py-0.5 rounded-full mt-1 w-max">
+                                <Folder className="w-3 h-3 text-slate-400 dark:text-slate-500" />
+                                <span className="truncate max-w-[120px]">
+                                  {doc.collection_name}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
 
@@ -1326,6 +1425,16 @@ export default function DocumentsPage() {
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
+
+                          {isAdmin && (
+                            <MoveToCollectionMenu
+                              documentId={doc.id}
+                              currentCollectionId={doc.collection_id}
+                              collections={collections}
+                              onMove={onMoveDocument}
+                            />
+                          )}
+
                           <button
                             title="Delete"
                             onClick={() =>
@@ -1384,6 +1493,7 @@ export default function DocumentsPage() {
           onSuccess={() => handleSuccess("Document deleted successfully")}
         />
       )}
+      </div>
     </div>
   );
 }

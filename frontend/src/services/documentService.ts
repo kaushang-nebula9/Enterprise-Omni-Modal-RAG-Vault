@@ -1,5 +1,5 @@
 import api from "./api";
-import type { DocumentResponse } from "../types/document";
+import type { DocumentResponse, CollectionResponse, CollectionListResponse } from "../types/document";
 import type { MessageResponse, RoleResponse } from "../types/auth";
 
 export const documentService = {
@@ -29,8 +29,18 @@ export const documentService = {
   /**
    * Fetch all organisation documents for the current tenant.
    */
-  getDocuments: async (): Promise<DocumentResponse[]> => {
-    const response = await api.get("/api/v1/documents");
+  getDocuments: async (
+    collectionId?: string | null,
+    uncategorized?: boolean,
+  ): Promise<DocumentResponse[]> => {
+    const params: Record<string, any> = {};
+    if (collectionId !== undefined && collectionId !== null) {
+      params.collection_id = collectionId;
+    }
+    if (uncategorized) {
+      params.uncategorized = true;
+    }
+    const response = await api.get("/api/v1/documents", { params });
     return response.data;
   },
 
@@ -161,4 +171,31 @@ export const documentService = {
     );
     return response.data;
   },
+};
+
+// Collections API
+export const getCollections = async (): Promise<CollectionListResponse> => {
+  const response = await api.get("/api/collections");
+  return response.data;
+};
+
+export const createCollection = async (data: { name: string; description?: string }): Promise<CollectionResponse> => {
+  const response = await api.post("/api/collections", data);
+  return response.data;
+};
+
+export const renameCollection = async (collectionId: string, name: string): Promise<CollectionResponse> => {
+  const response = await api.patch(`/api/collections/${collectionId}`, { name });
+  return response.data;
+};
+
+export const deleteCollection = async (collectionId: string): Promise<void> => {
+  await api.delete(`/api/collections/${collectionId}`);
+};
+
+export const moveDocumentToCollection = async (
+  documentId: string,
+  collectionId: string | null
+): Promise<void> => {
+  await api.patch(`/api/documents/${documentId}/collection`, { collection_id: collectionId });
 };

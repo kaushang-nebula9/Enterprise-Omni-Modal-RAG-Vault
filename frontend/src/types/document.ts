@@ -25,4 +25,22 @@ export interface DocumentResponse {
   granted_via?: "direct" | "inherited" | "department" | null;
   inherited_from_role_name?: string | null;
   department_name?: string | null;
+  collection_id: string | null;
+  collection_name: string | null;
+}
+
+export interface CollectionResponse {
+  id: string;
+  name: string;
+  description: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  document_count: number;
+}
+
+export interface CollectionListResponse {
+  collections: CollectionResponse[];
+  uncategorized_count: number;
+  total_documents: number;
 }
