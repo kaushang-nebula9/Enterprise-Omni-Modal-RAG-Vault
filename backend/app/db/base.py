@@ -32,5 +32,7 @@ from app.models.external_database import (
 from app.models.db_query_log import DBQueryLog
 from app.models.generated_report import GeneratedReport
 from app.models.report_agent_run import ReportAgentRun
+from app.models.collection import Collection
+
 
 

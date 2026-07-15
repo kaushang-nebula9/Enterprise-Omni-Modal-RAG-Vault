@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.query_session import QuerySession
     from app.models.role import Role
     from app.models.available_model import AvailableModel
+    from app.models.collection import Collection
 
 
 class Tenant(Base):
@@ -47,6 +48,9 @@ class Tenant(Base):
     )
     roles: Mapped[list["Role"]] = relationship(
         "Role", back_populates="tenant", cascade="all, delete-orphan"
+    )
+    collections: Mapped[list["Collection"]] = relationship(
+        "Collection", back_populates="tenant", cascade="all, delete-orphan"
     )
     default_model: Mapped[Optional["AvailableModel"]] = relationship(
         "AvailableModel", foreign_keys=[default_model_id]

@@ -23,6 +23,8 @@ class DocumentResponse(BaseModel):
     granted_via: Optional[str] = None
     inherited_from_role_name: Optional[str] = None
     department_name: Optional[str] = None
+    collection_id: Optional[UUID] = None
+    collection_name: Optional[str] = None
     uploaded_at: datetime
     updated_at: datetime
 
@@ -47,19 +49,22 @@ class DocumentWithAccessResponse(DocumentResponse):
         DocumentAccessPolicy into its nested role (a Role ORM object),
         which Pydantic will then serialise as RoleResponse.
         """
+        if isinstance(data, dict):
+            return data
+
         if hasattr(data, "access_policies"):
             policies = data.access_policies or []
-            # Replace the raw policy list with the role objects so Pydantic
-            # can serialise them using RoleResponse(from_attributes=True)
-            object.__setattr__(
-                data,
-                "_resolved_roles",
-                [p.role for p in policies if p.role is not None],
-            )
-            # We override access_policies with the resolved roles
-            data.__dict__["access_policies"] = [
-                p.role for p in policies if p.role is not None
-            ]
+            roles = [p.role for p in policies if p.role is not None]
+
+            # Construct a dict of fields to return
+            res = {}
+            for field in cls.model_fields.keys():
+                if field == "access_policies":
+                    res["access_policies"] = roles
+                else:
+                    res[field] = getattr(data, field, None)
+            return res
+
         return data
 
 

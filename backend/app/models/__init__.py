@@ -22,4 +22,6 @@ from .external_database import (
 from .db_query_log import DBQueryLog
 from .generated_report import GeneratedReport
 from .report_agent_run import ReportAgentRun
+from .collection import Collection
+
 

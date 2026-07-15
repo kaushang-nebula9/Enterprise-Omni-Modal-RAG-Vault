@@ -394,26 +394,37 @@ def upload_document(
 
 @router.get("", response_model=list[DocumentWithAccessResponse])
 def get_documents(
+    collection_id: uuid.UUID | None = Query(None),
+    uncategorized: bool = Query(False),
     current_admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """Return all organisation-owned documents for the admin's tenant."""
-    docs = (
+    query = (
         db.query(Document)
         .options(
-            joinedload(Document.access_policies).joinedload(DocumentAccessPolicy.role)
+            joinedload(Document.access_policies).joinedload(DocumentAccessPolicy.role),
+            joinedload(Document.collection),
         )
         .filter(
             Document.tenant_id == current_admin.tenant_id,
             Document.owner_type == OwnerType.organisation,
         )
-        .all()
     )
+
+    if collection_id is not None:
+        query = query.filter(Document.collection_id == collection_id)
+    elif uncategorized:
+        query = query.filter(Document.collection_id.is_(None))
+
+    docs = query.all()
     return docs
 
 
 @router.get("/authorized", response_model=list[DocumentResponse])
 def get_authorized_documents(
+    collection_id: uuid.UUID | None = Query(None),
+    uncategorized: bool = Query(False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -424,15 +435,17 @@ def get_authorized_documents(
     """
     from sqlalchemy.orm import aliased
     from app.models.department import Department
+    from app.models.collection import Collection
 
     InheritedRole = aliased(Role)
 
-    rows = (
+    query = (
         db.query(
             Document,
             DocumentAccessPolicy.granted_via,
             InheritedRole.name,
             Department.name,
+            Collection.name.label("collection_name"),
         )
         .join(DocumentAccessPolicy, Document.id == DocumentAccessPolicy.document_id)
         .outerjoin(
@@ -443,20 +456,31 @@ def get_authorized_documents(
             Department,
             DocumentAccessPolicy.granted_via_department_id == Department.id,
         )
+        .outerjoin(
+            Collection,
+            Document.collection_id == Collection.id,
+        )
         .filter(
             Document.tenant_id == current_user.tenant_id,
             Document.owner_type == OwnerType.organisation,
             DocumentAccessPolicy.role_id == current_user.role_id,
         )
-        .all()
     )
 
+    if collection_id is not None:
+        query = query.filter(Document.collection_id == collection_id)
+    elif uncategorized:
+        query = query.filter(Document.collection_id.is_(None))
+
+    rows = query.all()
+
     results: list[dict] = []
-    for doc, granted_via, inherited_role_name, dept_name in rows:
+    for doc, granted_via, inherited_role_name, dept_name, coll_name in rows:
         d = DocumentResponse.model_validate(doc)
         d.granted_via = granted_via
         d.inherited_from_role_name = inherited_role_name
         d.department_name = dept_name
+        d.collection_name = coll_name
         results.append(d)
     return results
 

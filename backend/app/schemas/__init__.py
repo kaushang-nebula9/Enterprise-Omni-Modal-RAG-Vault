@@ -18,4 +18,12 @@ from .report import (
     ReportStepResponse,
     ReportStatusResponse,
 )
+from .collection import (
+    CollectionCreate,
+    CollectionRename,
+    DocumentMoveToCollection,
+    CollectionResponse,
+    CollectionListResponse,
+)
+
 

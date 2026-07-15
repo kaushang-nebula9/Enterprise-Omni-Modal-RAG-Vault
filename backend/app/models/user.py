@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.refresh_token import RefreshToken
     from app.models.invite_token import InviteToken
     from app.models.role import Role
+    from app.models.collection import Collection
 
 
 class User(Base):
@@ -55,6 +56,9 @@ class User(Base):
     )
     invite_tokens: Mapped[list["InviteToken"]] = relationship(
         "InviteToken", back_populates="user", cascade="all, delete-orphan"
+    )
+    collections: Mapped[list["Collection"]] = relationship(
+        "Collection", back_populates="creator", cascade="all, delete-orphan"
     )
 
     @property

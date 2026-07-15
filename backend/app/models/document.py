@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from app.models.user import User
     from app.models.document_access_policy import DocumentAccessPolicy
     from app.models.query_citation import QueryCitation
+    from app.models.collection import Collection
 
 
 class Document(Base):
@@ -48,6 +49,12 @@ class Document(Base):
     file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     excel_schema: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    collection_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid,
+        ForeignKey("collections.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -67,3 +74,10 @@ class Document(Base):
     citations: Mapped[list["QueryCitation"]] = relationship(
         "QueryCitation", back_populates="document", cascade="all, delete-orphan"
     )
+    collection: Mapped[Optional["Collection"]] = relationship(
+        "Collection", back_populates="documents"
+    )
+
+    @property
+    def collection_name(self) -> Optional[str]:
+        return self.collection.name if self.collection else None

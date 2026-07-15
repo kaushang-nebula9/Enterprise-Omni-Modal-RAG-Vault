@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.api.reports import router as reports_router
+from app.api.collections import router as collections_router
 
 import logging
 from app.core.config import settings
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Enterprise OmniModal RAG Vault API")
 app.include_router(api_router, prefix="/api/v1")
 app.include_router(reports_router, prefix="/api")
+app.include_router(collections_router, prefix="/api")
 
 
 @app.on_event("startup")
