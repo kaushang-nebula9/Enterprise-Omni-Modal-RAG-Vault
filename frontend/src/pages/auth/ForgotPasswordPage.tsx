@@ -1,24 +1,35 @@
-import React, { useState, useRef } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Eye, EyeOff, AlertTriangle, ArrowLeft, CheckCircle2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { forgotPassword, resetPassword } from '../../services/authService';
+import React, { useState, useRef } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import {
+  Eye,
+  EyeOff,
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+} from "lucide-react";
+import { Link } from "react-router-dom";
+import { forgotPassword, resetPassword } from "../../services/authService";
 
 // Schema for Phase 1: Request OTP
 const requestOtpSchema = z.object({
-  email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
+  email: z
+    .string()
+    .min(1, "Email is required")
+    .email("Please enter a valid email address"),
 });
 
 // Schema for Phase 2: Reset Password
-const resetPasswordSchema = z.object({
-  new_password: z.string().min(8, 'Password must be at least 8 characters'),
-  confirm_password: z.string().min(1, 'Confirm password is required'),
-}).refine((data) => data.new_password === data.confirm_password, {
-  message: "Passwords do not match",
-  path: ['confirm_password'],
-});
+const resetPasswordSchema = z
+  .object({
+    new_password: z.string().min(8, "Password must be at least 8 characters"),
+    confirm_password: z.string().min(1, "Confirm password is required"),
+  })
+  .refine((data) => data.new_password === data.confirm_password, {
+    message: "Passwords do not match",
+    path: ["confirm_password"],
+  });
 
 type RequestOtpFormValues = z.infer<typeof requestOtpSchema>;
 type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;
@@ -26,16 +37,16 @@ type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;
 const ForgotPasswordPage: React.FC = () => {
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [isResetSuccess, setIsResetSuccess] = useState(false);
-  const [userEmail, setUserEmail] = useState('');
+  const [userEmail, setUserEmail] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  
+
   const [apiError, setApiError] = useState<string | null>(null);
   const [apiSuccess, setApiSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // OTP inputs
-  const [otp, setOtp] = useState<string[]>(Array(6).fill(''));
+  const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Form 1: Email Request
@@ -45,7 +56,7 @@ const ForgotPasswordPage: React.FC = () => {
     formState: { errors: emailErrors },
   } = useForm<RequestOtpFormValues>({
     resolver: zodResolver(requestOtpSchema),
-    defaultValues: { email: '' },
+    defaultValues: { email: "" },
   });
 
   // Form 2: Password Reset
@@ -55,7 +66,7 @@ const ForgotPasswordPage: React.FC = () => {
     formState: { errors: resetErrors },
   } = useForm<ResetPasswordFormValues>({
     resolver: zodResolver(resetPasswordSchema),
-    defaultValues: { new_password: '', confirm_password: '' },
+    defaultValues: { new_password: "", confirm_password: "" },
   });
 
   const onRequestOtpSubmit = async (data: RequestOtpFormValues) => {
@@ -64,13 +75,17 @@ const ForgotPasswordPage: React.FC = () => {
     try {
       await forgotPassword({ email: data.email });
       setUserEmail(data.email);
-      setApiSuccess('If an account with this email exists, a code has been sent.');
+      setApiSuccess(
+        "If an account with this email exists, a code has been sent.",
+      );
       setIsOtpSent(true);
     } catch (err: any) {
       if (err.response && err.response.data && err.response.data.detail) {
         setApiError(err.response.data.detail);
       } else {
-        setApiError('Failed to send verification code. Please check your email address and try again.');
+        setApiError(
+          "Failed to send verification code. Please check your email address and try again.",
+        );
       }
     } finally {
       setIsLoading(false);
@@ -78,9 +93,9 @@ const ForgotPasswordPage: React.FC = () => {
   };
 
   const onResetPasswordSubmit = async (data: ResetPasswordFormValues) => {
-    const otpCode = otp.join('');
+    const otpCode = otp.join("");
     if (otpCode.length < 6) {
-      setApiError('Please enter the 6-digit verification code.');
+      setApiError("Please enter the 6-digit verification code.");
       return;
     }
 
@@ -94,12 +109,14 @@ const ForgotPasswordPage: React.FC = () => {
         confirm_password: data.confirm_password,
       });
       setIsResetSuccess(true);
-      setApiSuccess('Password reset successfully.');
+      setApiSuccess("Password reset successfully.");
     } catch (err: any) {
       if (err.response && err.response.data && err.response.data.detail) {
         setApiError(err.response.data.detail);
       } else {
-        setApiError('Invalid verification code or failed to reset password. Please try again.');
+        setApiError(
+          "Invalid verification code or failed to reset password. Please try again.",
+        );
       }
     } finally {
       setIsLoading(false);
@@ -108,7 +125,7 @@ const ForgotPasswordPage: React.FC = () => {
 
   // OTP input handlers
   const handleOtpChange = (value: string, index: number) => {
-    const cleanValue = value.replace(/[^a-zA-Z0-9]/g, '');
+    const cleanValue = value.replace(/[^a-zA-Z0-9]/g, "");
     const newOtp = [...otp];
     const char = cleanValue.slice(-1);
     newOtp[index] = char;
@@ -119,11 +136,14 @@ const ForgotPasswordPage: React.FC = () => {
     }
   };
 
-  const handleOtpKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
-    if (e.key === 'Backspace') {
+  const handleOtpKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    index: number,
+  ) => {
+    if (e.key === "Backspace") {
       if (!otp[index] && index > 0) {
         const newOtp = [...otp];
-        newOtp[index - 1] = '';
+        newOtp[index - 1] = "";
         setOtp(newOtp);
         inputRefs.current[index - 1]?.focus();
       }
@@ -132,7 +152,7 @@ const ForgotPasswordPage: React.FC = () => {
 
   const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pastedData = e.clipboardData.getData('text').trim().slice(0, 6);
+    const pastedData = e.clipboardData.getData("text").trim().slice(0, 6);
     if (pastedData.length > 0) {
       const newOtp = [...otp];
       for (let i = 0; i < Math.min(pastedData.length, 6); i++) {
@@ -188,7 +208,11 @@ const ForgotPasswordPage: React.FC = () => {
             Reset your password
           </h2>
           <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-            Enter the 6-digit code sent to <span className="font-semibold text-slate-800 dark:text-slate-200">{userEmail}</span> and your new password.
+            Enter the 6-digit code sent to{" "}
+            <span className="font-semibold text-slate-800 dark:text-slate-200">
+              {userEmail}
+            </span>{" "}
+            and your new password.
           </p>
         </div>
 
@@ -205,13 +229,20 @@ const ForgotPasswordPage: React.FC = () => {
           <div className="mb-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded-lg p-4 flex items-start gap-3 text-red-700 dark:text-red-450 text-sm">
             <AlertTriangle className="h-5 w-5 text-red-500 dark:text-red-450 shrink-0 mt-0.5" />
             <div>
-              <h4 className="font-bold text-red-800 dark:text-red-300">Reset Failed</h4>
-              <p className="mt-1 text-red-700 dark:text-red-400/90">{apiError}</p>
+              <h4 className="font-bold text-red-800 dark:text-red-300">
+                Reset Failed
+              </h4>
+              <p className="mt-1 text-red-700 dark:text-red-400/90">
+                {apiError}
+              </p>
             </div>
           </div>
         )}
 
-        <form onSubmit={handleSubmitReset(onResetPasswordSubmit)} className="space-y-6">
+        <form
+          onSubmit={handleSubmitReset(onResetPasswordSubmit)}
+          className="space-y-6"
+        >
           {/* OTP boxes */}
           <div>
             <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
@@ -238,17 +269,22 @@ const ForgotPasswordPage: React.FC = () => {
 
           {/* New Password */}
           <div>
-            <label htmlFor="new_password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+            <label
+              htmlFor="new_password"
+              className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2"
+            >
               New Password
             </label>
             <div className="relative">
               <input
                 id="new_password"
-                type={showNewPassword ? 'text' : 'password'}
+                type={showNewPassword ? "text" : "password"}
                 placeholder="••••••••"
-                {...registerReset('new_password')}
+                {...registerReset("new_password")}
                 className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
-                  resetErrors.new_password ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
+                  resetErrors.new_password
+                    ? "border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450"
+                    : "border-slate-200 dark:border-slate-700"
                 }`}
               />
               <button
@@ -256,27 +292,38 @@ const ForgotPasswordPage: React.FC = () => {
                 onClick={() => setShowNewPassword(!showNewPassword)}
                 className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-350"
               >
-                {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                {showNewPassword ? (
+                  <EyeOff className="h-5 w-5" />
+                ) : (
+                  <Eye className="h-5 w-5" />
+                )}
               </button>
             </div>
             {resetErrors.new_password && (
-              <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{resetErrors.new_password.message}</p>
+              <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">
+                {resetErrors.new_password.message}
+              </p>
             )}
           </div>
 
           {/* Confirm Password */}
           <div>
-            <label htmlFor="confirm_password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+            <label
+              htmlFor="confirm_password"
+              className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2"
+            >
               Confirm Password
             </label>
             <div className="relative">
               <input
                 id="confirm_password"
-                type={showConfirmPassword ? 'text' : 'password'}
+                type={showConfirmPassword ? "text" : "password"}
                 placeholder="••••••••"
-                {...registerReset('confirm_password')}
+                {...registerReset("confirm_password")}
                 className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-405 focus:border-transparent ${
-                  resetErrors.confirm_password ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
+                  resetErrors.confirm_password
+                    ? "border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450"
+                    : "border-slate-200 dark:border-slate-700"
                 }`}
               />
               <button
@@ -284,11 +331,17 @@ const ForgotPasswordPage: React.FC = () => {
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-350"
               >
-                {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                {showConfirmPassword ? (
+                  <EyeOff className="h-5 w-5" />
+                ) : (
+                  <Eye className="h-5 w-5" />
+                )}
               </button>
             </div>
             {resetErrors.confirm_password && (
-              <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{resetErrors.confirm_password.message}</p>
+              <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">
+                {resetErrors.confirm_password.message}
+              </p>
             )}
           </div>
 
@@ -299,12 +352,28 @@ const ForgotPasswordPage: React.FC = () => {
             className="bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200 flex items-center justify-center gap-2"
           >
             {isLoading ? (
-              <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              <svg
+                className="animate-spin h-5 w-5 text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
               </svg>
             ) : (
-              'Reset Password'
+              "Reset Password"
             )}
           </button>
         </form>
@@ -337,28 +406,40 @@ const ForgotPasswordPage: React.FC = () => {
         <div className="mb-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded-lg p-4 flex items-start gap-3 text-red-700 dark:text-red-450 text-sm">
           <AlertTriangle className="h-5 w-5 text-red-500 dark:text-red-450 shrink-0 mt-0.5" />
           <div>
-            <h4 className="font-bold text-red-800 dark:text-red-300">Reset Request Failed</h4>
+            <h4 className="font-bold text-red-800 dark:text-red-300">
+              Reset Request Failed
+            </h4>
             <p className="mt-1 text-red-700 dark:text-red-400/90">{apiError}</p>
           </div>
         </div>
       )}
 
-      <form onSubmit={handleSubmitEmail(onRequestOtpSubmit)} className="space-y-6">
+      <form
+        onSubmit={handleSubmitEmail(onRequestOtpSubmit)}
+        className="space-y-6"
+      >
         <div>
-          <label htmlFor="email" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+          <label
+            htmlFor="email"
+            className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2"
+          >
             Work Email
           </label>
           <input
             id="email"
             type="email"
             placeholder="john@company.com"
-            {...registerEmail('email')}
+            {...registerEmail("email")}
             className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
-              emailErrors.email ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
+              emailErrors.email
+                ? "border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450"
+                : "border-slate-200 dark:border-slate-700"
             }`}
           />
           {emailErrors.email && (
-            <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{emailErrors.email.message}</p>
+            <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">
+              {emailErrors.email.message}
+            </p>
           )}
         </div>
 
@@ -368,12 +449,28 @@ const ForgotPasswordPage: React.FC = () => {
           className="bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200 flex items-center justify-center gap-2"
         >
           {isLoading ? (
-            <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            <svg
+              className="animate-spin h-5 w-5 text-white"
+              fill="none"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+              />
             </svg>
           ) : (
-            'Send Reset Code'
+            "Send Reset Code"
           )}
         </button>
       </form>

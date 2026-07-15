@@ -1,30 +1,27 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
-import { useReportGeneration } from '../../hooks/useReportGeneration';
-import { ReportStepIndicator } from './ReportStepIndicator';
-import { getSessionReports } from '../../services/reportService';
+import React, { useState, useRef, useEffect } from "react";
+import { ChevronDown } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { useReportGeneration } from "../../hooks/useReportGeneration";
+import { ReportStepIndicator } from "./ReportStepIndicator";
+import { getSessionReports } from "../../services/reportService";
 
 interface ReportGenerationPanelProps {
   sessionId: string;
 }
 
-export const ReportGenerationPanel: React.FC<ReportGenerationPanelProps> = ({ sessionId }) => {
+export const ReportGenerationPanel: React.FC<ReportGenerationPanelProps> = ({
+  sessionId,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
-  
-  const {
-    reportStatus,
-    isTriggering,
-    error,
-    triggerReport,
-    handleDownload,
-  } = useReportGeneration(sessionId);
+
+  const { reportStatus, isTriggering, error, triggerReport, handleDownload } =
+    useReportGeneration(sessionId);
 
   // Fetch reports count for session
   const { data: sessionReports = [] } = useQuery({
-    queryKey: ['session-reports', sessionId],
+    queryKey: ["session-reports", sessionId],
     queryFn: () => getSessionReports(sessionId),
     enabled: !!sessionId,
     refetchInterval: 3000,
@@ -33,13 +30,16 @@ export const ReportGenerationPanel: React.FC<ReportGenerationPanelProps> = ({ se
   // Close dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(event.target as Node)) {
+      if (
+        panelRef.current &&
+        !panelRef.current.contains(event.target as Node)
+      ) {
         setIsOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
 
@@ -56,7 +56,7 @@ export const ReportGenerationPanel: React.FC<ReportGenerationPanelProps> = ({ se
             type="button"
             className="px-3 py-1.5 mt-2 rounded-lg border border-[#1e3a5f] text-[#1e3a5f] bg-slate-50 hover:bg-[#1e3a5f] hover:text-white dark:bg-slate-900 dark:border-indigo-400 dark:text-indigo-400 dark:hover:bg-indigo-400 dark:hover:text-slate-950 transition-all text-sm font-semibold select-none outline-none disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isTriggering ? 'Creating...' : 'Create Report'}
+            {isTriggering ? "Creating..." : "Create Report"}
           </button>
         ) : (
           <button
@@ -65,7 +65,9 @@ export const ReportGenerationPanel: React.FC<ReportGenerationPanelProps> = ({ se
             className="inline-flex items-center gap-1.5 px-3 py-1.5 mt-2 rounded-lg border border-[#1e3a5f] text-white bg-[#1e3a5f] hover:bg-[#152a45] dark:bg-indigo-500 dark:border-indigo-500 dark:text-slate-900 dark:hover:bg-indigo-400 transition-all text-sm font-semibold select-none outline-none"
           >
             <span>Report Status</span>
-            <ChevronDown className={`w-3.5 h-3.5 text-white dark:text-slate-955 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown
+              className={`w-3.5 h-3.5 text-white dark:text-slate-955 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+            />
           </button>
         )}
 

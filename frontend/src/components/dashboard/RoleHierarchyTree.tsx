@@ -4,7 +4,7 @@
  * Renders the role hierarchy as an interactive React Flow graph,
  * laid out top-down using Dagre.
  */
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback } from "react";
 import {
   ReactFlow,
   Background,
@@ -16,11 +16,11 @@ import {
   BackgroundVariant,
   Position,
   MarkerType,
-} from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
-import dagre from 'dagre';
-import type { RoleTreeNode } from '../../types/admin';
-import { Users, Crown, Shield } from 'lucide-react';
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import dagre from "dagre";
+import type { RoleTreeNode } from "../../types/admin";
+import { Users, Crown, Shield } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -60,7 +60,12 @@ function CustomRoleNode({ data }: { data: CustomRoleNodeData }) {
       <Handle
         type="target"
         position={Position.Top}
-        style={{ background: '#6366f1', width: 8, height: 8, border: '2px solid white' }}
+        style={{
+          background: "#6366f1",
+          width: 8,
+          height: 8,
+          border: "2px solid white",
+        }}
       />
 
       <div
@@ -82,23 +87,23 @@ function CustomRoleNode({ data }: { data: CustomRoleNodeData }) {
 
         {/* Role name */}
         <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 leading-tight truncate pl-1">
-          {name} 
-          <span className="ml-2 py-1">
-            {badgeEl}
-          </span>
+          {name}
+          <span className="ml-2 py-1">{badgeEl}</span>
         </p>
 
         {/* Badge + descendant count row */}
-          
+
         <div className="flex items-center gap-2 mt-1.5 pl-1">
           {descendant_count > 0 && (
             <span className="inline-flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500">
               <Users className="w-3 h-3" />
-              {descendant_count} sub-role{descendant_count !== 1 ? 's' : ''}
+              {descendant_count} sub-role{descendant_count !== 1 ? "s" : ""}
             </span>
           )}
           {descendant_count === 0 && !badgeEl && (
-            <span className="text-[11px] text-slate-400 dark:text-slate-600 italic">leaf role</span>
+            <span className="text-[11px] text-slate-400 dark:text-slate-600 italic">
+              leaf role
+            </span>
           )}
         </div>
       </div>
@@ -107,7 +112,12 @@ function CustomRoleNode({ data }: { data: CustomRoleNodeData }) {
       <Handle
         type="source"
         position={Position.Bottom}
-        style={{ background: '#6366f1', width: 8, height: 8, border: '2px solid white' }}
+        style={{
+          background: "#6366f1",
+          width: 8,
+          height: 8,
+          border: "2px solid white",
+        }}
       />
     </>
   );
@@ -125,9 +135,11 @@ function applyDagreLayout(
 ): { nodes: Node[]; edges: Edge[] } {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: 'TB', nodesep: 48, ranksep: 72 });
+  g.setGraph({ rankdir: "TB", nodesep: 48, ranksep: 72 });
 
-  nodes.forEach((n) => g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT }));
+  nodes.forEach((n) =>
+    g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT }),
+  );
   edges.forEach((e) => g.setEdge(e.source, e.target));
 
   dagre.layout(g);
@@ -156,7 +168,7 @@ function flattenTree(
   for (const node of nodes) {
     result.rfNodes.push({
       id: node.id,
-      type: 'roleNode',
+      type: "roleNode",
       position: { x: 0, y: 0 }, // overwritten by Dagre
       data: {
         name: node.name,
@@ -171,12 +183,12 @@ function flattenTree(
         id: `e-${node.parent_role_id}-${node.id}`,
         source: node.parent_role_id,
         target: node.id,
-        type: 'smoothstep',
+        type: "smoothstep",
         animated: false,
-        style: { stroke: '#6366f1', strokeWidth: 1.5 },
+        style: { stroke: "#6366f1", strokeWidth: 1.5 },
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: '#6366f1',
+          color: "#6366f1",
           width: 16,
           height: 16,
         },
@@ -200,7 +212,11 @@ interface Props {
   isError: boolean;
 }
 
-export const RoleHierarchyTree: React.FC<Props> = ({ treeData, isLoading, isError }) => {
+export const RoleHierarchyTree: React.FC<Props> = ({
+  treeData,
+  isLoading,
+  isError,
+}) => {
   const { nodes, edges } = useMemo(() => {
     if (!treeData || treeData.length === 0) return { nodes: [], edges: [] };
     const { rfNodes, rfEdges } = flattenTree(treeData);
@@ -268,7 +284,7 @@ export const RoleHierarchyTree: React.FC<Props> = ({ treeData, isLoading, isErro
           className="[&>button]:bg-white [&>button]:dark:bg-slate-900 [&>button]:border-slate-200 [&>button]:dark:border-slate-700 [&>button]:text-slate-600 [&>button]:dark:text-slate-300"
         />
         <MiniMap
-          nodeColor={() => '#6366f1'}
+          nodeColor={() => "#6366f1"}
           maskColor="rgba(15,23,42,0.08)"
           className="!bg-white dark:!bg-slate-900 !border !border-slate-200 dark:!border-slate-700 !rounded-xl overflow-hidden"
         />

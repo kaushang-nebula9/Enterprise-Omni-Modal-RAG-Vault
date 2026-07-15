@@ -28,9 +28,7 @@ export const DatabaseDrillDownPage: React.FC = () => {
   const lastFetchedRef = React.useRef<string>("");
 
   // Health Queries
-  const {
-    data: dbStatuses = [],
-  } = useQuery({
+  const { data: dbStatuses = [] } = useQuery({
     queryKey: ["database-health-status"],
     queryFn: databaseHealthService.getStatus,
   });
@@ -42,10 +40,7 @@ export const DatabaseDrillDownPage: React.FC = () => {
   });
 
   // Query History Pagination Loader
-  const loadQueries = async (
-    connId: string,
-    pageNum: number,
-  ) => {
+  const loadQueries = async (connId: string, pageNum: number) => {
     setIsQueriesLoading(true);
     try {
       const res = await databaseHealthService.getConnectionQueries(
@@ -123,9 +118,8 @@ export const DatabaseDrillDownPage: React.FC = () => {
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-slate-855 dark:text-slate-150">
                 Database Drill-down:{" "}
-                {dbStatuses.find(
-                  (s: any) => s.connection_id === connectionId,
-                )?.name || "Details"}
+                {dbStatuses.find((s: any) => s.connection_id === connectionId)
+                  ?.name || "Details"}
               </span>
             </div>
           </div>
@@ -141,12 +135,24 @@ export const DatabaseDrillDownPage: React.FC = () => {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-                        <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Timestamp</th>
-                        <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">User</th>
-                        <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Question</th>
-                        <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">SQL</th>
-                        <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">Latency</th>
-                        <th className="px-4 py-3.5 text-right font-semibold text-slate-600 dark:text-slate-400">Status</th>
+                        <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
+                          Timestamp
+                        </th>
+                        <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
+                          User
+                        </th>
+                        <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
+                          Question
+                        </th>
+                        <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
+                          SQL
+                        </th>
+                        <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
+                          Latency
+                        </th>
+                        <th className="px-4 py-3.5 text-right font-semibold text-slate-600 dark:text-slate-400">
+                          Status
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -181,7 +187,11 @@ export const DatabaseDrillDownPage: React.FC = () => {
                                 className="px-4 py-3.5 text-slate-700 dark:text-slate-350 truncate max-w-[200px]"
                                 title={q.user_email || "Unknown User"}
                               >
-                                {q.user_name || (q.user_email && q.user_email !== "unknown@example.com" ? q.user_email.split('@')[0] : "Unknown User")}
+                                {q.user_name ||
+                                  (q.user_email &&
+                                  q.user_email !== "unknown@example.com"
+                                    ? q.user_email.split("@")[0]
+                                    : "Unknown User")}
                               </td>
                               <td
                                 className="px-4 py-3.5 text-slate-700 dark:text-slate-300 max-w-[300px] truncate"
@@ -235,13 +245,21 @@ export const DatabaseDrillDownPage: React.FC = () => {
                 {queryHistory.length > 0 && (
                   <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/20 dark:bg-slate-900/10 flex items-center justify-between select-none">
                     <span className="text-sm text-slate-500 dark:text-slate-400">
-                      Showing page <span className="font-semibold text-slate-700 dark:text-slate-300">{queriesPage}</span> of{" "}
-                      <span className="font-semibold text-slate-700 dark:text-slate-300">{totalPages}</span>
+                      Showing page{" "}
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        {queriesPage}
+                      </span>{" "}
+                      of{" "}
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        {totalPages}
+                      </span>
                     </span>
 
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => setQueriesPage((p) => Math.max(1, p - 1))}
+                        onClick={() =>
+                          setQueriesPage((p) => Math.max(1, p - 1))
+                        }
                         disabled={queriesPage === 1 || isQueriesLoading}
                         className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors cursor-pointer"
                       >
@@ -249,8 +267,12 @@ export const DatabaseDrillDownPage: React.FC = () => {
                       </button>
 
                       <button
-                        onClick={() => setQueriesPage((p) => Math.min(totalPages, p + 1))}
-                        disabled={queriesPage === totalPages || isQueriesLoading}
+                        onClick={() =>
+                          setQueriesPage((p) => Math.min(totalPages, p + 1))
+                        }
+                        disabled={
+                          queriesPage === totalPages || isQueriesLoading
+                        }
                         className="p-2 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:pointer-events-none transition-colors cursor-pointer"
                       >
                         <ChevronRight className="w-4 h-4" />
@@ -297,7 +319,7 @@ export const DatabaseDrillDownPage: React.FC = () => {
                             {tbl.columns.map((col: any) => {
                               const isPk = tbl.primary_key?.includes(col.name);
                               const fkRef = tbl.foreign_keys?.find((fk: any) =>
-                                fk.constrained_columns.includes(col.name)
+                                fk.constrained_columns.includes(col.name),
                               );
                               return (
                                 <div

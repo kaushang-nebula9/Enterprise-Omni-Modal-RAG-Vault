@@ -1,6 +1,6 @@
-import React from 'react';
-import { Check, X, Circle } from 'lucide-react';
-import type { ReportStatus } from '../../types/chat';
+import React from "react";
+import { Check, X, Circle } from "lucide-react";
+import type { ReportStatus } from "../../types/chat";
 
 interface ReportStepIndicatorProps {
   reportStatus: ReportStatus;
@@ -9,17 +9,28 @@ interface ReportStepIndicatorProps {
 }
 
 const STEP_LABELS = {
-  gather: 'Gathering Session Data',
-  cluster: 'Clustering Topics',
-  synthesize: 'Synthesizing Content',
-  assemble: 'Assembling Report',
-  render: 'Rendering PDF',
-  deliver: 'Finalizing',
+  gather: "Gathering Session Data",
+  cluster: "Clustering Topics",
+  synthesize: "Synthesizing Content",
+  assemble: "Assembling Report",
+  render: "Rendering PDF",
+  deliver: "Finalizing",
 } as const;
 
-const STEPS_ORDER = ['gather', 'cluster', 'synthesize', 'assemble', 'render', 'deliver'] as const;
+const STEPS_ORDER = [
+  "gather",
+  "cluster",
+  "synthesize",
+  "assemble",
+  "render",
+  "deliver",
+] as const;
 
-export const ReportStepIndicator: React.FC<ReportStepIndicatorProps> = ({ reportStatus, onDownload, onCreateNew }) => {
+export const ReportStepIndicator: React.FC<ReportStepIndicatorProps> = ({
+  reportStatus,
+  onDownload,
+  onCreateNew,
+}) => {
   const stepsMap = React.useMemo(() => {
     return new Map(reportStatus.steps.map((s) => [s.step_name, s]));
   }, [reportStatus.steps]);
@@ -34,28 +45,33 @@ export const ReportStepIndicator: React.FC<ReportStepIndicatorProps> = ({ report
           const step = stepsMap.get(stepKey);
           const label = STEP_LABELS[stepKey];
 
-          let icon = <Circle className="w-4 h-4 text-slate-300 dark:text-slate-650" />;
-          let duration = '';
-          let errorMessage = '';
+          let icon = (
+            <Circle className="w-4 h-4 text-slate-300 dark:text-slate-650" />
+          );
+          let duration = "";
+          let errorMessage = "";
 
           if (step) {
-            if (step.status === 'success') {
+            if (step.status === "success") {
               icon = <Check className="w-4 h-4 text-emerald-500 font-bold" />;
               if (step.duration_ms !== null) {
                 duration = `${(step.duration_ms / 1000).toFixed(1)}s`;
               }
-            } else if (step.status === 'running') {
+            } else if (step.status === "running") {
               icon = (
                 <div className="animate-spin rounded-full border-2 border-blue-500 border-t-transparent w-4 h-4" />
               );
-            } else if (step.status === 'failed') {
+            } else if (step.status === "failed") {
               icon = <X className="w-4 h-4 text-rose-500 font-bold" />;
-              errorMessage = step.error_message || 'An error occurred';
+              errorMessage = step.error_message || "An error occurred";
             }
           }
 
           return (
-            <div key={stepKey} className="flex items-start gap-3 text-xs leading-normal">
+            <div
+              key={stepKey}
+              className="flex items-start gap-3 text-xs leading-normal"
+            >
               <div className="mt-0.5 shrink-0 flex items-center justify-center w-5 h-5">
                 {icon}
               </div>
@@ -80,7 +96,7 @@ export const ReportStepIndicator: React.FC<ReportStepIndicatorProps> = ({ report
       </div>
 
       <div className="border-t border-slate-100 dark:border-slate-800 pt-3 flex flex-col gap-2 w-full">
-        {reportStatus.status === 'complete' ? (
+        {reportStatus.status === "complete" ? (
           <>
             <button
               onClick={onDownload}
@@ -97,7 +113,7 @@ export const ReportStepIndicator: React.FC<ReportStepIndicatorProps> = ({ report
               Create New Report
             </button>
           </>
-        ) : reportStatus.status === 'failed' ? (
+        ) : reportStatus.status === "failed" ? (
           <>
             <p className="text-xs text-rose-500 font-semibold text-center leading-normal mb-1">
               Report generation failed.

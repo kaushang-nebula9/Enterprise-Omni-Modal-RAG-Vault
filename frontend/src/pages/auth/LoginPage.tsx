@@ -1,15 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Eye, EyeOff, Mail, AlertTriangle } from 'lucide-react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { login, initiateGoogleLogin } from '../../services/authService';
-import { useAuthStore } from '../../store/authStore';
+import React, { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Eye, EyeOff, Mail, AlertTriangle } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { login, initiateGoogleLogin } from "../../services/authService";
+import { useAuthStore } from "../../store/authStore";
 
 const loginSchema = z.object({
-  email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
-  password: z.string().min(1, 'Password is required'),
+  email: z
+    .string()
+    .min(1, "Email is required")
+    .email("Please enter a valid email address"),
+  password: z.string().min(1, "Password is required"),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -18,15 +21,17 @@ const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const setUser = useAuthStore((state) => state.setUser);
   const [searchParams] = useSearchParams();
-  const errorParam = searchParams.get('error');
-  
+  const errorParam = searchParams.get("error");
+
   const [showPassword, setShowPassword] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (errorParam === 'inactive') {
-      setApiError('Your account is inactive. Please contact your administrator.');
+    if (errorParam === "inactive") {
+      setApiError(
+        "Your account is inactive. Please contact your administrator.",
+      );
     }
   }, [errorParam]);
 
@@ -37,8 +42,8 @@ const LoginPage: React.FC = () => {
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: '',
-      password: '',
+      email: "",
+      password: "",
     },
   });
 
@@ -51,12 +56,12 @@ const LoginPage: React.FC = () => {
         password: data.password,
       });
       setUser(userResponse);
-      navigate('/dashboard');
+      navigate("/dashboard");
     } catch (err: any) {
       if (err.response && err.response.data && err.response.data.detail) {
         setApiError(err.response.data.detail);
       } else {
-        setApiError('Incorrect email or password. Please try again.');
+        setApiError("Incorrect email or password. Please try again.");
       }
     } finally {
       setIsLoading(false);
@@ -86,7 +91,11 @@ const LoginPage: React.FC = () => {
           onClick={handleGoogleLogin}
           className="border border-slate-200 dark:border-slate-700 rounded-lg px-6 py-3 w-full flex items-center justify-center gap-3 text-slate-700 dark:text-slate-300 font-medium bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors duration-200"
         >
-          <svg className="h-5 w-5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <svg
+            className="h-5 w-5"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
             <path
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
               fill="#4285F4"
@@ -122,7 +131,9 @@ const LoginPage: React.FC = () => {
         <div className="mb-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded-lg p-4 flex items-start gap-3 text-red-700 dark:text-red-400 text-sm animate-fade-in">
           <AlertTriangle className="h-5 w-5 text-red-500 dark:text-red-450 shrink-0 mt-0.5" />
           <div>
-            <h4 className="font-bold text-red-800 dark:text-red-300">Authentication Failed</h4>
+            <h4 className="font-bold text-red-800 dark:text-red-300">
+              Authentication Failed
+            </h4>
             <p className="mt-1 text-red-755 dark:text-red-400/90">{apiError}</p>
           </div>
         </div>
@@ -132,7 +143,10 @@ const LoginPage: React.FC = () => {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Email Field */}
         <div>
-          <label htmlFor="email" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+          <label
+            htmlFor="email"
+            className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2"
+          >
             Email address
           </label>
           <div className="relative">
@@ -143,21 +157,28 @@ const LoginPage: React.FC = () => {
               id="email"
               type="email"
               placeholder="name@company.com"
-              {...register('email')}
+              {...register("email")}
               className={`border rounded-lg pl-11 pr-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
-                errors.email ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
+                errors.email
+                  ? "border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450"
+                  : "border-slate-200 dark:border-slate-700"
               }`}
             />
           </div>
           {errors.email && (
-            <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.email.message}</p>
+            <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">
+              {errors.email.message}
+            </p>
           )}
         </div>
 
         {/* Password Field */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label htmlFor="password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
+            <label
+              htmlFor="password"
+              className="block text-sm font-semibold text-slate-700 dark:text-slate-300"
+            >
               Password
             </label>
             <Link
@@ -170,11 +191,13 @@ const LoginPage: React.FC = () => {
           <div className="relative">
             <input
               id="password"
-              type={showPassword ? 'text' : 'password'}
+              type={showPassword ? "text" : "password"}
               placeholder="••••••••"
-              {...register('password')}
+              {...register("password")}
               className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
-                errors.password ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450' : 'border-slate-200 dark:border-slate-700'
+                errors.password
+                  ? "border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-450"
+                  : "border-slate-200 dark:border-slate-700"
               }`}
             />
             <button
@@ -182,11 +205,17 @@ const LoginPage: React.FC = () => {
               onClick={() => setShowPassword(!showPassword)}
               className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-350"
             >
-              {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              {showPassword ? (
+                <EyeOff className="h-5 w-5" />
+              ) : (
+                <Eye className="h-5 w-5" />
+              )}
             </button>
           </div>
           {errors.password && (
-            <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errors.password.message}</p>
+            <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">
+              {errors.password.message}
+            </p>
           )}
         </div>
 
@@ -198,12 +227,28 @@ const LoginPage: React.FC = () => {
             className="bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200 flex items-center justify-center gap-2"
           >
             {isLoading ? (
-              <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              <svg
+                className="animate-spin h-5 w-5 text-white"
+                fill="none"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
               </svg>
             ) : (
-              'Sign in →'
+              "Sign in →"
             )}
           </button>
         </div>
@@ -211,8 +256,11 @@ const LoginPage: React.FC = () => {
 
       {/* Support Link */}
       <div className="mt-8 text-center text-sm text-slate-500 dark:text-slate-400">
-        Need help accessing your account?{' '}
-        <a href="#" className="font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300">
+        Need help accessing your account?{" "}
+        <a
+          href="#"
+          className="font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300"
+        >
           Contact IT Support
         </a>
       </div>

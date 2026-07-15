@@ -1,19 +1,26 @@
-import api from './api';
-import type { RoleResponse, MessageResponse } from '../types/auth';
-import type { CreateRolePayload, UpdateRolePayload, RoleTreeNode } from '../types/admin';
+import api from "./api";
+import type { RoleResponse, MessageResponse } from "../types/auth";
+import type {
+  CreateRolePayload,
+  UpdateRolePayload,
+  RoleTreeNode,
+} from "../types/admin";
 
 export const roleService = {
   getRoles: async (): Promise<RoleResponse[]> => {
-    const response = await api.get('/api/v1/roles');
+    const response = await api.get("/api/v1/roles");
     return response.data;
   },
 
   createRole: async (data: CreateRolePayload): Promise<RoleResponse> => {
-    const response = await api.post('/api/v1/roles', data);
+    const response = await api.post("/api/v1/roles", data);
     return response.data;
   },
 
-  updateRole: async (roleId: string, data: UpdateRolePayload): Promise<RoleResponse> => {
+  updateRole: async (
+    roleId: string,
+    data: UpdateRolePayload,
+  ): Promise<RoleResponse> => {
     const response = await api.patch(`/api/v1/roles/${roleId}`, data);
     return response.data;
   },
@@ -24,7 +31,7 @@ export const roleService = {
   },
 
   getRolesTree: async (): Promise<RoleTreeNode[]> => {
-    const response = await api.get('/api/v1/roles/tree');
+    const response = await api.get("/api/v1/roles/tree");
     return response.data;
   },
 };

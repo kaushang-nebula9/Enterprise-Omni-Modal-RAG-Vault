@@ -1,14 +1,15 @@
-import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { getMe } from '../../services/authService';
-import { useAuthStore } from '../../store/authStore';
+import React, { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { getMe } from "../../services/authService";
+import { useAuthStore } from "../../store/authStore";
 
 interface AuthGuardProps {
   children: React.ReactNode;
 }
 
 const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
-  const { user, isAuthenticated, isLoading, setUser, setLoading } = useAuthStore();
+  const { user, isAuthenticated, isLoading, setUser, setLoading } =
+    useAuthStore();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -25,11 +26,19 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
         if (isMounted) {
           setUser(null);
           // Only navigate to login if we aren't already on an auth path
-          const publicPaths = ['/login', '/register', '/forgot-password', '/reset-password', '/accept-invite'];
+          const publicPaths = [
+            "/login",
+            "/register",
+            "/forgot-password",
+            "/reset-password",
+            "/accept-invite",
+          ];
           const currentPath = window.location.pathname;
-          const isPublicPath = publicPaths.some(path => currentPath.startsWith(path));
+          const isPublicPath = publicPaths.some((path) =>
+            currentPath.startsWith(path),
+          );
           if (!isPublicPath) {
-            navigate('/login');
+            navigate("/login");
           }
         }
       } finally {
@@ -74,7 +83,9 @@ const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
             />
           </svg>
-          <span className="text-sm font-medium text-slate-500 font-sans">Verifying security session...</span>
+          <span className="text-sm font-medium text-slate-500 font-sans">
+            Verifying security session...
+          </span>
         </div>
       </div>
     );

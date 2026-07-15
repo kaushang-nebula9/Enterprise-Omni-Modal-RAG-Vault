@@ -1,4 +1,4 @@
-import api from './api';
+import api from "./api";
 
 export interface DatabaseStatusResponse {
   connection_id: string;
@@ -6,7 +6,7 @@ export interface DatabaseStatusResponse {
   db_type: string;
   host: string;
   database_name: string;
-  status: 'active' | 'unreachable' | 'degraded';
+  status: "active" | "unreachable" | "degraded";
   last_successful_query_at: string | null;
   schema_last_introspected_at: string | null;
 }
@@ -52,7 +52,7 @@ export interface QueryHistoryItem {
   natural_language_query: string;
   generated_sql: string | null;
   execution_time_ms: number;
-  status: 'success' | 'failed';
+  status: "success" | "failed";
   error_message: string | null;
 }
 
@@ -84,39 +84,39 @@ export interface TableSchema {
 
 export const databaseHealthService = {
   getStatus: async (): Promise<DatabaseStatusResponse[]> => {
-    const response = await api.get('/api/v1/database-health/status');
+    const response = await api.get("/api/v1/database-health/status");
     return response.data;
   },
 
   getAnalytics: async (): Promise<DatabaseAnalyticsResponse> => {
-    const response = await api.get('/api/v1/database-health/analytics');
+    const response = await api.get("/api/v1/database-health/analytics");
     return response.data;
   },
 
   getConnectionQueries: async (
     connectionId: string,
     page: number = 1,
-    limit: number = 50
+    limit: number = 50,
   ): Promise<PaginatedQueryHistoryResponse> => {
     const response = await api.get(
       `/api/v1/database-health/connections/${connectionId}/queries`,
-      { params: { page, limit } }
+      { params: { page, limit } },
     );
     return response.data;
   },
 
   getConnectionSchema: async (connectionId: string): Promise<TableSchema[]> => {
     const response = await api.get(
-      `/api/v1/database-health/connections/${connectionId}/schema`
+      `/api/v1/database-health/connections/${connectionId}/schema`,
     );
     return response.data;
   },
 
   refreshConnectionSchema: async (
-    connectionId: string
+    connectionId: string,
   ): Promise<{ status: string; message: string }> => {
     const response = await api.post(
-      `/api/v1/database-health/connections/${connectionId}/refresh-schema`
+      `/api/v1/database-health/connections/${connectionId}/refresh-schema`,
     );
     return response.data;
   },

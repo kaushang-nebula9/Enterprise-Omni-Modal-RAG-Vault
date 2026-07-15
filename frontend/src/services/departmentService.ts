@@ -1,4 +1,4 @@
-import api from './api';
+import api from "./api";
 
 export interface DepartmentResponse {
   id: string;
@@ -17,16 +17,21 @@ export interface UpdateDepartmentPayload {
 
 export const departmentService = {
   getDepartments: async (): Promise<DepartmentResponse[]> => {
-    const response = await api.get('/api/v1/departments');
+    const response = await api.get("/api/v1/departments");
     return response.data;
   },
 
-  createDepartment: async (data: CreateDepartmentPayload): Promise<DepartmentResponse> => {
-    const response = await api.post('/api/v1/departments', data);
+  createDepartment: async (
+    data: CreateDepartmentPayload,
+  ): Promise<DepartmentResponse> => {
+    const response = await api.post("/api/v1/departments", data);
     return response.data;
   },
 
-  updateDepartment: async (id: string, data: UpdateDepartmentPayload): Promise<DepartmentResponse> => {
+  updateDepartment: async (
+    id: string,
+    data: UpdateDepartmentPayload,
+  ): Promise<DepartmentResponse> => {
     const response = await api.patch(`/api/v1/departments/${id}`, data);
     return response.data;
   },

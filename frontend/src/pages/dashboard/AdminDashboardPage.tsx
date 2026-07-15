@@ -1,34 +1,34 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { adminService } from '../../services/adminService';
-import { evaluationService } from '../../services/evaluationService';
-import { useAuthStore } from '../../store/authStore';
-import { formatCompactNumber } from '../../utils/format';
-import { 
-  FileText, 
-  Users, 
-  ShieldCheck, 
-  Building2, 
-  Calendar, 
-  UserPlus, 
-  ShieldPlus, 
-  Upload, 
-  Plus, 
+import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
+import { adminService } from "../../services/adminService";
+import { evaluationService } from "../../services/evaluationService";
+import { useAuthStore } from "../../store/authStore";
+import { formatCompactNumber } from "../../utils/format";
+import {
+  FileText,
+  Users,
+  ShieldCheck,
+  Building2,
+  Calendar,
+  UserPlus,
+  ShieldPlus,
+  Upload,
+  Plus,
   ArrowRight,
   TrendingUp,
   History,
   ScrollText,
   HardDrive,
-} from 'lucide-react';
+} from "lucide-react";
 
 const formatBytes = (bytes: number, decimals = 2) => {
-  if (bytes === 0) return '0 Bytes';
+  if (bytes === 0) return "0 Bytes";
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
 };
 
 const AdminDashboardPage: React.FC = () => {
@@ -39,36 +39,40 @@ const AdminDashboardPage: React.FC = () => {
   const getPastDateString = (daysAgo: number) => {
     const d = new Date();
     d.setDate(d.getDate() - daysAgo);
-    return d.toISOString().split('T')[0];
+    return d.toISOString().split("T")[0];
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = new Date().toISOString().split("T")[0];
   const [startDate, setStartDate] = useState<string>(getPastDateString(6));
   const [endDate, setEndDate] = useState<string>(todayStr);
 
   // Evaluation states
   const [isEvalModalOpen, setIsEvalModalOpen] = useState(false);
-  const [evalScope, setEvalScope] = useState<'count' | 'date_range'>('count');
+  const [evalScope, setEvalScope] = useState<"count" | "date_range">("count");
   const [evalCount, setEvalCount] = useState<number>(10);
-  const [evalStartDate, setEvalStartDate] = useState<string>(getPastDateString(6));
+  const [evalStartDate, setEvalStartDate] = useState<string>(
+    getPastDateString(6),
+  );
   const [evalEndDate, setEvalEndDate] = useState<string>(todayStr);
   const [isSubmittingEval, setIsSubmittingEval] = useState(false);
 
   // Queries
   const { data: usageData, isLoading: usageLoading } = useQuery({
-    queryKey: ['adminUsage', startDate, endDate],
+    queryKey: ["adminUsage", startDate, endDate],
     queryFn: () => adminService.getUsageSummary(startDate, endDate),
   });
 
   const { data: latestEval, refetch: refetchLatestEval } = useQuery({
-    queryKey: ['latestEvaluation'],
+    queryKey: ["latestEvaluation"],
     queryFn: () => evaluationService.getLatestEvaluation(),
   });
 
-  const [evalViewMode, setEvalViewMode] = useState<'latest' | 'overall'>('latest');
+  const [evalViewMode, setEvalViewMode] = useState<"latest" | "overall">(
+    "latest",
+  );
 
   const { data: overallEval } = useQuery({
-    queryKey: ['overallEvaluation'],
+    queryKey: ["overallEvaluation"],
     queryFn: () => evaluationService.getOverallEvaluation(),
   });
 
@@ -77,73 +81,120 @@ const AdminDashboardPage: React.FC = () => {
     setIsSubmittingEval(true);
     try {
       await evaluationService.runEvaluation({
-        query_count: evalScope === 'count' ? evalCount : undefined,
-        date_range_start: evalScope === 'date_range' ? new Date(evalStartDate).toISOString() : undefined,
-        date_range_end: evalScope === 'date_range' ? new Date(evalEndDate).toISOString() : undefined,
+        query_count: evalScope === "count" ? evalCount : undefined,
+        date_range_start:
+          evalScope === "date_range"
+            ? new Date(evalStartDate).toISOString()
+            : undefined,
+        date_range_end:
+          evalScope === "date_range"
+            ? new Date(evalEndDate).toISOString()
+            : undefined,
       });
       setIsEvalModalOpen(false);
-      alert('Evaluation run has started in the background. You will receive a notification when it completes.');
+      alert(
+        "Evaluation run has started in the background. You will receive a notification when it completes.",
+      );
       refetchLatestEval();
     } catch (err: any) {
-      console.error('Failed to run evaluation:', err);
-      alert('Failed to start evaluation. ' + (err.response?.data?.detail || err.message));
+      console.error("Failed to run evaluation:", err);
+      alert(
+        "Failed to start evaluation. " +
+          (err.response?.data?.detail || err.message),
+      );
     } finally {
       setIsSubmittingEval(false);
     }
   };
 
   const { data: overview, isLoading: overviewLoading } = useQuery({
-    queryKey: ['adminOverview'],
+    queryKey: ["adminOverview"],
     queryFn: adminService.getDashboardOverview,
   });
 
   const { data: documentInsights, isLoading: insightsLoading } = useQuery({
-    queryKey: ['adminDocumentInsights'],
+    queryKey: ["adminDocumentInsights"],
     queryFn: adminService.getDocumentInsights,
   });
 
   const { data: dbModels } = useQuery({
-    queryKey: ['adminModels'],
+    queryKey: ["adminModels"],
     queryFn: adminService.getModels,
   });
 
   // Aggregate totals for selected date range
-  const totalClaudeInput = usageData?.usage?.reduce((acc, curr) => acc + curr.claude_input_tokens, 0) || 0;
-  const totalClaudeOutput = usageData?.usage?.reduce((acc, curr) => acc + curr.claude_output_tokens, 0) || 0;
-  const totalOpenRouterInput = usageData?.usage?.reduce((acc, curr) => acc + curr.openrouter_input_tokens, 0) || 0;
-  const totalOpenRouterOutput = usageData?.usage?.reduce((acc, curr) => acc + curr.openrouter_output_tokens, 0) || 0;
+  const totalClaudeInput =
+    usageData?.usage?.reduce(
+      (acc, curr) => acc + curr.claude_input_tokens,
+      0,
+    ) || 0;
+  const totalClaudeOutput =
+    usageData?.usage?.reduce(
+      (acc, curr) => acc + curr.claude_output_tokens,
+      0,
+    ) || 0;
+  const totalOpenRouterInput =
+    usageData?.usage?.reduce(
+      (acc, curr) => acc + curr.openrouter_input_tokens,
+      0,
+    ) || 0;
+  const totalOpenRouterOutput =
+    usageData?.usage?.reduce(
+      (acc, curr) => acc + curr.openrouter_output_tokens,
+      0,
+    ) || 0;
 
   // Dynamically map models from the database (via dbModels)
   const claudeModelCosts = React.useMemo(() => {
     if (!dbModels) return [];
     return dbModels
-      .filter(m => m.provider_id === 'anthropic')
-      .map(m => {
-        const lower = (m.model_name || '').toLowerCase();
-        let inputKey = '';
-        let outputKey = '';
-        
-        if (lower.includes('haiku')) {
-          inputKey = 'claude_haiku_input_tokens';
-          outputKey = 'claude_haiku_output_tokens';
-        } else if (lower.includes('sonnet')) {
-          inputKey = 'claude_sonnet_input_tokens';
-          outputKey = 'claude_sonnet_output_tokens';
-        } else if (lower.includes('opus')) {
-          inputKey = 'claude_opus_input_tokens';
-          outputKey = 'claude_opus_output_tokens';
+      .filter((m) => m.provider_id === "anthropic")
+      .map((m) => {
+        const lower = (m.model_name || "").toLowerCase();
+        let inputKey = "";
+        let outputKey = "";
+
+        if (lower.includes("haiku")) {
+          inputKey = "claude_haiku_input_tokens";
+          outputKey = "claude_haiku_output_tokens";
+        } else if (lower.includes("sonnet")) {
+          inputKey = "claude_sonnet_input_tokens";
+          outputKey = "claude_sonnet_output_tokens";
+        } else if (lower.includes("opus")) {
+          inputKey = "claude_opus_input_tokens";
+          outputKey = "claude_opus_output_tokens";
         }
-        
-        const inputTokens = inputKey ? (usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[inputKey as keyof typeof curr]) || 0), 0) || 0) : 0;
-        const outputTokens = outputKey ? (usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[outputKey as keyof typeof curr]) || 0), 0) || 0) : 0;
-        
-        const inputPrice = m.input_cost_per_million_tokens != null ? Number(m.input_cost_per_million_tokens) : 0;
-        const outputPrice = m.output_cost_per_million_tokens != null ? Number(m.output_cost_per_million_tokens) : 0;
-          
-        const cost = (inputTokens * inputPrice) / 1000000 + (outputTokens * outputPrice) / 1000000;
-        
+
+        const inputTokens = inputKey
+          ? usageData?.usage?.reduce(
+              (acc, curr) =>
+                acc + (Number(curr[inputKey as keyof typeof curr]) || 0),
+              0,
+            ) || 0
+          : 0;
+        const outputTokens = outputKey
+          ? usageData?.usage?.reduce(
+              (acc, curr) =>
+                acc + (Number(curr[outputKey as keyof typeof curr]) || 0),
+              0,
+            ) || 0
+          : 0;
+
+        const inputPrice =
+          m.input_cost_per_million_tokens != null
+            ? Number(m.input_cost_per_million_tokens)
+            : 0;
+        const outputPrice =
+          m.output_cost_per_million_tokens != null
+            ? Number(m.output_cost_per_million_tokens)
+            : 0;
+
+        const cost =
+          (inputTokens * inputPrice) / 1000000 +
+          (outputTokens * outputPrice) / 1000000;
+
         return {
-          key: m.model_name || '',
+          key: m.model_name || "",
           displayName: m.display_name,
           inputTokens,
           outputTokens,
@@ -157,43 +208,63 @@ const AdminDashboardPage: React.FC = () => {
   const openRouterModelCosts = React.useMemo(() => {
     if (!dbModels) return [];
     return dbModels
-      .filter(m => m.provider_id === 'openrouter')
-      .map(m => {
-        const lower = (m.model_name || '').toLowerCase();
-        let inputKey = '';
-        let outputKey = '';
-        
-        if (lower.includes('llama')) {
-          inputKey = 'openrouter_llama_input_tokens';
-          outputKey = 'openrouter_llama_output_tokens';
-        } else if (lower.includes('gemma')) {
-          inputKey = 'openrouter_gemma_input_tokens';
-          outputKey = 'openrouter_gemma_output_tokens';
-        } else if (lower.includes('nemotron')) {
-          inputKey = 'openrouter_nemotron_input_tokens';
-          outputKey = 'openrouter_nemotron_output_tokens';
-        } else if (lower.includes('gpt-oss')) {
-          inputKey = 'openrouter_gpt_input_tokens';
-          outputKey = 'openrouter_gpt_output_tokens';
-        } else if (lower.includes('cohere')) {
-          inputKey = 'openrouter_cohere_input_tokens';
-          outputKey = 'openrouter_cohere_output_tokens';
+      .filter((m) => m.provider_id === "openrouter")
+      .map((m) => {
+        const lower = (m.model_name || "").toLowerCase();
+        let inputKey = "";
+        let outputKey = "";
+
+        if (lower.includes("llama")) {
+          inputKey = "openrouter_llama_input_tokens";
+          outputKey = "openrouter_llama_output_tokens";
+        } else if (lower.includes("gemma")) {
+          inputKey = "openrouter_gemma_input_tokens";
+          outputKey = "openrouter_gemma_output_tokens";
+        } else if (lower.includes("nemotron")) {
+          inputKey = "openrouter_nemotron_input_tokens";
+          outputKey = "openrouter_nemotron_output_tokens";
+        } else if (lower.includes("gpt-oss")) {
+          inputKey = "openrouter_gpt_input_tokens";
+          outputKey = "openrouter_gpt_output_tokens";
+        } else if (lower.includes("cohere")) {
+          inputKey = "openrouter_cohere_input_tokens";
+          outputKey = "openrouter_cohere_output_tokens";
         }
-        
-        const inputTokens = inputKey ? (usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[inputKey as keyof typeof curr]) || 0), 0) || 0) : 0;
-        const outputTokens = outputKey ? (usageData?.usage?.reduce((acc, curr) => acc + (Number(curr[outputKey as keyof typeof curr]) || 0), 0) || 0) : 0;
-        
-        const inputPrice = m.input_cost_per_million_tokens != null ? Number(m.input_cost_per_million_tokens) : 0;
-        const outputPrice = m.output_cost_per_million_tokens != null ? Number(m.output_cost_per_million_tokens) : 0;
-        const cost = (inputTokens * inputPrice) / 1000000 + (outputTokens * outputPrice) / 1000000;
-        
-        let priceLabel = '(Free)';
+
+        const inputTokens = inputKey
+          ? usageData?.usage?.reduce(
+              (acc, curr) =>
+                acc + (Number(curr[inputKey as keyof typeof curr]) || 0),
+              0,
+            ) || 0
+          : 0;
+        const outputTokens = outputKey
+          ? usageData?.usage?.reduce(
+              (acc, curr) =>
+                acc + (Number(curr[outputKey as keyof typeof curr]) || 0),
+              0,
+            ) || 0
+          : 0;
+
+        const inputPrice =
+          m.input_cost_per_million_tokens != null
+            ? Number(m.input_cost_per_million_tokens)
+            : 0;
+        const outputPrice =
+          m.output_cost_per_million_tokens != null
+            ? Number(m.output_cost_per_million_tokens)
+            : 0;
+        const cost =
+          (inputTokens * inputPrice) / 1000000 +
+          (outputTokens * outputPrice) / 1000000;
+
+        let priceLabel = "(Free)";
         if (inputPrice > 0 || outputPrice > 0) {
           priceLabel = `($${inputPrice.toFixed(1)}/$${outputPrice.toFixed(1)} per M)`;
         }
-        
+
         return {
-          key: m.model_name || '',
+          key: m.model_name || "",
           displayName: m.display_name,
           inputTokens,
           outputTokens,
@@ -204,14 +275,16 @@ const AdminDashboardPage: React.FC = () => {
       });
   }, [dbModels, usageData]);
 
-  const totalOpenRouterCost = openRouterModelCosts.reduce((acc, m) => acc + m.cost, 0);
+  const totalOpenRouterCost = openRouterModelCosts.reduce(
+    (acc, m) => acc + m.cost,
+    0,
+  );
 
   const formatCost = (val: number): string => {
-    if (val === 0) return '$0.00';
+    if (val === 0) return "$0.00";
     if (val < 0.01) return `$${val.toFixed(4)}`;
-    return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `$${val.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
-
 
   // Custom SVG Mini Line/Area Chart for "Requests per day"
   const renderUsageChart = () => {
@@ -227,7 +300,9 @@ const AdminDashboardPage: React.FC = () => {
     if (items.length === 0) {
       return (
         <div className="h-48 w-full flex items-center justify-center bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/80 rounded-xl">
-          <span className="text-sm text-slate-400">No request data found for this range</span>
+          <span className="text-sm text-slate-400">
+            No request data found for this range
+          </span>
         </div>
       );
     }
@@ -238,7 +313,7 @@ const AdminDashboardPage: React.FC = () => {
     const paddingRight = 10;
     const paddingTop = 15;
     const paddingBottom = 25;
-    
+
     // We want the SVG to scale nicely
     const width = 800;
     const chartWidth = width - paddingLeft - paddingRight;
@@ -246,51 +321,62 @@ const AdminDashboardPage: React.FC = () => {
 
     // Calculate path points
     const points = items.map((item, idx) => {
-      const x = paddingLeft + (idx / Math.max(items.length - 1, 1)) * chartWidth;
-      const y = paddingTop + chartHeight - (item.request_count / maxRequests) * chartHeight;
+      const x =
+        paddingLeft + (idx / Math.max(items.length - 1, 1)) * chartWidth;
+      const y =
+        paddingTop +
+        chartHeight -
+        (item.request_count / maxRequests) * chartHeight;
       return { x, y, label: item.date, value: item.request_count };
     });
 
     const pathData = points.reduce((acc, p, i) => {
       return acc + (i === 0 ? `M ${p.x} ${p.y}` : ` L ${p.x} ${p.y}`);
-    }, '');
+    }, "");
 
-    const areaData = points.length > 0 
-      ? `${pathData} L ${points[points.length - 1].x} ${paddingTop + chartHeight} L ${points[0].x} ${paddingTop + chartHeight} Z`
-      : '';
+    const areaData =
+      points.length > 0
+        ? `${pathData} L ${points[points.length - 1].x} ${paddingTop + chartHeight} L ${points[0].x} ${paddingTop + chartHeight} Z`
+        : "";
 
     return (
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex flex-col gap-4 w-full">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-indigo-500" />
-            <h3 className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Requests per day</h3>
+            <h3 className="font-semibold text-slate-700 dark:text-slate-200 text-sm">
+              Requests per day
+            </h3>
           </div>
           <span className="text-sm font-medium px-2 py-0.5 rounded-full text-indigo-600  dark:text-indigo-400">
-            Total range requests: {items.reduce((a, c) => a + c.request_count, 0)}
+            Total range requests:{" "}
+            {items.reduce((a, c) => a + c.request_count, 0)}
           </span>
         </div>
 
         <div className="w-full h-full overflow-x-auto">
-          <svg className="w-full min-w-[500px]" viewBox={`0 0 ${width} ${height}`}>
+          <svg
+            className="w-full min-w-[500px]"
+            viewBox={`0 0 ${width} ${height}`}
+          >
             {/* Grid Lines */}
             {[0, 0.25, 0.5, 0.75, 1].map((ratio, index) => {
               const yVal = paddingTop + chartHeight * ratio;
               const gridLabel = Math.round(maxRequests * (1 - ratio));
               return (
                 <g key={index}>
-                  <line 
-                    x1={paddingLeft} 
-                    y1={yVal} 
-                    x2={width - paddingRight} 
-                    y2={yVal} 
-                    className="stroke-slate-300 dark:stroke-slate-700" 
-                    strokeWidth={1} 
+                  <line
+                    x1={paddingLeft}
+                    y1={yVal}
+                    x2={width - paddingRight}
+                    y2={yVal}
+                    className="stroke-slate-300 dark:stroke-slate-700"
+                    strokeWidth={1}
                     strokeDasharray="4 4"
                   />
-                  <text 
-                    x={paddingLeft - 8} 
-                    y={yVal + 4} 
+                  <text
+                    x={paddingLeft - 8}
+                    y={yVal + 4}
                     className="fill-slate-600 dark:fill-slate-400 font-sora text-[10px] text-right"
                     textAnchor="end"
                   >
@@ -302,16 +388,16 @@ const AdminDashboardPage: React.FC = () => {
 
             {/* Filled Area */}
             {areaData && (
-              <path 
-                d={areaData} 
+              <path
+                d={areaData}
                 className="fill-indigo-50/60 dark:fill-indigo-950/20"
               />
             )}
 
             {/* Line Path */}
             {pathData && (
-              <path 
-                d={pathData} 
+              <path
+                d={pathData}
                 className="stroke-indigo-500 dark:stroke-indigo-400"
                 strokeWidth={2}
                 fill="none"
@@ -321,16 +407,16 @@ const AdminDashboardPage: React.FC = () => {
             {/* Data Circles / Tooltips */}
             {points.map((p, idx) => (
               <g key={idx} className="group/dot cursor-pointer">
-                <circle 
-                  cx={p.x} 
-                  cy={p.y} 
-                  r={3.5} 
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={3.5}
                   className="fill-white stroke-indigo-500 dark:fill-slate-900 dark:stroke-indigo-400 stroke-2"
                 />
-                <circle 
-                  cx={p.x} 
-                  cy={p.y} 
-                  r={8} 
+                <circle
+                  cx={p.x}
+                  cy={p.y}
+                  r={8}
                   className="fill-indigo-500/10 opacity-0 group-hover/dot:opacity-100 transition-opacity"
                 />
                 <text
@@ -347,18 +433,24 @@ const AdminDashboardPage: React.FC = () => {
             {/* X Axis Labels */}
             {points.map((p, idx) => {
               // Show fewer dates to avoid cluttering
-              const shouldShowLabel = points.length <= 10 || idx % Math.ceil(points.length / 7) === 0 || idx === points.length - 1;
+              const shouldShowLabel =
+                points.length <= 10 ||
+                idx % Math.ceil(points.length / 7) === 0 ||
+                idx === points.length - 1;
               if (!shouldShowLabel) return null;
-              
+
               // format label "MM/DD" or "YYYY-MM-DD"
-              const dateParts = p.label.split('-');
-              const displayDate = dateParts.length >= 3 ? `${dateParts[1]}/${dateParts[2]}` : p.label;
+              const dateParts = p.label.split("-");
+              const displayDate =
+                dateParts.length >= 3
+                  ? `${dateParts[1]}/${dateParts[2]}`
+                  : p.label;
 
               return (
-                <text 
+                <text
                   key={idx}
-                  x={p.x} 
-                  y={height - 6} 
+                  x={p.x}
+                  y={height - 6}
                   className="fill-slate-600 dark:fill-slate-400 font-medium text-[9px]"
                   textAnchor="middle"
                 >
@@ -395,31 +487,34 @@ const AdminDashboardPage: React.FC = () => {
     let accumulatedPercent = 0;
 
     const colors = [
-      'stroke-violet-500 dark:stroke-violet-400',
-      'stroke-emerald-500 dark:stroke-emerald-400',
-      'stroke-sky-500 dark:stroke-sky-400',
-      'stroke-amber-500 dark:stroke-amber-400',
-      'stroke-rose-500 dark:stroke-rose-400',
-      'stroke-indigo-500 dark:stroke-indigo-400'
+      "stroke-violet-500 dark:stroke-violet-400",
+      "stroke-emerald-500 dark:stroke-emerald-400",
+      "stroke-sky-500 dark:stroke-sky-400",
+      "stroke-amber-500 dark:stroke-amber-400",
+      "stroke-rose-500 dark:stroke-rose-400",
+      "stroke-indigo-500 dark:stroke-indigo-400",
     ];
 
     const bgColors = [
-      'bg-violet-500 dark:bg-violet-400',
-      'bg-emerald-500 dark:bg-emerald-400',
-      'bg-sky-500 dark:bg-sky-400',
-      'bg-amber-500 dark:bg-amber-400',
-      'bg-rose-500 dark:bg-rose-400',
-      'bg-indigo-500 dark:bg-indigo-400'
+      "bg-violet-500 dark:bg-violet-400",
+      "bg-emerald-500 dark:bg-emerald-400",
+      "bg-sky-500 dark:bg-sky-400",
+      "bg-amber-500 dark:bg-amber-400",
+      "bg-rose-500 dark:bg-rose-400",
+      "bg-indigo-500 dark:bg-indigo-400",
     ];
 
     return (
       <div className="flex flex-col md:flex-row items-center gap-6 py-2">
         <div className="relative w-36 h-36 flex items-center justify-center shrink-0">
-          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 140 140">
+          <svg
+            className="w-full h-full transform -rotate-90"
+            viewBox="0 0 140 140"
+          >
             {dist.map((item, index) => {
               const percent = item.count / totalCount;
               const strokeLength = percent * circ;
-              const strokeOffset = circ - (accumulatedPercent * circ);
+              const strokeOffset = circ - accumulatedPercent * circ;
               accumulatedPercent += percent;
 
               return (
@@ -439,8 +534,12 @@ const AdminDashboardPage: React.FC = () => {
             })}
           </svg>
           <div className="absolute flex flex-col items-center justify-center">
-            <span className="text-xl font-bold text-slate-800 dark:text-slate-100 font-sora">{totalCount}</span>
-            <span className="text-[10px] text-slate-400 uppercase font-semibold">Docs</span>
+            <span className="text-xl font-bold text-slate-800 dark:text-slate-100 font-sora">
+              {totalCount}
+            </span>
+            <span className="text-[10px] text-slate-400 uppercase font-semibold">
+              Docs
+            </span>
           </div>
         </div>
 
@@ -448,13 +547,22 @@ const AdminDashboardPage: React.FC = () => {
           {dist.map((item, index) => {
             const pct = ((item.count / totalCount) * 100).toFixed(0);
             return (
-              <div key={index} className="flex items-center justify-between w-full md:max-w-xs px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+              <div
+                key={index}
+                className="flex items-center justify-between w-full md:max-w-xs px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+              >
                 <div className="flex items-center gap-2.5">
-                  <span className={`w-3 h-3 rounded-full shrink-0 ${bgColors[index % bgColors.length]}`} />
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 capitalize">{item.file_type}</span>
+                  <span
+                    className={`w-3 h-3 rounded-full shrink-0 ${bgColors[index % bgColors.length]}`}
+                  />
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300 capitalize">
+                    {item.file_type}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">{item.count}</span>
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                    {item.count}
+                  </span>
                   <span className="text-[10px] text-slate-400">({pct}%)</span>
                 </div>
               </div>
@@ -474,7 +582,8 @@ const AdminDashboardPage: React.FC = () => {
             Welcome, {user?.full_name}
           </h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">
-            Here's the latest performance and activity insights across your enterprise RAG vault.
+            Here's the latest performance and activity insights across your
+            enterprise RAG vault.
           </p>
         </div>
 
@@ -487,7 +596,9 @@ const AdminDashboardPage: React.FC = () => {
             onChange={(e) => setStartDate(e.target.value)}
             className="bg-transparent border-none text-xs font-medium focus:ring-0 text-slate-700 dark:text-slate-300 focus:outline-none max-w-[110px]"
           />
-          <span className="text-slate-300 dark:text-slate-700 font-light">to</span>
+          <span className="text-slate-300 dark:text-slate-700 font-light">
+            to
+          </span>
           <input
             type="date"
             value={endDate}
@@ -502,26 +613,32 @@ const AdminDashboardPage: React.FC = () => {
         <h3 className="font-sora text-lg font-semibold text-slate-800 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800/60 pb-2">
           Usage Statistics
         </h3>
-        
+
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Requests Line Chart */}
-          <div className="lg:col-span-2 flex w-full">
-            {renderUsageChart()}
-          </div>
+          <div className="lg:col-span-2 flex w-full">{renderUsageChart()}</div>
 
           {/* Token Totals Card */}
           <div className="flex w-full">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between gap-4 group hover:shadow-md transition-shadow relative overflow-hidden w-full h-full">
-              
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Total Tokens Usage</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">
+                  Total Tokens Usage
+                </span>
               </div>
 
               <div className="flex flex-col gap-0.5 mt-1">
                 <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
-                  {formatCompactNumber(totalClaudeInput + totalClaudeOutput + totalOpenRouterInput + totalOpenRouterOutput)}
+                  {formatCompactNumber(
+                    totalClaudeInput +
+                      totalClaudeOutput +
+                      totalOpenRouterInput +
+                      totalOpenRouterOutput,
+                  )}
                 </span>
-                <span className="text-xs text-slate-400">Total processed tokens in range</span>
+                <span className="text-xs text-slate-400">
+                  Total processed tokens in range
+                </span>
               </div>
 
               <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 flex flex-col gap-4">
@@ -532,12 +649,16 @@ const AdminDashboardPage: React.FC = () => {
                       Claude
                     </span>
                     <span className="font-bold text-slate-800 dark:text-slate-200">
-                      {formatCompactNumber(totalClaudeInput + totalClaudeOutput)}
+                      {formatCompactNumber(
+                        totalClaudeInput + totalClaudeOutput,
+                      )}
                     </span>
                   </div>
                   <div className="flex justify-between text-xs text-slate-550 dark:text-slate-400">
                     <span>Input: {formatCompactNumber(totalClaudeInput)}</span>
-                    <span>Output: {formatCompactNumber(totalClaudeOutput)}</span>
+                    <span>
+                      Output: {formatCompactNumber(totalClaudeOutput)}
+                    </span>
                   </div>
                 </div>
 
@@ -548,12 +669,18 @@ const AdminDashboardPage: React.FC = () => {
                       OpenRouter
                     </span>
                     <span className="font-bold text-slate-800 dark:text-slate-200">
-                      {formatCompactNumber(totalOpenRouterInput + totalOpenRouterOutput)}
+                      {formatCompactNumber(
+                        totalOpenRouterInput + totalOpenRouterOutput,
+                      )}
                     </span>
                   </div>
                   <div className="flex justify-between text-xs text-slate-550 dark:text-slate-400">
-                    <span>Input: {formatCompactNumber(totalOpenRouterInput)}</span>
-                    <span>Output: {formatCompactNumber(totalOpenRouterOutput)}</span>
+                    <span>
+                      Input: {formatCompactNumber(totalOpenRouterInput)}
+                    </span>
+                    <span>
+                      Output: {formatCompactNumber(totalOpenRouterOutput)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -563,21 +690,27 @@ const AdminDashboardPage: React.FC = () => {
           {/* Claude Cost Card */}
           <div className="flex w-full">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between gap-4 group hover:shadow-md transition-shadow relative overflow-hidden w-full h-full">
-              
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-500 dark:text-emerald-400">Token Cost</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-500 dark:text-emerald-400">
+                  Token Cost
+                </span>
               </div>
 
               <div className="flex flex-col gap-0.5 mt-1">
                 <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
                   {formatCost(totalClaudeCost)}
                 </span>
-                <span className="text-xs text-slate-400">Total estimated token usage cost in range</span>
-              </div> 
+                <span className="text-xs text-slate-400">
+                  Total estimated token usage cost in range
+                </span>
+              </div>
 
               <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 flex flex-col gap-3 mb-4">
-                {claudeModelCosts.map(m => (
-                  <div key={m.key} className="flex items-center justify-between text-sm">
+                {claudeModelCosts.map((m) => (
+                  <div
+                    key={m.key}
+                    className="flex items-center justify-between text-sm"
+                  >
                     <span className="text-slate-800 dark:text-slate-400 flex items-center gap-1.5">
                       {m.displayName}
                     </span>
@@ -593,21 +726,27 @@ const AdminDashboardPage: React.FC = () => {
           {/* Answer Quality Card */}
           <div className="flex w-full lg:col-span-2">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between gap-4 group hover:shadow-md transition-shadow relative overflow-hidden w-full h-full">
-              
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Answer Quality (LLM-as-Judge)</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">
+                  Answer Quality (LLM-as-Judge)
+                </span>
                 <div className="flex items-center gap-3">
-                  {evalViewMode === 'latest' && latestEval && (
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${
-                      latestEval.status === 'completed' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400' :
-                      latestEval.status === 'running' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 animate-pulse' :
-                      latestEval.status === 'failed' ? 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400' :
-                      'bg-slate-50 dark:bg-slate-850 text-slate-505'
-                    }`}>
+                  {evalViewMode === "latest" && latestEval && (
+                    <span
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${
+                        latestEval.status === "completed"
+                          ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400"
+                          : latestEval.status === "running"
+                            ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 animate-pulse"
+                            : latestEval.status === "failed"
+                              ? "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400"
+                              : "bg-slate-50 dark:bg-slate-850 text-slate-505"
+                      }`}
+                    >
                       {latestEval.status}
                     </span>
                   )}
-                  {evalViewMode === 'overall' && overallEval && (
+                  {evalViewMode === "overall" && overallEval && (
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400">
                       Cumulative
                     </span>
@@ -616,103 +755,131 @@ const AdminDashboardPage: React.FC = () => {
                   {(latestEval || overallEval) && (
                     <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-800">
                       <button
-                        onClick={() => setEvalViewMode('latest')}
+                        onClick={() => setEvalViewMode("latest")}
                         className={`text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                          evalViewMode === 'latest'
-                            ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm'
-                            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                          evalViewMode === "latest"
+                            ? "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm"
+                            : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                         }`}
                       >
                         Latest Run
                       </button>
                       <button
-                        onClick={() => setEvalViewMode('overall')}
+                        onClick={() => setEvalViewMode("overall")}
                         className={`text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                          evalViewMode === 'overall'
-                            ? 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm'
-                            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                          evalViewMode === "overall"
+                            ? "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-sm"
+                            : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                         }`}
                       >
                         All Time
                       </button>
                     </div>
                   )}
-
                 </div>
               </div>
 
-              {evalViewMode === 'latest' ? (
+              {evalViewMode === "latest" ? (
                 !latestEval ? (
                   <div className="flex flex-col gap-2 mt-2">
-                    <span className="text-xl font-bold text-slate-400 dark:text-slate-550 font-sans">No evaluation run yet</span>
-                    <span className="text-xs text-slate-400 font-sans">Run an evaluation to measure faithfulness and relevance.</span>
+                    <span className="text-xl font-bold text-slate-400 dark:text-slate-550 font-sans">
+                      No evaluation run yet
+                    </span>
+                    <span className="text-xs text-slate-400 font-sans">
+                      Run an evaluation to measure faithfulness and relevance.
+                    </span>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-4 mt-2">
                     <div className="flex flex-col gap-1">
-                      <span className="text-xs text-slate-400 font-medium font-sans">Avg Faithfulness</span>
+                      <span className="text-xs text-slate-400 font-medium font-sans">
+                        Avg Faithfulness
+                      </span>
                       <div className="flex items-baseline gap-1">
                         <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
-                          {latestEval.avg_faithfulness_score !== undefined && latestEval.avg_faithfulness_score !== null
+                          {latestEval.avg_faithfulness_score !== undefined &&
+                          latestEval.avg_faithfulness_score !== null
                             ? `${Math.round(latestEval.avg_faithfulness_score)}%`
-                            : 'N/A'}
+                            : "N/A"}
                         </span>
                       </div>
                     </div>
                     <div className="flex flex-col gap-1">
-                      <span className="text-xs text-slate-400 font-medium font-sans">Avg Retrieval Relevance</span>
+                      <span className="text-xs text-slate-400 font-medium font-sans">
+                        Avg Retrieval Relevance
+                      </span>
                       <div className="flex items-baseline gap-1">
                         <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
-                          {latestEval.avg_relevance_score !== undefined && latestEval.avg_relevance_score !== null
+                          {latestEval.avg_relevance_score !== undefined &&
+                          latestEval.avg_relevance_score !== null
                             ? `${Math.round(latestEval.avg_relevance_score)}%`
-                            : 'N/A'}
+                            : "N/A"}
                         </span>
                       </div>
                     </div>
                   </div>
                 )
+              ) : !overallEval ? (
+                <div className="flex flex-col gap-2 mt-2">
+                  <span className="text-xl font-bold text-slate-400 dark:text-slate-550 font-sans">
+                    No evaluation run yet
+                  </span>
+                  <span className="text-xs text-slate-400 font-sans">
+                    Run an evaluation to measure faithfulness and relevance.
+                  </span>
+                </div>
               ) : (
-                !overallEval ? (
-                  <div className="flex flex-col gap-2 mt-2">
-                    <span className="text-xl font-bold text-slate-400 dark:text-slate-550 font-sans">No evaluation run yet</span>
-                    <span className="text-xs text-slate-400 font-sans">Run an evaluation to measure faithfulness and relevance.</span>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-4 mt-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs text-slate-400 font-medium font-sans">Avg Faithfulness</span>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
-                          {overallEval.avg_faithfulness_score !== undefined && overallEval.avg_faithfulness_score !== null
-                            ? `${Math.round(overallEval.avg_faithfulness_score)}%`
-                            : 'N/A'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-xs text-slate-400 font-medium font-sans">Avg Retrieval Relevance</span>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
-                          {overallEval.avg_relevance_score !== undefined && overallEval.avg_relevance_score !== null
-                            ? `${Math.round(overallEval.avg_relevance_score)}%`
-                            : 'N/A'}
-                        </span>
-                      </div>
+                <div className="grid grid-cols-2 gap-4 mt-2">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-slate-400 font-medium font-sans">
+                      Avg Faithfulness
+                    </span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
+                        {overallEval.avg_faithfulness_score !== undefined &&
+                        overallEval.avg_faithfulness_score !== null
+                          ? `${Math.round(overallEval.avg_faithfulness_score)}%`
+                          : "N/A"}
+                      </span>
                     </div>
                   </div>
-                )
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-slate-400 font-medium font-sans">
+                      Avg Retrieval Relevance
+                    </span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
+                        {overallEval.avg_relevance_score !== undefined &&
+                        overallEval.avg_relevance_score !== null
+                          ? `${Math.round(overallEval.avg_relevance_score)}%`
+                          : "N/A"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               )}
 
               <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 flex items-center justify-between gap-4 mt-auto">
                 <span className="text-xs text-slate-450 dark:text-slate-500 font-sans">
-                  {evalViewMode === 'latest'
-                    ? (latestEval ? `Last run: ${new Date(latestEval.created_at).toLocaleDateString()} (${latestEval.query_count} queries)` : 'Evaluate model outputs')
-                    : (overallEval ? `All-time cumulative (${overallEval.query_count} queries)` : 'Evaluate model outputs')}
+                  {evalViewMode === "latest"
+                    ? latestEval
+                      ? `Last run: ${new Date(latestEval.created_at).toLocaleDateString()} (${latestEval.query_count} queries)`
+                      : "Evaluate model outputs"
+                    : overallEval
+                      ? `All-time cumulative (${overallEval.query_count} queries)`
+                      : "Evaluate model outputs"}
                 </span>
                 <div className="flex items-center gap-2">
                   {latestEval && (
                     <button
-                      onClick={() => navigate(`/dashboard/evaluations/${latestEval.id}`, { state: { defaultViewMode: evalViewMode === 'overall' ? 'all' : 'run' } })}
+                      onClick={() =>
+                        navigate(`/dashboard/evaluations/${latestEval.id}`, {
+                          state: {
+                            defaultViewMode:
+                              evalViewMode === "overall" ? "all" : "run",
+                          },
+                        })
+                      }
                       className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline transition-all cursor-pointer font-sans"
                     >
                       View Details
@@ -732,9 +899,10 @@ const AdminDashboardPage: React.FC = () => {
           {/* OpenRouter Cost Card */}
           <div className="flex w-full lg:col-span-2">
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between gap-4 group hover:shadow-md transition-shadow relative overflow-hidden w-full h-full">
-              
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400">OpenRouter Token Cost</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-500 dark:text-amber-400">
+                  OpenRouter Token Cost
+                </span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-1">
@@ -743,16 +911,25 @@ const AdminDashboardPage: React.FC = () => {
                   <span className="text-3xl font-bold font-sora text-slate-800 dark:text-slate-100">
                     {formatCost(totalOpenRouterCost)}
                   </span>
-                  <span className="text-xs text-slate-400">Total estimated OpenRouter usage cost in range</span>
+                  <span className="text-xs text-slate-400">
+                    Total estimated OpenRouter usage cost in range
+                  </span>
                 </div>
 
                 {/* Breakdown Column (Grid of models) */}
                 <div className="border-t md:border-t-0 md:border-l border-slate-100 dark:border-slate-800/80 pt-4 md:pt-0 md:pl-6 flex flex-col gap-2">
-                  <span className="text-xs font-bold uppercase text-slate-450 dark:text-slate-500 tracking-wider">Breakdown</span>
-                  
-                  {openRouterModelCosts.map(m => (
-                    <div key={m.key} className="flex items-center justify-between text-sm">
-                      <span className="text-slate-850 dark:text-slate-400">{m.displayName}</span>
+                  <span className="text-xs font-bold uppercase text-slate-450 dark:text-slate-500 tracking-wider">
+                    Breakdown
+                  </span>
+
+                  {openRouterModelCosts.map((m) => (
+                    <div
+                      key={m.key}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <span className="text-slate-850 dark:text-slate-400">
+                        {m.displayName}
+                      </span>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-slate-400 dark:text-slate-550">
                           {formatCompactNumber(m.totalTokens)} tokens
@@ -768,10 +945,14 @@ const AdminDashboardPage: React.FC = () => {
 
               <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4 flex items-center justify-between mt-auto">
                 <span className="text-xs text-slate-450 dark:text-slate-500 font-sans">
-                  Total OpenRouter Tokens: {formatCompactNumber(totalOpenRouterInput + totalOpenRouterOutput)}
+                  Total OpenRouter Tokens:{" "}
+                  {formatCompactNumber(
+                    totalOpenRouterInput + totalOpenRouterOutput,
+                  )}
                 </span>
                 <span className="text-xs text-slate-450 dark:text-slate-500 font-sans">
-                  Input: {formatCompactNumber(totalOpenRouterInput)} | Output: {formatCompactNumber(totalOpenRouterOutput)}
+                  Input: {formatCompactNumber(totalOpenRouterInput)} | Output:{" "}
+                  {formatCompactNumber(totalOpenRouterOutput)}
                 </span>
               </div>
             </div>
@@ -784,14 +965,16 @@ const AdminDashboardPage: React.FC = () => {
         <h3 className="font-sora text-lg font-semibold text-slate-800 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800/60 pb-2">
           Overview
         </h3>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
           {/* Departments Count */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex items-center justify-between group hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
             <div className="flex flex-col gap-1">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Departments</span>
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Departments
+              </span>
               <span className="text-3xl font-bold text-slate-800 dark:text-slate-100 font-sora">
-                {overviewLoading ? '...' : overview?.department_count || 0}
+                {overviewLoading ? "..." : overview?.department_count || 0}
               </span>
             </div>
             <div className="p-3 bg-violet-50 dark:bg-violet-950/40 text-violet-500 rounded-lg group-hover:scale-110 transition-transform">
@@ -802,9 +985,11 @@ const AdminDashboardPage: React.FC = () => {
           {/* Document Count */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex items-center justify-between group hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
             <div className="flex flex-col gap-1">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Documents</span>
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Documents
+              </span>
               <span className="text-3xl font-bold text-slate-800 dark:text-slate-100 font-sora">
-                {overviewLoading ? '...' : overview?.document_count || 0}
+                {overviewLoading ? "..." : overview?.document_count || 0}
               </span>
             </div>
             <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-500 rounded-lg group-hover:scale-110 transition-transform">
@@ -815,9 +1000,11 @@ const AdminDashboardPage: React.FC = () => {
           {/* Roles Count */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex items-center justify-between group hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
             <div className="flex flex-col gap-1">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Roles Count</span>
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Roles Count
+              </span>
               <span className="text-3xl font-bold text-slate-800 dark:text-slate-100 font-sora">
-                {overviewLoading ? '...' : overview?.role_count || 0}
+                {overviewLoading ? "..." : overview?.role_count || 0}
               </span>
             </div>
             <div className="p-3 bg-sky-50 dark:bg-sky-950/40 text-sky-500 rounded-lg group-hover:scale-110 transition-transform">
@@ -828,9 +1015,11 @@ const AdminDashboardPage: React.FC = () => {
           {/* Members Count */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex items-center justify-between group hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
             <div className="flex flex-col gap-1">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Members Count</span>
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Members Count
+              </span>
               <span className="text-3xl font-bold text-slate-800 dark:text-slate-100 font-sora">
-                {overviewLoading ? '...' : overview?.member_count || 0}
+                {overviewLoading ? "..." : overview?.member_count || 0}
               </span>
             </div>
             <div className="p-3 bg-rose-50 dark:bg-rose-950/40 text-rose-500 rounded-lg group-hover:scale-110 transition-transform">
@@ -841,9 +1030,11 @@ const AdminDashboardPage: React.FC = () => {
           {/* Total Reports */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex items-center justify-between group hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
             <div className="flex flex-col gap-1">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Reports</span>
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Total Reports
+              </span>
               <span className="text-3xl font-bold text-slate-800 dark:text-slate-100 font-sora">
-                {overviewLoading ? '...' : overview?.total_reports || 0}
+                {overviewLoading ? "..." : overview?.total_reports || 0}
               </span>
             </div>
             <div className="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-500 rounded-lg group-hover:scale-110 transition-transform">
@@ -854,9 +1045,16 @@ const AdminDashboardPage: React.FC = () => {
           {/* Report Storage */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex items-center justify-between group hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
             <div className="flex flex-col gap-1">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Report Storage</span>
-              <span className="text-2xl font-bold text-slate-800 dark:text-slate-100 font-sora truncate max-w-[140px]" title={formatBytes(overview?.total_report_size_bytes || 0)}>
-                {overviewLoading ? '...' : formatBytes(overview?.total_report_size_bytes || 0)}
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Report Storage
+              </span>
+              <span
+                className="text-2xl font-bold text-slate-800 dark:text-slate-100 font-sora truncate max-w-[140px]"
+                title={formatBytes(overview?.total_report_size_bytes || 0)}
+              >
+                {overviewLoading
+                  ? "..."
+                  : formatBytes(overview?.total_report_size_bytes || 0)}
               </span>
             </div>
             <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-500 rounded-lg group-hover:scale-110 transition-transform">
@@ -875,18 +1073,20 @@ const AdminDashboardPage: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Distribution chart */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex flex-col gap-4">
-            <h4 className="font-semibold text-sm text-slate-700 dark:text-slate-300">Document Type Distribution</h4>
-            <div className="my-auto">
-              {renderFileDistributionChart()}
-            </div>
+            <h4 className="font-semibold text-sm text-slate-700 dark:text-slate-300">
+              Document Type Distribution
+            </h4>
+            <div className="my-auto">{renderFileDistributionChart()}</div>
           </div>
 
           {/* Latest Uploads list */}
           <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <h4 className="font-semibold text-sm text-slate-700 dark:text-slate-300">Latest 3 Uploads</h4>
-              <button 
-                onClick={() => navigate('/dashboard/documents')}
+              <h4 className="font-semibold text-sm text-slate-700 dark:text-slate-300">
+                Latest 3 Uploads
+              </h4>
+              <button
+                onClick={() => navigate("/dashboard/documents")}
                 className="text-xs font-medium text-indigo-500 hover:text-indigo-600 flex items-center gap-1 hover:underline"
               >
                 View all <ArrowRight className="w-3.5 h-3.5" />
@@ -907,30 +1107,52 @@ const AdminDashboardPage: React.FC = () => {
                   {insightsLoading ? (
                     [0, 1, 2].map((i) => (
                       <tr key={i} className="animate-pulse">
-                        <td className="py-4 px-3"><div className="h-3.5 bg-slate-200 dark:bg-slate-800 rounded w-44" /></td>
-                        <td className="py-4 px-3"><div className="h-3.5 bg-slate-200 dark:bg-slate-800 rounded w-12" /></td>
-                        <td className="py-4 px-3"><div className="h-3.5 bg-slate-200 dark:bg-slate-800 rounded w-20" /></td>
-                        <td className="py-4 px-3"><div className="h-3.5 bg-slate-200 dark:bg-slate-800 rounded w-16" /></td>
+                        <td className="py-4 px-3">
+                          <div className="h-3.5 bg-slate-200 dark:bg-slate-800 rounded w-44" />
+                        </td>
+                        <td className="py-4 px-3">
+                          <div className="h-3.5 bg-slate-200 dark:bg-slate-800 rounded w-12" />
+                        </td>
+                        <td className="py-4 px-3">
+                          <div className="h-3.5 bg-slate-200 dark:bg-slate-800 rounded w-20" />
+                        </td>
+                        <td className="py-4 px-3">
+                          <div className="h-3.5 bg-slate-200 dark:bg-slate-800 rounded w-16" />
+                        </td>
                       </tr>
                     ))
-                  ) : !documentInsights?.recent_documents || documentInsights.recent_documents.length === 0 ? (
+                  ) : !documentInsights?.recent_documents ||
+                    documentInsights.recent_documents.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="py-8 px-3 text-center text-slate-400 dark:text-slate-500">
+                      <td
+                        colSpan={4}
+                        className="py-8 px-3 text-center text-slate-400 dark:text-slate-500"
+                      >
                         No documents uploaded yet.
                       </td>
                     </tr>
                   ) : (
                     documentInsights.recent_documents.map((doc, idx) => {
                       const statusColorMap: Record<string, string> = {
-                        pending: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
-                        processing: 'bg-yellow-50 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400',
-                        ready: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400',
-                        failed: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400',
+                        pending:
+                          "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+                        processing:
+                          "bg-yellow-50 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400",
+                        ready:
+                          "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400",
+                        failed:
+                          "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400",
                       };
 
                       return (
-                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/10">
-                          <td className="py-3 px-3 font-medium text-slate-700 dark:text-slate-350 max-w-[200px] truncate" title={doc.filename}>
+                        <tr
+                          key={idx}
+                          className="hover:bg-slate-50 dark:hover:bg-slate-800/10"
+                        >
+                          <td
+                            className="py-3 px-3 font-medium text-slate-700 dark:text-slate-350 max-w-[200px] truncate"
+                            title={doc.filename}
+                          >
                             {doc.filename}
                           </td>
                           <td className="py-3 px-3 text-slate-500 dark:text-slate-450 uppercase font-semibold text-[10px]">
@@ -940,7 +1162,9 @@ const AdminDashboardPage: React.FC = () => {
                             {doc.uploaded_by}
                           </td>
                           <td className="py-3 px-3">
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusColorMap[doc.status] || 'bg-slate-100 text-slate-600'}`}>
+                            <span
+                              className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${statusColorMap[doc.status] || "bg-slate-100 text-slate-600"}`}
+                            >
                               {doc.status}
                             </span>
                           </td>
@@ -960,75 +1184,103 @@ const AdminDashboardPage: React.FC = () => {
         <h3 className="font-sora text-lg font-semibold text-slate-800 dark:text-slate-100 border-b border-slate-100 dark:border-slate-800/60 pb-2">
           Quick Actions
         </h3>
-        
+
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
           {/* Invite Employee Action */}
-          <button 
-            onClick={() => navigate('/dashboard/team', { state: { openInvite: true } })}
+          <button
+            onClick={() =>
+              navigate("/dashboard/team", { state: { openInvite: true } })
+            }
             className="flex items-center gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600/80 p-5 rounded-xl text-left shadow-sm group hover:-translate-y-0.5 transition-all duration-200"
           >
             <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
               <UserPlus className="w-5 h-5" />
             </div>
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Invite Employee</span>
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">Send workspace invites</span>
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                Invite Employee
+              </span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                Send workspace invites
+              </span>
             </div>
           </button>
 
           {/* Create Role Action */}
-          <button 
-            onClick={() => navigate('/dashboard/roles', { state: { openCreate: true } })}
+          <button
+            onClick={() =>
+              navigate("/dashboard/roles", { state: { openCreate: true } })
+            }
             className="flex items-center gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600/80 p-5 rounded-xl text-left shadow-sm group hover:-translate-y-0.5 transition-all duration-200"
           >
             <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
               <ShieldPlus className="w-5 h-5" />
             </div>
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Create Role</span>
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">Add custom hierarchy roles</span>
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                Create Role
+              </span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                Add custom hierarchy roles
+              </span>
             </div>
           </button>
 
           {/* Upload Document Action */}
-          <button 
-            onClick={() => navigate('/dashboard/documents', { state: { openUpload: true } })}
+          <button
+            onClick={() =>
+              navigate("/dashboard/documents", { state: { openUpload: true } })
+            }
             className="flex items-center gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600/80 p-5 rounded-xl text-left shadow-sm group hover:-translate-y-0.5 transition-all duration-200"
           >
             <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
               <Upload className="w-5 h-5" />
             </div>
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Upload Document</span>
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">Inject raw files to vault</span>
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                Upload Document
+              </span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                Inject raw files to vault
+              </span>
             </div>
           </button>
 
           {/* Create Department Action */}
-          <button 
-            onClick={() => navigate('/dashboard/team', { state: { openCreateDept: true } })}
+          <button
+            onClick={() =>
+              navigate("/dashboard/team", { state: { openCreateDept: true } })
+            }
             className="flex items-center gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600/80 p-5 rounded-xl text-left shadow-sm group hover:-translate-y-0.5 transition-all duration-200"
           >
             <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
               <Plus className="w-5 h-5" />
             </div>
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Create Department</span>
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">Group roles into categories</span>
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                Create Department
+              </span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                Group roles into categories
+              </span>
             </div>
           </button>
 
           {/* View Audit Log Action */}
-          <button 
-            onClick={() => navigate('/dashboard/audit-log')}
+          <button
+            onClick={() => navigate("/dashboard/audit-log")}
             className="flex items-center gap-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600/80 p-5 rounded-xl text-left shadow-sm group hover:-translate-y-0.5 transition-all duration-200"
           >
             <div className="p-3.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
               <History className="w-5 h-5" />
             </div>
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Audit Log</span>
-              <span className="text-[11px] text-slate-400 dark:text-slate-500">Track organisation state changes</span>
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                Audit Log
+              </span>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                Track organisation state changes
+              </span>
             </div>
           </button>
         </div>
@@ -1042,7 +1294,7 @@ const AdminDashboardPage: React.FC = () => {
               <h4 className="font-sora text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 Run Evaluation
               </h4>
-              <button 
+              <button
                 onClick={() => setIsEvalModalOpen(false)}
                 className="text-slate-400 dark:text-slate-500 hover:text-slate-650 dark:hover:text-slate-300 transition-colors text-sm cursor-pointer"
               >
@@ -1051,18 +1303,24 @@ const AdminDashboardPage: React.FC = () => {
             </div>
 
             <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed font-sans">
-              Evaluate the quality of generated answers based on faithfulness (factuality against context) and retrieval relevance.
+              Evaluate the quality of generated answers based on faithfulness
+              (factuality against context) and retrieval relevance.
             </p>
 
-            <form onSubmit={handleRunEvaluation} className="flex flex-col gap-4 mt-2">
+            <form
+              onSubmit={handleRunEvaluation}
+              className="flex flex-col gap-4 mt-2"
+            >
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-sans">Evaluation Scope</label>
+                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-sans">
+                  Evaluation Scope
+                </label>
                 <div className="flex gap-4">
                   <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer font-sans">
                     <input
                       type="radio"
-                      checked={evalScope === 'count'}
-                      onChange={() => setEvalScope('count')}
+                      checked={evalScope === "count"}
+                      onChange={() => setEvalScope("count")}
                       className="text-indigo-650 focus:ring-indigo-500"
                     />
                     Latest Queries Count
@@ -1070,8 +1328,8 @@ const AdminDashboardPage: React.FC = () => {
                   <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer font-sans">
                     <input
                       type="radio"
-                      checked={evalScope === 'date_range'}
-                      onChange={() => setEvalScope('date_range')}
+                      checked={evalScope === "date_range"}
+                      onChange={() => setEvalScope("date_range")}
                       className="text-indigo-650 focus:ring-indigo-500"
                     />
                     Custom Date Range
@@ -1079,23 +1337,35 @@ const AdminDashboardPage: React.FC = () => {
                 </div>
               </div>
 
-              {evalScope === 'count' ? (
+              {evalScope === "count" ? (
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="eval-count" className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-sans">Number of Queries</label>
+                  <label
+                    htmlFor="eval-count"
+                    className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-sans"
+                  >
+                    Number of Queries
+                  </label>
                   <input
                     id="eval-count"
                     type="number"
                     min="1"
                     max="1000"
                     value={evalCount}
-                    onChange={(e) => setEvalCount(parseInt(e.target.value) || 10)}
+                    onChange={(e) =>
+                      setEvalCount(parseInt(e.target.value) || 10)
+                    }
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-sans"
                   />
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex flex-col gap-1.5">
-                    <label htmlFor="eval-start-date" className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-sans">Start Date</label>
+                    <label
+                      htmlFor="eval-start-date"
+                      className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-sans"
+                    >
+                      Start Date
+                    </label>
                     <input
                       id="eval-start-date"
                       type="date"
@@ -1105,7 +1375,12 @@ const AdminDashboardPage: React.FC = () => {
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label htmlFor="eval-end-date" className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-sans">End Date</label>
+                    <label
+                      htmlFor="eval-end-date"
+                      className="text-xs font-semibold text-slate-500 dark:text-slate-400 font-sans"
+                    >
+                      End Date
+                    </label>
                     <input
                       id="eval-end-date"
                       type="date"
@@ -1130,7 +1405,7 @@ const AdminDashboardPage: React.FC = () => {
                   disabled={isSubmittingEval}
                   className="px-4 py-2 bg-indigo-650 bg-indigo-700 disabled:bg-indigo-650/50 text-white text-sm font-semibold rounded-xl shadow-sm transition-colors font-sans cursor-pointer"
                 >
-                  {isSubmittingEval ? 'Scheduling...' : 'Run Evaluation'}
+                  {isSubmittingEval ? "Scheduling..." : "Run Evaluation"}
                 </button>
               </div>
             </form>

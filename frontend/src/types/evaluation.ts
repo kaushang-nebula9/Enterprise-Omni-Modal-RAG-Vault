@@ -1,4 +1,4 @@
-export type EvaluationStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type EvaluationStatus = "pending" | "running" | "completed" | "failed";
 
 export interface EvaluationRun {
   id: string;

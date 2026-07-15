@@ -1,25 +1,30 @@
-import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { AlertTriangle, Eye, EyeOff } from 'lucide-react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { completeGoogleSetup, setPassword } from '../../services/authService';
-import { useAuthStore } from '../../store/authStore';
-import type { UserResponse } from '../../types/auth';
+import React, { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { completeGoogleSetup, setPassword } from "../../services/authService";
+import { useAuthStore } from "../../store/authStore";
+import type { UserResponse } from "../../types/auth";
 
 const step1Schema = z.object({
-  org_name: z.string().min(1, 'Organisation name is required'),
-  org_website: z.string().min(1, 'Organisation website is required').url('Please enter a valid website URL (e.g. https://acme.com)'),
+  org_name: z.string().min(1, "Organisation name is required"),
+  org_website: z
+    .string()
+    .min(1, "Organisation website is required")
+    .url("Please enter a valid website URL (e.g. https://acme.com)"),
 });
 
-const step2Schema = z.object({
-  new_password: z.string().min(8, 'Password must be at least 8 characters'),
-  confirm_password: z.string().min(1, 'Confirm password is required'),
-}).refine((data) => data.new_password === data.confirm_password, {
-  message: "Passwords do not match",
-  path: ['confirm_password'],
-});
+const step2Schema = z
+  .object({
+    new_password: z.string().min(8, "Password must be at least 8 characters"),
+    confirm_password: z.string().min(1, "Confirm password is required"),
+  })
+  .refine((data) => data.new_password === data.confirm_password, {
+    message: "Passwords do not match",
+    path: ["confirm_password"],
+  });
 
 type Step1FormValues = z.infer<typeof step1Schema>;
 type Step2FormValues = z.infer<typeof step2Schema>;
@@ -28,7 +33,7 @@ const GoogleOrgSetupPage: React.FC = () => {
   const navigate = useNavigate();
   const setUser = useAuthStore((state) => state.setUser);
   const [searchParams] = useSearchParams();
-  const setupToken = searchParams.get('setup_token');
+  const setupToken = searchParams.get("setup_token");
 
   const [step, setStep] = useState(1);
   const [createdUser, setCreatedUser] = useState<UserResponse | null>(null);
@@ -47,8 +52,8 @@ const GoogleOrgSetupPage: React.FC = () => {
   } = useForm<Step1FormValues>({
     resolver: zodResolver(step1Schema),
     defaultValues: {
-      org_name: '',
-      org_website: '',
+      org_name: "",
+      org_website: "",
     },
   });
 
@@ -60,14 +65,16 @@ const GoogleOrgSetupPage: React.FC = () => {
   } = useForm<Step2FormValues>({
     resolver: zodResolver(step2Schema),
     defaultValues: {
-      new_password: '',
-      confirm_password: '',
+      new_password: "",
+      confirm_password: "",
     },
   });
 
   const onStep1Submit = async (data: Step1FormValues) => {
     if (!setupToken) {
-      setApiError('Setup token is missing. Please try signing in with Google again.');
+      setApiError(
+        "Setup token is missing. Please try signing in with Google again.",
+      );
       return;
     }
 
@@ -85,7 +92,9 @@ const GoogleOrgSetupPage: React.FC = () => {
       if (err.response && err.response.data && err.response.data.detail) {
         setApiError(err.response.data.detail);
       } else {
-        setApiError('An error occurred during account setup. Please try again.');
+        setApiError(
+          "An error occurred during account setup. Please try again.",
+        );
       }
     } finally {
       setIsLoading(false);
@@ -94,7 +103,7 @@ const GoogleOrgSetupPage: React.FC = () => {
 
   const onStep2Submit = async (data: Step2FormValues) => {
     if (!createdUser) {
-      setApiError('Account session not found. Please start over.');
+      setApiError("Account session not found. Please start over.");
       return;
     }
 
@@ -111,12 +120,14 @@ const GoogleOrgSetupPage: React.FC = () => {
         ...createdUser,
         has_password: true,
       });
-      navigate('/dashboard');
+      navigate("/dashboard");
     } catch (err: any) {
       if (err.response && err.response.data && err.response.data.detail) {
         setApiError(err.response.data.detail);
       } else {
-        setApiError('Failed to set password. You can try again later from your settings.');
+        setApiError(
+          "Failed to set password. You can try again later from your settings.",
+        );
       }
     } finally {
       setIsLoading(false);
@@ -126,7 +137,7 @@ const GoogleOrgSetupPage: React.FC = () => {
   const handleSkipPassword = () => {
     if (createdUser) {
       setUser(createdUser);
-      navigate('/dashboard');
+      navigate("/dashboard");
     }
   };
 
@@ -136,8 +147,12 @@ const GoogleOrgSetupPage: React.FC = () => {
         <div className="mb-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded-lg p-4 flex items-start gap-3 text-red-700 dark:text-red-400 text-sm">
           <AlertTriangle className="h-5 w-5 text-red-500 dark:text-red-455 shrink-0 mt-0.5" />
           <div>
-            <h4 className="font-bold text-red-800 dark:text-red-300">Invalid setup link</h4>
-            <p className="mt-1 text-red-700 dark:text-red-400/90">Please try signing in with Google again.</p>
+            <h4 className="font-bold text-red-800 dark:text-red-300">
+              Invalid setup link
+            </h4>
+            <p className="mt-1 text-red-700 dark:text-red-400/90">
+              Please try signing in with Google again.
+            </p>
           </div>
         </div>
         <Link
@@ -169,49 +184,70 @@ const GoogleOrgSetupPage: React.FC = () => {
             <div className="mb-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded-lg p-4 flex items-start gap-3 text-red-700 dark:text-red-450 text-sm animate-fade-in">
               <AlertTriangle className="h-5 w-5 text-red-500 dark:text-red-455 shrink-0 mt-0.5" />
               <div>
-                <h4 className="font-bold text-red-800 dark:text-red-300">Setup Failed</h4>
-                <p className="mt-1 text-red-700 dark:text-red-400/90">{apiError}</p>
+                <h4 className="font-bold text-red-800 dark:text-red-300">
+                  Setup Failed
+                </h4>
+                <p className="mt-1 text-red-700 dark:text-red-400/90">
+                  {apiError}
+                </p>
               </div>
             </div>
           )}
 
           {/* Setup Form */}
-          <form onSubmit={handleSubmitStep1(onStep1Submit)} className="space-y-6">
+          <form
+            onSubmit={handleSubmitStep1(onStep1Submit)}
+            className="space-y-6"
+          >
             {/* Organisation Name Field */}
             <div>
-              <label htmlFor="org_name" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              <label
+                htmlFor="org_name"
+                className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2"
+              >
                 Organisation Name
               </label>
               <input
                 id="org_name"
                 type="text"
                 placeholder="Acme Corporation"
-                {...registerStep1('org_name')}
+                {...registerStep1("org_name")}
                 className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
-                  errorsStep1.org_name ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-455' : 'border-slate-200 dark:border-slate-700'
+                  errorsStep1.org_name
+                    ? "border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-455"
+                    : "border-slate-200 dark:border-slate-700"
                 }`}
               />
               {errorsStep1.org_name && (
-                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errorsStep1.org_name.message}</p>
+                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">
+                  {errorsStep1.org_name.message}
+                </p>
               )}
             </div>
 
             {/* Organisation Website Field */}
             <div>
-              <label htmlFor="org_website" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              <label
+                htmlFor="org_website"
+                className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2"
+              >
                 Organisation Website
               </label>
               <input
                 id="org_website"
                 type="text"
                 placeholder="https://acme.com"
-                {...registerStep1('org_website')}
+                {...registerStep1("org_website")}
                 className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
-                  errorsStep1.org_website ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-455' : 'border-slate-200 dark:border-slate-700'
+                  errorsStep1.org_website
+                    ? "border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-455"
+                    : "border-slate-200 dark:border-slate-700"
                 }`}
               />
               {errorsStep1.org_website && (
-                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errorsStep1.org_website.message}</p>
+                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">
+                  {errorsStep1.org_website.message}
+                </p>
               )}
             </div>
 
@@ -223,12 +259,28 @@ const GoogleOrgSetupPage: React.FC = () => {
                 className="bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 w-full transition-colors duration-200 flex items-center justify-center gap-2"
               >
                 {isLoading ? (
-                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  <svg
+                    className="animate-spin h-5 w-5 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
                   </svg>
                 ) : (
-                  'Complete Setup'
+                  "Complete Setup"
                 )}
               </button>
             </div>
@@ -242,7 +294,8 @@ const GoogleOrgSetupPage: React.FC = () => {
               Set a password
             </h2>
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              Optional: Set a password to log in without Google in the future. You can skip this step if you prefer.
+              Optional: Set a password to log in without Google in the future.
+              You can skip this step if you prefer.
             </p>
           </div>
 
@@ -251,27 +304,39 @@ const GoogleOrgSetupPage: React.FC = () => {
             <div className="mb-6 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/60 rounded-lg p-4 flex items-start gap-3 text-red-700 dark:text-red-450 text-sm animate-fade-in">
               <AlertTriangle className="h-5 w-5 text-red-500 dark:text-red-455 shrink-0 mt-0.5" />
               <div>
-                <h4 className="font-bold text-red-800 dark:text-red-300">Error setting password</h4>
-                <p className="mt-1 text-red-700 dark:text-red-400/90">{apiError}</p>
+                <h4 className="font-bold text-red-800 dark:text-red-300">
+                  Error setting password
+                </h4>
+                <p className="mt-1 text-red-700 dark:text-red-400/90">
+                  {apiError}
+                </p>
               </div>
             </div>
           )}
 
           {/* Password Form */}
-          <form onSubmit={handleSubmitStep2(onStep2Submit)} className="space-y-6 animate-fade-in">
+          <form
+            onSubmit={handleSubmitStep2(onStep2Submit)}
+            className="space-y-6 animate-fade-in"
+          >
             {/* New Password Field */}
             <div>
-              <label htmlFor="new_password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              <label
+                htmlFor="new_password"
+                className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2"
+              >
                 New Password
               </label>
               <div className="relative">
                 <input
                   id="new_password"
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
-                  {...registerStep2('new_password')}
+                  {...registerStep2("new_password")}
                   className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent ${
-                    errorsStep2.new_password ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-455' : 'border-slate-200 dark:border-slate-700'
+                    errorsStep2.new_password
+                      ? "border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-455"
+                      : "border-slate-200 dark:border-slate-700"
                   }`}
                 />
                 <button
@@ -279,27 +344,38 @@ const GoogleOrgSetupPage: React.FC = () => {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-350"
                 >
-                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
                 </button>
               </div>
               {errorsStep2.new_password && (
-                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errorsStep2.new_password.message}</p>
+                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">
+                  {errorsStep2.new_password.message}
+                </p>
               )}
             </div>
 
             {/* Confirm Password Field */}
             <div>
-              <label htmlFor="confirm_password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              <label
+                htmlFor="confirm_password"
+                className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2"
+              >
                 Confirm Password
               </label>
               <div className="relative">
                 <input
                   id="confirm_password"
-                  type={showConfirmPassword ? 'text' : 'password'}
+                  type={showConfirmPassword ? "text" : "password"}
                   placeholder="••••••••"
-                  {...registerStep2('confirm_password')}
+                  {...registerStep2("confirm_password")}
                   className={`border rounded-lg px-4 py-3 w-full bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-550 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-405 focus:border-transparent ${
-                    errorsStep2.confirm_password ? 'border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-455' : 'border-slate-200 dark:border-slate-700'
+                    errorsStep2.confirm_password
+                      ? "border-red-500 dark:border-red-450 focus:ring-red-500 dark:focus:ring-red-455"
+                      : "border-slate-200 dark:border-slate-700"
                   }`}
                 />
                 <button
@@ -307,11 +383,17 @@ const GoogleOrgSetupPage: React.FC = () => {
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 dark:text-slate-550 hover:text-slate-600 dark:hover:text-slate-350"
                 >
-                  {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
                 </button>
               </div>
               {errorsStep2.confirm_password && (
-                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">{errorsStep2.confirm_password.message}</p>
+                <p className="mt-1.5 text-sm text-red-500 dark:text-red-400">
+                  {errorsStep2.confirm_password.message}
+                </p>
               )}
             </div>
 
@@ -330,12 +412,28 @@ const GoogleOrgSetupPage: React.FC = () => {
                 className="bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-white font-semibold rounded-lg px-6 py-3 w-2/3 transition-colors duration-200 flex items-center justify-center gap-2"
               >
                 {isLoading ? (
-                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  <svg
+                    className="animate-spin h-5 w-5 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
                   </svg>
                 ) : (
-                  'Save and Continue'
+                  "Save and Continue"
                 )}
               </button>
             </div>

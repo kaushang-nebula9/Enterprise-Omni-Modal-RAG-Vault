@@ -1,4 +1,4 @@
-import api from './api';
+import api from "./api";
 
 export interface DatabaseConnectionResponse {
   id: string;
@@ -56,12 +56,12 @@ export interface DatabaseAccessPolicyCreatePayload {
 
 export const databaseService = {
   getDatabases: async (): Promise<DatabaseConnectionResponse[]> => {
-    const response = await api.get('/api/v1/databases');
+    const response = await api.get("/api/v1/databases");
     return response.data;
   },
 
   getAuthorizedDatabases: async (): Promise<DatabaseConnectionResponse[]> => {
-    const response = await api.get('/api/v1/databases/authorized');
+    const response = await api.get("/api/v1/databases/authorized");
     return response.data;
   },
 
@@ -75,12 +75,17 @@ export const databaseService = {
     return response.data;
   },
 
-  createDatabase: async (data: DatabaseConnectionCreatePayload): Promise<DatabaseConnectionResponse> => {
-    const response = await api.post('/api/v1/databases', data);
+  createDatabase: async (
+    data: DatabaseConnectionCreatePayload,
+  ): Promise<DatabaseConnectionResponse> => {
+    const response = await api.post("/api/v1/databases", data);
     return response.data;
   },
 
-  updateDatabase: async (id: string, data: Partial<DatabaseConnectionCreatePayload>): Promise<DatabaseConnectionResponse> => {
+  updateDatabase: async (
+    id: string,
+    data: Partial<DatabaseConnectionCreatePayload>,
+  ): Promise<DatabaseConnectionResponse> => {
     const response = await api.put(`/api/v1/databases/${id}`, data);
     return response.data;
   },
@@ -89,8 +94,10 @@ export const databaseService = {
     await api.delete(`/api/v1/databases/${id}`);
   },
 
-  testConnection: async (data: Omit<DatabaseConnectionCreatePayload, 'name'>): Promise<{ status: string; message: string }> => {
-    const response = await api.post('/api/v1/databases/test-connection', data);
+  testConnection: async (
+    data: Omit<DatabaseConnectionCreatePayload, "name">,
+  ): Promise<{ status: string; message: string }> => {
+    const response = await api.post("/api/v1/databases/test-connection", data);
     return response.data;
   },
 
@@ -99,12 +106,17 @@ export const databaseService = {
     return response.data;
   },
 
-  listAccessPolicies: async (id: string): Promise<DatabaseAccessPolicyResponse[]> => {
+  listAccessPolicies: async (
+    id: string,
+  ): Promise<DatabaseAccessPolicyResponse[]> => {
     const response = await api.get(`/api/v1/databases/${id}/access`);
     return response.data;
   },
 
-  grantAccess: async (id: string, data: DatabaseAccessPolicyCreatePayload): Promise<DatabaseAccessPolicyResponse[]> => {
+  grantAccess: async (
+    id: string,
+    data: DatabaseAccessPolicyCreatePayload,
+  ): Promise<DatabaseAccessPolicyResponse[]> => {
     const response = await api.post(`/api/v1/databases/${id}/access`, data);
     return response.data;
   },

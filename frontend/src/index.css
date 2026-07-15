@@ -3,17 +3,21 @@
 @tailwind utilities;
 
 @layer utilities {
+
   /* Modern thin scrollbar */
   .custom-scrollbar::-webkit-scrollbar {
     width: 8px;
     height: 4px;
   }
+
   .custom-scrollbar::-webkit-scrollbar-track {
     background: transparent;
   }
+
   .custom-scrollbar::-webkit-scrollbar-thumb {
     @apply bg-slate-400/30 rounded-full;
   }
+
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     @apply bg-slate-400/50;
   }
@@ -23,12 +27,15 @@
     width: 6px;
     height: 6px;
   }
+
   ::-webkit-scrollbar-track {
     background: transparent;
   }
+
   ::-webkit-scrollbar-thumb {
     @apply bg-slate-300/50 rounded-full;
   }
+
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-slate-400/60;
   }
@@ -41,18 +48,22 @@
 
 .editable-input[data-empty="true"]:before {
   content: attr(placeholder);
-  color: #94a3b8; /* slate-400 */
+  color: #94a3b8;
+  /* slate-400 */
   pointer-events: none;
   display: inline-block;
 }
 
 .dark .editable-input[data-empty="true"]:before {
-  color: #64748b; /* slate-500 */
+  color: #64748b;
+  /* slate-500 */
 }
+
 .editable-input:empty::before,
 .editable-input[data-empty="true"]::before {
   content: attr(data-placeholder);
-  color: rgb(148 163 184); /* slate-400 */
+  color: rgb(148 163 184);
+  /* slate-400 */
   pointer-events: none;
   position: absolute;
 }
@@ -62,6 +73,7 @@
     opacity: 0;
     transform: translateY(6px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);

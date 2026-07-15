@@ -1,11 +1,11 @@
 export type NotificationType =
-  | 'role_assigned'
-  | 'document_access_direct'
-  | 'document_access_inherited_hierarchy'
-  | 'document_access_inherited_department'
-  | 'department_added'
-  | 'evaluation_completed'
-  | 'budget_exceeded';
+  | "role_assigned"
+  | "document_access_direct"
+  | "document_access_inherited_hierarchy"
+  | "document_access_inherited_department"
+  | "department_added"
+  | "evaluation_completed"
+  | "budget_exceeded";
 
 export interface Notification {
   id: string;
@@ -20,4 +20,3 @@ export interface Notification {
   is_read: boolean;
   created_at: string;
 }
-

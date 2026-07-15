@@ -1,6 +1,9 @@
-import { create } from 'zustand';
-import type { Notification } from '../types/notification';
-import { getNotifications, markNotificationsRead } from '../services/notificationService';
+import { create } from "zustand";
+import type { Notification } from "../types/notification";
+import {
+  getNotifications,
+  markNotificationsRead,
+} from "../services/notificationService";
 
 interface NotificationState {
   notifications: Notification[];
@@ -13,7 +16,7 @@ interface NotificationState {
   addNotification: (notif: Notification) => void;
 }
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export const useNotificationStore = create<NotificationState>((set, get) => {
   let reconnectTimeout: any = null;
@@ -27,7 +30,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => {
     const es = new EventSource(url, { withCredentials: true });
 
     es.onopen = () => {
-      console.log('SSE notification connection established.');
+      console.log("SSE notification connection established.");
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
         reconnectTimeout = null;
@@ -39,18 +42,18 @@ export const useNotificationStore = create<NotificationState>((set, get) => {
         const notif = JSON.parse(event.data);
         get().addNotification(notif);
       } catch (err) {
-        console.error('Failed to parse incoming SSE notification message', err);
+        console.error("Failed to parse incoming SSE notification message", err);
       }
     };
 
     es.onerror = (err) => {
-      console.error('SSE notification connection error:', err);
+      console.error("SSE notification connection error:", err);
       es.close();
       set({ eventSource: null });
-      
+
       // Auto-reconnect on drop, unless explicitly disconnected
       if (!isDisconnecting) {
-        console.log('Attempting to reconnect SSE in 5 seconds...');
+        console.log("Attempting to reconnect SSE in 5 seconds...");
         if (reconnectTimeout) clearTimeout(reconnectTimeout);
         reconnectTimeout = setTimeout(() => {
           establishConnection();
@@ -72,7 +75,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => {
         const unread = list.filter((n) => !n.is_read).length;
         set({ notifications: list, unreadCount: unread });
       } catch (err) {
-        console.error('Failed to fetch notification history:', err);
+        console.error("Failed to fetch notification history:", err);
       }
     },
 
@@ -80,11 +83,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => {
       try {
         await markNotificationsRead();
         set((state) => ({
-          notifications: state.notifications.map((n) => ({ ...n, is_read: true })),
+          notifications: state.notifications.map((n) => ({
+            ...n,
+            is_read: true,
+          })),
           unreadCount: 0,
         }));
       } catch (err) {
-        console.error('Failed to mark notifications as read:', err);
+        console.error("Failed to mark notifications as read:", err);
       }
     },
 

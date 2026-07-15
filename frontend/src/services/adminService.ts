@@ -1,44 +1,55 @@
-import api from './api';
-import type { UserResponse, AdminStatsResponse, TenantResponse, MessageResponse } from '../types/auth';
-import type { 
-  UpdateMemberPayload, 
+import api from "./api";
+import type {
+  UserResponse,
+  AdminStatsResponse,
+  TenantResponse,
+  MessageResponse,
+} from "../types/auth";
+import type {
+  UpdateMemberPayload,
   UpdateOrganisationPayload,
   UsageSummaryResponse,
   DashboardOverviewResponse,
-  DocumentInsightsResponse
-} from '../types/admin';
-import type { AvailableModel } from '../types/chat';
+  DocumentInsightsResponse,
+} from "../types/admin";
+import type { AvailableModel } from "../types/chat";
 
 export const adminService = {
   getStats: async (): Promise<AdminStatsResponse> => {
-    const response = await api.get('/api/v1/admin/stats');
+    const response = await api.get("/api/v1/admin/stats");
     return response.data;
   },
 
-  getUsageSummary: async (startDate?: string, endDate?: string): Promise<UsageSummaryResponse> => {
+  getUsageSummary: async (
+    startDate?: string,
+    endDate?: string,
+  ): Promise<UsageSummaryResponse> => {
     const params = new URLSearchParams();
-    if (startDate) params.append('start_date', startDate);
-    if (endDate) params.append('end_date', endDate);
-    const response = await api.get('/api/v1/admin/usage', { params });
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+    const response = await api.get("/api/v1/admin/usage", { params });
     return response.data;
   },
 
   getDashboardOverview: async (): Promise<DashboardOverviewResponse> => {
-    const response = await api.get('/api/v1/admin/dashboard-overview');
+    const response = await api.get("/api/v1/admin/dashboard-overview");
     return response.data;
   },
 
   getDocumentInsights: async (): Promise<DocumentInsightsResponse> => {
-    const response = await api.get('/api/v1/admin/document-insights');
+    const response = await api.get("/api/v1/admin/document-insights");
     return response.data;
   },
 
   getMembers: async (): Promise<UserResponse[]> => {
-    const response = await api.get('/api/v1/admin/members');
+    const response = await api.get("/api/v1/admin/members");
     return response.data;
   },
 
-  updateMember: async (userId: string, data: UpdateMemberPayload): Promise<UserResponse> => {
+  updateMember: async (
+    userId: string,
+    data: UpdateMemberPayload,
+  ): Promise<UserResponse> => {
     const response = await api.patch(`/api/v1/admin/members/${userId}`, data);
     return response.data;
   },
@@ -49,34 +60,36 @@ export const adminService = {
   },
 
   getOrganisation: async (): Promise<TenantResponse> => {
-    const response = await api.get('/api/v1/admin/organisation');
+    const response = await api.get("/api/v1/admin/organisation");
     return response.data;
   },
 
-  updateOrganisation: async (data: UpdateOrganisationPayload): Promise<TenantResponse> => {
-    const response = await api.patch('/api/v1/admin/organisation', data);
+  updateOrganisation: async (
+    data: UpdateOrganisationPayload,
+  ): Promise<TenantResponse> => {
+    const response = await api.patch("/api/v1/admin/organisation", data);
     return response.data;
   },
 
   deleteOrganisation: async (): Promise<MessageResponse> => {
-    const response = await api.delete('/api/v1/admin/organisation');
+    const response = await api.delete("/api/v1/admin/organisation");
     return response.data;
   },
 
   getProviders: async (): Promise<any[]> => {
-    const response = await api.get('/api/providers');
+    const response = await api.get("/api/providers");
     return response.data;
   },
 
   getModels: async (): Promise<AvailableModel[]> => {
-    const response = await api.get('/api/v1/admin/models');
+    const response = await api.get("/api/v1/admin/models");
     return response.data;
   },
 
-  createModel: async (data: { 
-    display_name: string; 
-    provider?: 'anthropic' | 'openrouter' | null; 
-    model_string?: string | null; 
+  createModel: async (data: {
+    display_name: string;
+    provider?: "anthropic" | "openrouter" | null;
+    model_string?: string | null;
     is_active: boolean;
     input_price_per_million?: number | null;
     output_price_per_million?: number | null;
@@ -87,28 +100,31 @@ export const adminService = {
     model_name: string;
     api_key?: string;
     is_default?: boolean;
-    tier?: 'fast' | 'balanced' | 'powerful';
+    tier?: "fast" | "balanced" | "powerful";
   }): Promise<AvailableModel> => {
-    const response = await api.post('/api/v1/admin/models', data);
+    const response = await api.post("/api/v1/admin/models", data);
     return response.data;
   },
 
-  updateModel: async (modelId: string, data: { 
-    display_name?: string; 
-    provider?: 'anthropic' | 'openrouter' | null; 
-    model_string?: string | null; 
-    is_active?: boolean;
-    input_price_per_million?: number | null;
-    output_price_per_million?: number | null;
-    provider_id?: string;
-    base_url?: string | null;
-    input_cost_per_million_tokens?: number | null;
-    output_cost_per_million_tokens?: number | null;
-    model_name?: string;
-    api_key?: string;
-    is_default?: boolean;
-    tier?: 'fast' | 'balanced' | 'powerful';
-  }): Promise<AvailableModel> => {
+  updateModel: async (
+    modelId: string,
+    data: {
+      display_name?: string;
+      provider?: "anthropic" | "openrouter" | null;
+      model_string?: string | null;
+      is_active?: boolean;
+      input_price_per_million?: number | null;
+      output_price_per_million?: number | null;
+      provider_id?: string;
+      base_url?: string | null;
+      input_cost_per_million_tokens?: number | null;
+      output_cost_per_million_tokens?: number | null;
+      model_name?: string;
+      api_key?: string;
+      is_default?: boolean;
+      tier?: "fast" | "balanced" | "powerful";
+    },
+  ): Promise<AvailableModel> => {
     const response = await api.patch(`/api/v1/admin/models/${modelId}`, data);
     return response.data;
   },
@@ -130,8 +146,7 @@ export const adminService = {
     limit: number;
     offset: number;
   }> => {
-    const response = await api.get('/api/v1/admin/audit-log', { params });
+    const response = await api.get("/api/v1/admin/audit-log", { params });
     return response.data;
-  }
+  },
 };
-

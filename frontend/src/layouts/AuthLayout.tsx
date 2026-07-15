@@ -1,7 +1,7 @@
-import React from 'react';
-import { Outlet } from 'react-router-dom';
-import AuthLeftPanel from '../components/auth/AuthLeftPanel';
-import ThemeToggle from '../components/shared/ThemeToggle';
+import React from "react";
+import { Outlet } from "react-router-dom";
+import AuthLeftPanel from "../components/auth/AuthLeftPanel";
+import ThemeToggle from "../components/shared/ThemeToggle";
 
 const AuthLayout: React.FC = () => {
   return (
