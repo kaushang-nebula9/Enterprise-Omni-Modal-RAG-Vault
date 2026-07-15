@@ -51,28 +51,73 @@ const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {
   const navigate = useNavigate();
 
   // ─── Sessions store ────────────────────────────────────────────────────────
-  const { sessions, setSessions, setLoading, updateSession, removeSession } = useSessionsStore();
+  const {
+    sessions,
+    setSessions,
+    setLoading,
+    updateSession,
+    removeSession,
+    pinnedHasMore,
+    pinnedIsLoadingMore,
+    pinnedError,
+    unpinnedHasMore,
+    unpinnedIsLoadingMore,
+    unpinnedError,
+    setPinnedHasMore,
+    setPinnedError,
+    setUnpinnedHasMore,
+    setUnpinnedError,
+    loadMorePinned,
+    loadMoreUnpinned,
+  } = useSessionsStore();
 
   const pinnedSessions  = selectPinnedSessions(sessions);
   const unpinnedSessions = selectUnpinnedSessions(sessions);
 
-  // ─── React Query fetch (seeds the Zustand store) ──────────────────────────
-  const { data: fetchedSessions, isLoading } = useQuery({
-    queryKey: ['chat-sessions'],
-    queryFn: chatService.getSessions,
+  // ─── React Query fetches (seeds the Zustand store) ──────────────────────────
+  const { data: initialPinned, isLoading: isLoadingPinned, isError: isErrorPinned, refetch: refetchPinned } = useQuery({
+    queryKey: ['chat-sessions', 'pinned'],
+    queryFn: () => chatService.getSessions({ is_pinned: true, limit: 10, offset: 0 }),
+    enabled: !user?.role.is_admin,
+  });
+
+  const { data: initialUnpinned, isLoading: isLoadingUnpinned, isError: isErrorUnpinned, refetch: refetchUnpinned } = useQuery({
+    queryKey: ['chat-sessions', 'unpinned'],
+    queryFn: () => chatService.getSessions({ is_pinned: false, limit: 10, offset: 0 }),
     enabled: !user?.role.is_admin,
   });
 
   // Seed / sync the Zustand store whenever React Query fetches fresh data
   useEffect(() => {
-    if (fetchedSessions) {
-      setSessions(fetchedSessions);
+    if (initialPinned !== undefined && initialUnpinned !== undefined) {
+      setSessions([...initialPinned, ...initialUnpinned]);
+      setPinnedHasMore(initialPinned.length === 10);
+      setUnpinnedHasMore(initialUnpinned.length === 10);
+      setPinnedError(null);
+      setUnpinnedError(null);
     }
-  }, [fetchedSessions, setSessions]);
+  }, [
+    initialPinned,
+    initialUnpinned,
+    setSessions,
+    setPinnedHasMore,
+    setUnpinnedHasMore,
+    setPinnedError,
+    setUnpinnedError,
+  ]);
 
   useEffect(() => {
-    setLoading(isLoading);
-  }, [isLoading, setLoading]);
+    setLoading(isLoadingPinned || isLoadingUnpinned);
+  }, [isLoadingPinned, isLoadingUnpinned, setLoading]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    // Auto-load unpinned chats when scrolled near the bottom (within 50px)
+    const isNearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 50;
+    if (isNearBottom && isExpanded) {
+      loadMoreUnpinned();
+    }
+  };
 
   // ─── Delete ───────────────────────────────────────────────────────────────
   const queryClient = useQueryClient();
@@ -104,6 +149,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {
     onSuccess: (updated) => {
       // Reconcile with authoritative server state
       updateSession(updated);
+      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
     },
     onError: (_err, _sessionId, context) => {
       // Roll back optimistic update
@@ -234,10 +280,25 @@ const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {
             <div className="mt-6 flex-1 flex flex-col overflow-hidden">
               {!isExpanded && <div className="border-t border-slate-200 dark:border-slate-800 my-4 shrink-0" />}
 
-              <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar pr-1">
-                {isLoading && sessions.length === 0 ? (
+              <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar pr-1" onScroll={handleScroll}>
+                {(isLoadingPinned || isLoadingUnpinned) && sessions.length === 0 ? (
                   isExpanded ? (
                     <div className="px-3 text-slate-400 dark:text-slate-500 text-sm animate-pulse">Loading...</div>
+                  ) : null
+                ) : (isErrorPinned || isErrorUnpinned) && sessions.length === 0 ? (
+                  isExpanded ? (
+                    <div className="px-3 py-2 flex flex-col gap-2 items-start text-sm">
+                      <span className="text-red-500 text-xs">Failed to load chats.</span>
+                      <button
+                        onClick={() => {
+                          if (isErrorPinned) refetchPinned();
+                          if (isErrorUnpinned) refetchUnpinned();
+                        }}
+                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold transition-colors"
+                      >
+                        Retry
+                      </button>
+                    </div>
                   ) : null
                 ) : sessions.length === 0 ? (
                   isExpanded ? (
@@ -248,18 +309,43 @@ const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {
                     {/* ── Pinned section ── */}
                     {pinnedSessions.length > 0 && isExpanded && (
                       <div className="mb-4">
-                        <p className="px-3 pb-1 text-sm font-semibold text-slate-500 dark:text-slate-400 select-none">
+                        <p className="px-3 pb-1 text-sm font-semibold text-slate-900 dark:text-slate-400 select-none">
                           Pinned
                         </p>
                         <div className="space-y-1">
                           {pinnedSessions.map(renderSessionItem)}
+                          
+                          {pinnedIsLoadingMore && (
+                            <div className="px-3 py-1 text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                              Loading more...
+                            </div>
+                          )}
+                          {pinnedError && (
+                            <div className="px-3 py-1 flex flex-col items-start gap-1">
+                              <span className="text-xs text-red-500">{pinnedError}</span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); loadMorePinned(); }}
+                                className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
+                              >
+                                Retry
+                              </button>
+                            </div>
+                          )}
+                          {pinnedHasMore && !pinnedIsLoadingMore && !pinnedError && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); loadMorePinned(); }}
+                              className="w-full text-left px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                            >
+                              Load More...
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}
 
                     {/* ── Chat History section ── */}
                     {isExpanded && (
-                      <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-3 px-3 select-none">
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-slate-400 mb-3 px-3 select-none">
                         Chat History
                       </h3>
                     )}
@@ -267,11 +353,42 @@ const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {
                     {unpinnedSessions.length > 0 && isExpanded && (
                       <div className="space-y-1">
                         {unpinnedSessions.map(renderSessionItem)}
+                        
+                        {unpinnedIsLoadingMore && (
+                          <div className="px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                            Loading more...
+                          </div>
+                        )}
+                        {unpinnedError && (
+                          <div className="px-3 py-1 flex flex-col items-start gap-1">
+                            <span className="text-xs text-red-500">{unpinnedError}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); loadMoreUnpinned(); }}
+                              className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
+                            >
+                              Retry
+                            </button>
+                          </div>
+                        )}
+                        {unpinnedHasMore && !unpinnedIsLoadingMore && !unpinnedError && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); loadMoreUnpinned(); }}
+                            className="w-full text-left px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                          >
+                            Load More
+                          </button>
+                        )}
                       </div>
                     )}
 
                     {/* When collapsed, render all sessions flat (no grouping headers) */}
                     {!isExpanded && [...pinnedSessions, ...unpinnedSessions].map(renderSessionItem)}
+                    
+                    {!isExpanded && (unpinnedIsLoadingMore || pinnedIsLoadingMore) && (
+                      <div className="flex justify-center py-2 animate-pulse text-indigo-600 dark:text-indigo-400 text-xs">
+                        • • •
+                      </div>
+                    )}
                   </>
                 )}
               </div>

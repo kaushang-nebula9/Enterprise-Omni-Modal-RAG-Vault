@@ -235,16 +235,30 @@ def create_session(
 
 @router.get("/sessions", response_model=list[SessionResponse])
 def list_sessions(
+    is_pinned: bool | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """List all sessions for the current user, pinned first then newest first."""
-    sessions = (
-        db.query(QuerySession)
-        .filter(QuerySession.user_id == current_user.id)
-        .order_by(QuerySession.is_pinned.desc(), QuerySession.updated_at.desc())
-        .all()
-    )
+    query = db.query(QuerySession).filter(QuerySession.user_id == current_user.id)
+
+    if is_pinned is not None:
+        query = query.filter(QuerySession.is_pinned == is_pinned)
+        query = query.order_by(QuerySession.updated_at.desc())
+    else:
+        query = query.order_by(
+            QuerySession.is_pinned.desc(), QuerySession.updated_at.desc()
+        )
+
+    if limit is not None:
+        query = query.limit(limit)
+
+    if offset is not None:
+        query = query.offset(offset)
+
+    sessions = query.all()
     return sessions
 
 

@@ -9,8 +9,8 @@ export const chatService = {
     return response.data
   },
 
-  getSessions: async (): Promise<SessionResponse[]> => {
-    const response = await api.get<SessionResponse[]>('/api/v1/chat/sessions')
+  getSessions: async (params?: { is_pinned?: boolean; limit?: number; offset?: number }): Promise<SessionResponse[]> => {
+    const response = await api.get<SessionResponse[]>('/api/v1/chat/sessions', { params })
     return response.data
   },
 
