@@ -96,6 +96,8 @@ class DashboardOverviewResponse(BaseModel):
     document_count: int
     role_count: int
     member_count: int
+    total_reports: int
+    total_report_size_bytes: int
 
 
 class DocumentTypeCount(BaseModel):

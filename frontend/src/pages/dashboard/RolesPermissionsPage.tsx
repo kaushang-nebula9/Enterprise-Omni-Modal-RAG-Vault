@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { roleService } from '../../services/roleService';
@@ -85,6 +85,33 @@ export const RolesPermissionsPage: React.FC = () => {
   const [filterRoleType, setFilterRoleType] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+
+  // Dropdown states & refs
+  const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
+  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false);
+  const deptDropdownRef = useRef<HTMLDivElement>(null);
+  const typeDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        deptDropdownRef.current &&
+        !deptDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsDeptDropdownOpen(false);
+      }
+      if (
+        typeDropdownRef.current &&
+        !typeDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsTypeDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const [editingRole, setEditingRole] = useState<RoleResponse | null>(null);
   const [editParentRoleId, setEditParentRoleId] = useState<string | null>(null);
@@ -228,40 +255,103 @@ export const RolesPermissionsPage: React.FC = () => {
         {/* Filters */}
         <div className="flex flex-wrap items-center justify-end gap-3 w-full lg:w-auto shrink-0">
           {/* Department Filter */}
-          <div className="relative shrink-0">
-            <select
-              value={filterDept}
-              onChange={(e) => {
-                setFilterDept(e.target.value);
-                e.target.blur();
-              }}
-              className="peer appearance-none w-44 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          <div className="relative inline-block text-left" ref={deptDropdownRef}>
+            <button
+              onClick={() => setIsDeptDropdownOpen(!isDeptDropdownOpen)}
+              type="button"
+              className="inline-flex items-center justify-between gap-2 px-3.5 py-2 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-all select-none outline-none min-w-[160px] cursor-pointer shadow-sm"
             >
-              <option value="all">All Departments</option>
-              <option value="unassigned">Unassigned</option>
-              {departments.map((dept) => (
-                <option key={dept.id} value={dept.id}>{dept.name}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+              <span>
+                {filterDept === 'all' && 'All Departments'}
+                {filterDept === 'unassigned' && 'Unassigned'}
+                {filterDept !== 'all' && filterDept !== 'unassigned' && (departments.find(d => d.id === filterDept)?.name || filterDept)}
+              </span>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isDeptDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isDeptDropdownOpen && (
+              <div className="absolute right-0 mt-1.5 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 overflow-hidden py-1 max-h-60 overflow-y-auto">
+                <button
+                  onClick={() => {
+                    setFilterDept('all');
+                    setIsDeptDropdownOpen(false);
+                  }}
+                  type="button"
+                  className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
+                    filterDept === 'all' ? 'text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/30 dark:bg-indigo-950/15' : 'text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  All Departments
+                </button>
+                <button
+                  onClick={() => {
+                    setFilterDept('unassigned');
+                    setIsDeptDropdownOpen(false);
+                  }}
+                  type="button"
+                  className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
+                    filterDept === 'unassigned' ? 'text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/30 dark:bg-indigo-950/15' : 'text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  Unassigned
+                </button>
+                {departments.map((dept) => (
+                  <button
+                    key={dept.id}
+                    onClick={() => {
+                      setFilterDept(dept.id);
+                      setIsDeptDropdownOpen(false);
+                    }}
+                    type="button"
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
+                      filterDept === dept.id ? 'text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/30 dark:bg-indigo-950/15' : 'text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {dept.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Role Type Filter */}
-          <div className="relative shrink-0">
-            <select
-              value={filterRoleType}
-              onChange={(e) => {
-                setFilterRoleType(e.target.value);
-                e.target.blur();
-              }}
-              className="peer appearance-none w-36 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          <div className="relative inline-block text-left" ref={typeDropdownRef}>
+            <button
+              onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
+              type="button"
+              className="inline-flex items-center justify-between gap-2 px-3.5 py-2 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-all select-none outline-none min-w-[128px] cursor-pointer shadow-sm"
             >
-              <option value="all">All Types</option>
-              <option value="admin">Admin Roles</option>
-              <option value="default">Default Roles</option>
-              <option value="custom">Custom Roles</option>
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+              <span>
+                {filterRoleType === 'all' && 'All Types'}
+                {filterRoleType === 'admin' && 'Admin Roles'}
+                {filterRoleType === 'default' && 'Default Roles'}
+                {filterRoleType === 'custom' && 'Custom Roles'}
+              </span>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isTypeDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isTypeDropdownOpen && (
+              <div className="absolute right-0 mt-1.5 w-40 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 overflow-hidden py-1">
+                {(['all', 'admin', 'default', 'custom'] as const).map((typeVal) => (
+                  <button
+                    key={typeVal}
+                    onClick={() => {
+                      setFilterRoleType(typeVal);
+                      setIsTypeDropdownOpen(false);
+                    }}
+                    type="button"
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
+                      filterRoleType === typeVal ? 'text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/30 dark:bg-indigo-950/15' : 'text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {typeVal === 'all' && 'All Types'}
+                    {typeVal === 'admin' && 'Admin Roles'}
+                    {typeVal === 'default' && 'Default Roles'}
+                    {typeVal === 'custom' && 'Custom Roles'}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Date Range */}

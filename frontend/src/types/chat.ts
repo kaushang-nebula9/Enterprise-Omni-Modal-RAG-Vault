@@ -89,6 +89,10 @@ export interface ReportAgentStep {
 
 export interface ReportStatus {
   report_id: string;
+  session_id: string;
+  session_title?: string;
+  source_type: string;
+  sources_used: string[];
   status: 'generating' | 'complete' | 'failed';
   title: string;
   created_at: string;

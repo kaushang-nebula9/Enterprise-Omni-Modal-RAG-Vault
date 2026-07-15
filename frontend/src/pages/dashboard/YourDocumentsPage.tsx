@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileText,
@@ -262,6 +262,33 @@ export default function YourDocumentsPage() {
   const [filterStatus, setFilterStatus] = useState('all')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+
+  // Dropdown states & refs
+  const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false)
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
+  const typeDropdownRef = useRef<HTMLDivElement>(null)
+  const statusDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        typeDropdownRef.current &&
+        !typeDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsTypeDropdownOpen(false)
+      }
+      if (
+        statusDropdownRef.current &&
+        !statusDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsStatusDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
   
   const [modal, setModal] = useState<ModalState>({ type: 'none' })
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -379,43 +406,91 @@ export default function YourDocumentsPage() {
         {/* Filters */}
         <div className="flex flex-wrap items-center justify-end gap-3 w-full lg:w-auto shrink-0">
           {/* File Type */}
-          <div className="relative shrink-0">
-            <select
-              value={filterType}
-              onChange={(e) => {
-                setFilterType(e.target.value)
-                e.target.blur()
-              }}
-              className="peer appearance-none w-32 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-555 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          <div className="relative inline-block text-left" ref={typeDropdownRef}>
+            <button
+              onClick={() => setIsTypeDropdownOpen(!isTypeDropdownOpen)}
+              type="button"
+              className="inline-flex items-center justify-between gap-2 px-3.5 py-2 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-all select-none outline-none min-w-[128px] cursor-pointer shadow-sm"
             >
-              <option value="all">All Types</option>
-              <option value="pdf">PDF</option>
-              <option value="text">TXT</option>
-              <option value="audio">Audio</option>
-              <option value="pptx">PPTX</option>
-              <option value="docx">DOCX</option>
-              <option value="excel">Excel</option>
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+              <span>
+                {filterType === 'all' && 'All Types'}
+                {filterType === 'pdf' && 'PDF'}
+                {filterType === 'text' && 'TXT'}
+                {filterType === 'audio' && 'Audio'}
+                {filterType === 'pptx' && 'PPTX'}
+                {filterType === 'docx' && 'DOCX'}
+                {filterType === 'excel' && 'Excel'}
+              </span>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isTypeDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isTypeDropdownOpen && (
+              <div className="absolute right-0 mt-1.5 w-40 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 overflow-hidden py-1">
+                {(['all', 'pdf', 'text', 'audio', 'pptx', 'docx', 'excel'] as const).map((typeVal) => (
+                  <button
+                    key={typeVal}
+                    onClick={() => {
+                      setFilterType(typeVal)
+                      setIsTypeDropdownOpen(false)
+                    }}
+                    type="button"
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
+                      filterType === typeVal ? 'text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/30 dark:bg-indigo-950/15' : 'text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {typeVal === 'all' && 'All Types'}
+                    {typeVal === 'pdf' && 'PDF'}
+                    {typeVal === 'text' && 'TXT'}
+                    {typeVal === 'audio' && 'Audio'}
+                    {typeVal === 'pptx' && 'PPTX'}
+                    {typeVal === 'docx' && 'DOCX'}
+                    {typeVal === 'excel' && 'Excel'}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Status */}
-          <div className="relative shrink-0">
-            <select
-              value={filterStatus}
-              onChange={(e) => {
-                setFilterStatus(e.target.value)
-                e.target.blur()
-              }}
-              className="peer appearance-none w-36 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-555 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          <div className="relative inline-block text-left" ref={statusDropdownRef}>
+            <button
+              onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+              type="button"
+              className="inline-flex items-center justify-between gap-2 px-3.5 py-2 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-all select-none outline-none min-w-[140px] cursor-pointer shadow-sm"
             >
-              <option value="all">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="processing">Processing</option>
-              <option value="ready">Ready</option>
-              <option value="failed">Failed</option>
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+              <span>
+                {filterStatus === 'all' && 'All Status'}
+                {filterStatus === 'pending' && 'Pending'}
+                {filterStatus === 'processing' && 'Processing'}
+                {filterStatus === 'ready' && 'Ready'}
+                {filterStatus === 'failed' && 'Failed'}
+              </span>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isStatusDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isStatusDropdownOpen && (
+              <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 overflow-hidden py-1">
+                {(['all', 'pending', 'processing', 'ready', 'failed'] as const).map((statusVal) => (
+                  <button
+                    key={statusVal}
+                    onClick={() => {
+                      setFilterStatus(statusVal)
+                      setIsStatusDropdownOpen(false)
+                    }}
+                    type="button"
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
+                      filterStatus === statusVal ? 'text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/30 dark:bg-indigo-950/15' : 'text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {statusVal === 'all' && 'All Status'}
+                    {statusVal === 'pending' && 'Pending'}
+                    {statusVal === 'processing' && 'Processing'}
+                    {statusVal === 'ready' && 'Ready'}
+                    {statusVal === 'failed' && 'Failed'}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Date Range */}

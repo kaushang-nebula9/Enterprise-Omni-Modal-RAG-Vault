@@ -15,9 +15,11 @@ import {
   Pin,
   History,
   Database,
+  ScrollText,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { chatService } from '../../services/chatService';
+import { listReports } from '../../services/reportService';
 import {
   useSessionsStore,
   selectPinnedSessions,
@@ -43,6 +45,7 @@ const adminLinks = [
 const memberLinks = [
   { name: 'New Chat', icon: MessageSquare, path: '/dashboard/chat' },
   { name: 'Your Documents', icon: FileText, path: '/dashboard/your-documents' },
+  { name: 'Reports', icon: ScrollText, path: '/dashboard/reports' },
 ];
 
 const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {
@@ -86,6 +89,15 @@ const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {
     queryFn: () => chatService.getSessions({ is_pinned: false, limit: 10, offset: 0 }),
     enabled: !user?.role.is_admin,
   });
+
+  const { data: reports = [] } = useQuery({
+    queryKey: ['reports-list'],
+    queryFn: listReports,
+    enabled: !user?.role.is_admin,
+    refetchInterval: 10000, // Poll every 10s for the badge
+  });
+
+  const generatingCount = reports.filter((r) => r.status === 'generating').length;
 
   // Seed / sync the Zustand store whenever React Query fetches fresh data
   useEffect(() => {
@@ -167,6 +179,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {
       : location.pathname === link.path;
 
     const Icon = link.icon;
+    const isReports = link.name === 'Reports';
 
     return (
       <NavLink
@@ -179,9 +192,24 @@ const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {
         } ${isExpanded ? 'px-3 py-2.5' : 'justify-center p-2.5'}`}
         title={!isExpanded ? link.name : undefined}
       >
-        <Icon className="w-5 h-5 shrink-0" />
+        <div className="relative flex items-center justify-center shrink-0">
+          <Icon className="w-5 h-5 shrink-0" />
+          {isReports && generatingCount > 0 && !isExpanded && (
+            <span className="absolute -top-1 -right-1 flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+            </span>
+          )}
+        </div>
         {isExpanded && (
-          <span className="ml-3 font-medium whitespace-nowrap">{link.name}</span>
+          <span className="ml-3 font-medium whitespace-nowrap flex-1 flex justify-between items-center">
+            <span>{link.name}</span>
+            {isReports && generatingCount > 0 && (
+              <span className="inline-flex items-center justify-center text-xs w-4 h-4 font-semibold leading-none text-white bg-indigo-600 dark:bg-indigo-500 rounded-full">
+                {generatingCount}
+              </span>
+            )}
+          </span>
         )}
       </NavLink>
     );

@@ -59,6 +59,12 @@ export const DatabasesPage: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isAccessModalOpen, setIsAccessModalOpen] = useState(false);
 
+  // Dropdown states & refs
+  const [isEngineFilterDropdownOpen, setIsEngineFilterDropdownOpen] = useState(false);
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+  const engineFilterDropdownRef = useRef<HTMLDivElement>(null);
+  const statusFilterDropdownRef = useRef<HTMLDivElement>(null);
+
   // Form State
   const [connId, setConnId] = useState<string | null>(null); // null for create
   const [name, setName] = useState('');
@@ -134,6 +140,12 @@ export const DatabasesPage: React.FC = () => {
       }
       if (deptDropdownRef.current && !deptDropdownRef.current.contains(event.target as Node)) {
         setIsDeptDropdownOpen(false);
+      }
+      if (engineFilterDropdownRef.current && !engineFilterDropdownRef.current.contains(event.target as Node)) {
+        setIsEngineFilterDropdownOpen(false);
+      }
+      if (statusFilterDropdownRef.current && !statusFilterDropdownRef.current.contains(event.target as Node)) {
+        setIsStatusDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -414,37 +426,75 @@ export const DatabasesPage: React.FC = () => {
         {/* Filters */}
         <div className="flex flex-wrap items-center justify-end gap-3 w-full lg:w-auto shrink-0">
           {/* Engine Filter */}
-          <div className="relative shrink-0 w-36">
-            <select
-              value={engineFilter}
-              onChange={(e) => {
-                setEngineFilter(e.target.value);
-                e.target.blur();
-              }}
-              className="peer appearance-none w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+          <div className="relative inline-block text-left" ref={engineFilterDropdownRef}>
+            <button
+              onClick={() => setIsEngineFilterDropdownOpen(!isEngineFilterDropdownOpen)}
+              type="button"
+              className="inline-flex items-center justify-between gap-2 px-3.5 py-2 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-all select-none outline-none min-w-[128px] cursor-pointer shadow-sm"
             >
-              <option value="">All Engines</option>
-              <option value="postgresql">PostgreSQL</option>
-              <option value="mysql">MySQL</option>
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+              <span>
+                {engineFilter === '' && 'All Engines'}
+                {engineFilter === 'postgresql' && 'PostgreSQL'}
+                {engineFilter === 'mysql' && 'MySQL'}
+              </span>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isEngineFilterDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isEngineFilterDropdownOpen && (
+              <div className="absolute right-0 mt-1.5 w-40 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 overflow-hidden py-1">
+                {([['', 'All Engines'], ['postgresql', 'PostgreSQL'], ['mysql', 'MySQL']] as const).map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => {
+                      setEngineFilter(val);
+                      setIsEngineFilterDropdownOpen(false);
+                    }}
+                    type="button"
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
+                      engineFilter === val ? 'text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/30 dark:bg-indigo-950/15' : 'text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Status Filter */}
-          <div className="relative shrink-0 w-36">
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                e.target.blur();
-              }}
-              className="peer appearance-none w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+          <div className="relative inline-block text-left" ref={statusFilterDropdownRef}>
+            <button
+              onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+              type="button"
+              className="inline-flex items-center justify-between gap-2 px-3.5 py-2 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-850/60 transition-all select-none outline-none min-w-[140px] cursor-pointer shadow-sm"
             >
-              <option value="">All Statuses</option>
-              <option value="active">Healthy</option>
-              <option value="error">Error</option>
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none transition-transform duration-200 peer-focus:rotate-180" />
+              <span>
+                {statusFilter === '' && 'All Statuses'}
+                {statusFilter === 'active' && 'Healthy'}
+                {statusFilter === 'error' && 'Error'}
+              </span>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isStatusDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isStatusDropdownOpen && (
+              <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 overflow-hidden py-1">
+                {([['', 'All Statuses'], ['active', 'Healthy'], ['error', 'Error']] as const).map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => {
+                      setStatusFilter(val);
+                      setIsStatusDropdownOpen(false);
+                    }}
+                    type="button"
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
+                      statusFilter === val ? 'text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50/30 dark:bg-indigo-950/15' : 'text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Date Filter */}
@@ -453,7 +503,7 @@ export const DatabasesPage: React.FC = () => {
               type="date"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
-              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-sm font-semibold rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             />
             {dateFilter && (
               <button

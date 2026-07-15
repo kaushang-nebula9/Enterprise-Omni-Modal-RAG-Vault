@@ -2079,7 +2079,7 @@ const ChatPage: React.FC = () => {
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isFileUploading || isLoading || isStreaming}
                         type="button"
-                        className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-slate-105 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
+                        className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-colors"
                         title="Upload file"
                       >
                         <Plus className="w-4 h-4" strokeWidth={2.5} />

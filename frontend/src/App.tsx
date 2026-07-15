@@ -11,6 +11,7 @@ import GoogleOrgSetupPage from './pages/auth/GoogleOrgSetupPage';
 import AuthGuard from './components/auth/AuthGuard';
 import DashboardLayout from './layouts/DashboardLayout';
 import ProtectedAdminRoute from './components/auth/ProtectedAdminRoute';
+import ProtectedMemberRoute from './components/auth/ProtectedMemberRoute';
 import DashboardMainPage from './pages/dashboard/DashboardMainPage';
 import { TeamManagementPage } from './pages/dashboard/TeamManagementPage';
 import { RolesPermissionsPage } from './pages/dashboard/RolesPermissionsPage';
@@ -24,6 +25,7 @@ import DatabaseDrillDownPage from './pages/dashboard/DatabaseDrillDownPage';
 import ChatPage from './pages/dashboard/ChatPage';
 import YourDocumentsPage from './pages/dashboard/YourDocumentsPage';
 import EvaluationResultsPage from './pages/dashboard/EvaluationResultsPage';
+import ReportsPage from './pages/dashboard/ReportsPage';
 
 const App: React.FC = () => {
   const theme = useThemeStore((state) => state.theme);
@@ -69,7 +71,8 @@ const App: React.FC = () => {
           <Route path="audit-log" element={<ProtectedAdminRoute><AuditLogPage /></ProtectedAdminRoute>} />
           
           <Route path="chat" element={<ChatPage />} />
-          <Route path="your-documents" element={<YourDocumentsPage />} />
+          <Route path="reports" element={<ProtectedMemberRoute><ReportsPage /></ProtectedMemberRoute>} />
+          <Route path="your-documents" element={<ProtectedMemberRoute><YourDocumentsPage /></ProtectedMemberRoute>} />
           <Route path="profile" element={<ProfileSettingsPage />} />
           <Route path="evaluations/:id" element={<ProtectedAdminRoute><EvaluationResultsPage /></ProtectedAdminRoute>} />
         </Route>

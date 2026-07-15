@@ -874,8 +874,12 @@ def get_dashboard_overview(
     current_admin: User = Depends(require_admin), db: Session = Depends(get_db)
 ):
     """
-    Returns counts for departments, documents, roles, and members for the admin's tenant.
+    Returns counts for departments, documents, roles, members, and report storage stats for the admin's tenant.
     """
+    from app.models.generated_report import GeneratedReport
+    from app.services.storage_service import get_absolute_path
+    import os
+
     department_count = (
         db.query(Department)
         .filter(Department.tenant_id == current_admin.tenant_id)
@@ -891,11 +895,32 @@ def get_dashboard_overview(
         db.query(User).filter(User.tenant_id == current_admin.tenant_id).count()
     )
 
+    # Count tenant's reports and sum their files size
+    reports = (
+        db.query(GeneratedReport)
+        .filter(GeneratedReport.tenant_id == current_admin.tenant_id)
+        .all()
+    )
+    total_reports = len(reports)
+    total_report_size_bytes = 0
+    for r in reports:
+        if r.status == "complete" and r.storage_path:
+            file_path = r.storage_path
+            if not os.path.isabs(file_path):
+                file_path = get_absolute_path(file_path)
+            try:
+                if os.path.exists(file_path):
+                    total_report_size_bytes += os.path.getsize(file_path)
+            except Exception as e:
+                logger.error(f"Failed to get file size for {file_path}: {e}")
+
     return DashboardOverviewResponse(
         department_count=department_count,
         document_count=document_count,
         role_count=role_count,
         member_count=member_count,
+        total_reports=total_reports,
+        total_report_size_bytes=total_report_size_bytes,
     )
 
 

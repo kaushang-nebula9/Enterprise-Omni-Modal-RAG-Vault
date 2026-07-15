@@ -22,6 +22,10 @@ class ReportStepResponse(BaseModel):
 
 class ReportStatusResponse(BaseModel):
     report_id: UUID
+    session_id: UUID
+    session_title: Optional[str] = None
+    source_type: str
+    sources_used: list[str]
     status: str
     title: str
     created_at: datetime

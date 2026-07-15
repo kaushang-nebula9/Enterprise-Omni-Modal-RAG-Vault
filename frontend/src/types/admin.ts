@@ -67,6 +67,8 @@ export interface DashboardOverviewResponse {
   document_count: number
   role_count: number
   member_count: number
+  total_reports?: number
+  total_report_size_bytes?: number
 }
 
 export interface DocumentTypeCount {

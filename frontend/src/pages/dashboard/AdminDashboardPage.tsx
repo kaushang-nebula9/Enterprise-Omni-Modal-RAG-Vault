@@ -18,7 +18,18 @@ import {
   ArrowRight,
   TrendingUp,
   History,
+  ScrollText,
+  HardDrive,
 } from 'lucide-react';
+
+const formatBytes = (bytes: number, decimals = 2) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
 
 const AdminDashboardPage: React.FC = () => {
   const { user } = useAuthStore();
@@ -774,7 +785,7 @@ const AdminDashboardPage: React.FC = () => {
           Overview
         </h3>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
           {/* Departments Count */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex items-center justify-between group hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
             <div className="flex flex-col gap-1">
@@ -824,6 +835,32 @@ const AdminDashboardPage: React.FC = () => {
             </div>
             <div className="p-3 bg-rose-50 dark:bg-rose-950/40 text-rose-500 rounded-lg group-hover:scale-110 transition-transform">
               <Users className="w-6 h-6" />
+            </div>
+          </div>
+
+          {/* Total Reports */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex items-center justify-between group hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Reports</span>
+              <span className="text-3xl font-bold text-slate-800 dark:text-slate-100 font-sora">
+                {overviewLoading ? '...' : overview?.total_reports || 0}
+              </span>
+            </div>
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-500 rounded-lg group-hover:scale-110 transition-transform">
+              <ScrollText className="w-6 h-6" />
+            </div>
+          </div>
+
+          {/* Report Storage */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-sm flex items-center justify-between group hover:border-slate-300 dark:hover:border-slate-700 transition-colors">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Report Storage</span>
+              <span className="text-2xl font-bold text-slate-800 dark:text-slate-100 font-sora truncate max-w-[140px]" title={formatBytes(overview?.total_report_size_bytes || 0)}>
+                {overviewLoading ? '...' : formatBytes(overview?.total_report_size_bytes || 0)}
+              </span>
+            </div>
+            <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-500 rounded-lg group-hover:scale-110 transition-transform">
+              <HardDrive className="w-6 h-6" />
             </div>
           </div>
         </div>
