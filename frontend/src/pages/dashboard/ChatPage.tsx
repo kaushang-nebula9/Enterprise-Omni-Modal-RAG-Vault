@@ -50,6 +50,7 @@ const FILE_TYPE_ICON: Record<FileType, React.FC<{ className?: string }>> = {
   docx: FilePen,
   pptx: Presentation,
   excel: FileSpreadsheet,
+  csv: FileSpreadsheet,
   audio: FileMusic,
 };
 

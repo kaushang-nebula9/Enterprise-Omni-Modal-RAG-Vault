@@ -52,7 +52,6 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 EXTENSION_TO_FILE_TYPE: dict[str, FileType] = {
     ".pdf": FileType.pdf,
     ".docx": FileType.docx,
@@ -60,10 +59,12 @@ EXTENSION_TO_FILE_TYPE: dict[str, FileType] = {
     ".pptx": FileType.pptx,
     ".xlsx": FileType.excel,
     ".xls": FileType.excel,
+    ".csv": FileType.csv,
     ".mp3": FileType.audio,
     ".wav": FileType.audio,
     ".m4a": FileType.audio,
 }
+
 
 SUMMARIZE_DOC_INSTRUCTION = "The user wants a summary, not a detailed answer. Identify the key points, main arguments, and important facts from the provided context. Present them concisely, in your own words, organized in a logical order (e.g. by topic or chronology, whichever fits the source). Omit minor details unless they are essential to understanding the core content. Keep the summary significantly shorter than the source material. If summarizing a document, mention the document's overall purpose or subject in the first sentence before going into specifics."
 SUMMARIZE_FOCUSED_INSTRUCTION = "The user wants a concise, summary-style answer rather than an exhaustive one. Answer the question directly in 3-5 sentences or a short bullet list, covering only the most important points. Avoid tangents, background context, or exhaustive detail unless the question explicitly asks for it."

@@ -9,6 +9,7 @@ class FileType(str, enum.Enum):
     docx = "docx"
     pptx = "pptx"
     excel = "excel"
+    csv = "csv"
 
 
 class OwnerType(str, enum.Enum):

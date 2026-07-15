@@ -53,6 +53,7 @@ EXTENSION_TO_FILE_TYPE: dict[str, FileType] = {
     ".pptx": FileType.pptx,
     ".xlsx": FileType.excel,
     ".xls": FileType.excel,
+    ".csv": FileType.csv,
     ".mp3": FileType.audio,
     ".wav": FileType.audio,
     ".m4a": FileType.audio,
@@ -581,7 +582,10 @@ def delete_document(
         )
 
     # Remove vectors from Qdrant if applicable
-    if doc.status == DocumentStatus.ready and doc.file_type != FileType.excel:
+    if doc.status == DocumentStatus.ready and doc.file_type not in (
+        FileType.excel,
+        FileType.csv,
+    ):
         try:
             delete_document_vectors(doc.qdrant_collection, str(doc.id))
         except Exception as exc:
@@ -681,7 +685,10 @@ def update_document_access(
         new_role_ids.append(uploader_id)
 
     # Update Qdrant payload if vectors exist
-    if doc.status == DocumentStatus.ready and doc.file_type != FileType.excel:
+    if doc.status == DocumentStatus.ready and doc.file_type not in (
+        FileType.excel,
+        FileType.csv,
+    ):
         try:
             update_document_payload(
                 doc.qdrant_collection,
@@ -838,7 +845,10 @@ def assign_department(
         new_role_ids.append(uploader_id)
 
     # Update Qdrant payload if vectors exist
-    if doc.status == DocumentStatus.ready and doc.file_type != FileType.excel:
+    if doc.status == DocumentStatus.ready and doc.file_type not in (
+        FileType.excel,
+        FileType.csv,
+    ):
         try:
             update_document_payload(
                 doc.qdrant_collection,

@@ -315,10 +315,16 @@ def extract_text_from_txt(file_path: str) -> str:
 
 def extract_excel_schema(file_path: str) -> dict:
     """
-    Read an Excel file with pandas and return a schema dict containing:
+    Read an Excel or CSV file with pandas and return a schema dict containing:
     columns, dtypes, shape, and 3 sample rows.
     """
-    df = pd.read_excel(file_path, engine="openpyxl")
+    if file_path.lower().endswith(".csv"):
+        try:
+            df = pd.read_csv(file_path, sep=None, engine="python", encoding="utf-8")
+        except Exception:
+            df = pd.read_csv(file_path, sep=None, engine="python", encoding="latin-1")
+    else:
+        df = pd.read_excel(file_path, engine="openpyxl")
 
     total_rows = int(df.shape[0])
     total_cols = int(df.shape[1])
@@ -553,14 +559,14 @@ def process_document(document_id: str, db: Session) -> None:
                 )
                 chunk_index += 1
 
-        elif file_type == FileType.excel:
+        elif file_type in (FileType.excel, FileType.csv):
             schema = extract_excel_schema(abs_file_path)
             document.excel_schema = schema
             document.chunk_count = 0
             document.status = DocumentStatus.ready
             db.commit()
 
-            # Generate and save description for Excel
+            # Generate and save description for Excel/CSV
             try:
                 excel_sample = (
                     f"Columns: {schema['columns']}. Sample data: {schema['sample']}"
@@ -573,11 +579,16 @@ def process_document(document_id: str, db: Session) -> None:
                     db.commit()
             except Exception as desc_exc:
                 logger.error(
-                    "Failed to generate and save document description for Excel: %s",
+                    "Failed to generate and save document description for %s: %s",
+                    document.file_type.value,
                     desc_exc,
                 )
 
-            logger.info("Excel document %s processed (schema only, no vectors)", doc_id)
+            logger.info(
+                "%s document %s processed (schema only, no vectors)",
+                document.file_type.value.capitalize(),
+                doc_id,
+            )
             return
 
         # Upsert all points into Qdrant

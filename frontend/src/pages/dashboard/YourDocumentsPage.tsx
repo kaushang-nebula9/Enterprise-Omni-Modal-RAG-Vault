@@ -49,6 +49,7 @@ const FILE_TYPE_ICON: Record<FileType, React.FC<{ className?: string }>> = {
   docx: FilePen,
   pptx: Presentation,
   excel: FileSpreadsheet,
+  csv: FileSpreadsheet,
   audio: FileMusic,
 };
 
@@ -72,6 +73,11 @@ const FILE_TYPE_BADGE: Record<FileType, { label: string; className: string }> =
       label: "Excel",
       className:
         "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400",
+    },
+    csv: {
+      label: "CSV",
+      className:
+        "bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400",
     },
     audio: {
       label: "Audio",
@@ -206,14 +212,14 @@ function UploadModal({ onClose, onSuccess }: UploadModalProps) {
                     Click to select a file
                   </span>
                   <span className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                    PDF, DOCX, PPTX, XLSX, TXT, MP3, WAV, M4A
+                    PDF, DOCX, PPTX, XLSX, CSV, TXT, MP3, WAV, M4A
                   </span>
                 </>
               )}
               <input
                 type="file"
                 className="hidden"
-                accept=".pdf,.docx,.pptx,.xlsx,.xls,.txt,.mp3,.wav,.m4a"
+                accept=".pdf,.docx,.pptx,.xlsx,.xls,.csv,.txt,.mp3,.wav,.m4a"
                 onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
               />
             </label>
@@ -534,6 +540,7 @@ export default function YourDocumentsPage() {
                 {filterType === "pptx" && "PPTX"}
                 {filterType === "docx" && "DOCX"}
                 {filterType === "excel" && "Excel"}
+                {filterType === "csv" && "CSV"}
               </span>
               <ChevronDown
                 className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isTypeDropdownOpen ? "rotate-180" : ""}`}
@@ -551,6 +558,7 @@ export default function YourDocumentsPage() {
                     "pptx",
                     "docx",
                     "excel",
+                    "csv",
                   ] as const
                 ).map((typeVal) => (
                   <button
@@ -573,6 +581,7 @@ export default function YourDocumentsPage() {
                     {typeVal === "pptx" && "PPTX"}
                     {typeVal === "docx" && "DOCX"}
                     {typeVal === "excel" && "Excel"}
+                    {typeVal === "csv" && "CSV"}
                   </button>
                 ))}
               </div>

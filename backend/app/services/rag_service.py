@@ -118,7 +118,15 @@ def execute_excel_query(
     """
     try:
         # Load the dataframe
-        df = pd.read_excel(file_path, engine="openpyxl")
+        if file_path.lower().endswith(".csv"):
+            try:
+                df = pd.read_csv(file_path, sep=None, engine="python", encoding="utf-8")
+            except Exception:
+                df = pd.read_csv(
+                    file_path, sep=None, engine="python", encoding="latin-1"
+                )
+        else:
+            df = pd.read_excel(file_path, engine="openpyxl")
 
         # Build the prompt
         prompt = _EXCEL_CODE_PROMPT.format(
@@ -370,17 +378,17 @@ async def _resolve_compare_document(
             [],
         )
 
-    if authorized_doc.file_type == FileType.excel:
+    if authorized_doc.file_type in (FileType.excel, FileType.csv):
         if not authorized_doc.excel_schema:
             return (
-                f"Source: {filename}\n[Note: This Excel document has no defined schema.]",
+                f"Source: {filename}\n[Note: This document has no defined schema.]",
                 [],
             )
         result = await _run_excel_query(authorized_doc, query)
         if result is not None:
             return f"Source: {filename}\nQuery: {query}\nResult: {result['result']}", []
         return (
-            f"Source: {filename}\n[Note: No data results were retrieved from this Excel document.]",
+            f"Source: {filename}\n[Note: No data results were retrieved from this document.]",
             [],
         )
 
@@ -1261,8 +1269,12 @@ Please summarize and answer the user's question based on the query results. Do n
 
     all_authorized_docs = docs_query.distinct().all()
 
-    excel_docs = [d for d in all_authorized_docs if d.file_type == FileType.excel]
-    non_excel_exist = any(d.file_type != FileType.excel for d in all_authorized_docs)
+    excel_docs = [
+        d for d in all_authorized_docs if d.file_type in (FileType.excel, FileType.csv)
+    ]
+    non_excel_exist = any(
+        d.file_type not in (FileType.excel, FileType.csv) for d in all_authorized_docs
+    )
 
     # Build a lookup of document_id -> filename
     doc_id_to_filename: dict[str, str] = {

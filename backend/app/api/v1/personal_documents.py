@@ -25,6 +25,7 @@ EXTENSION_TO_FILE_TYPE: dict[str, FileType] = {
     ".pptx": FileType.pptx,
     ".xlsx": FileType.excel,
     ".xls": FileType.excel,
+    ".csv": FileType.csv,
     ".mp3": FileType.audio,
     ".wav": FileType.audio,
     ".m4a": FileType.audio,
@@ -159,7 +160,10 @@ def delete_personal_document(
             status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
         )
 
-    if doc.status == DocumentStatus.ready and doc.file_type != FileType.excel:
+    if doc.status == DocumentStatus.ready and doc.file_type not in (
+        FileType.excel,
+        FileType.csv,
+    ):
         try:
             delete_document_vectors(doc.qdrant_collection, str(doc.id))
         except Exception as exc:
