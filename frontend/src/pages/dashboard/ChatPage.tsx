@@ -52,6 +52,11 @@ const FILE_TYPE_ICON: Record<FileType, React.FC<{ className?: string }>> = {
   excel: FileSpreadsheet,
   csv: FileSpreadsheet,
   audio: FileMusic,
+  xls: FileSpreadsheet,
+  xlsm: FileSpreadsheet,
+  xlsb: FileSpreadsheet,
+  tsv: FileSpreadsheet,
+  ods: FileSpreadsheet,
 };
 
 const COMMANDS = [

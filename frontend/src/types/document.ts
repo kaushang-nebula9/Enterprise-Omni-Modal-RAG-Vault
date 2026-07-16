@@ -1,7 +1,19 @@
 import type { RoleResponse } from "./auth";
 
 export type DocumentStatus = "pending" | "processing" | "ready" | "failed";
-export type FileType = "text" | "audio" | "pdf" | "docx" | "pptx" | "excel" | "csv";
+export type FileType =
+  | "text"
+  | "audio"
+  | "pdf"
+  | "docx"
+  | "pptx"
+  | "excel"
+  | "csv"
+  | "xls"
+  | "xlsm"
+  | "xlsb"
+  | "tsv"
+  | "ods";
 export type OwnerType = "organisation" | "private";
 export type Visibility = "public" | "private";
 

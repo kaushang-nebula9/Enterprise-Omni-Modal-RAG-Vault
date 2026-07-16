@@ -8,6 +8,7 @@ import uuid
 import logging
 import json
 import zipfile
+from typing import Optional
 
 import fitz  # PyMuPDF
 import pymupdf4llm
@@ -18,10 +19,121 @@ import pandas as pd
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sqlalchemy.orm import Session
 
+from fastapi import UploadFile
+import magic
 from app.models.document import Document
 from app.models.document_access_policy import DocumentAccessPolicy
-from app.models.enums import DocumentStatus, FileType
+from app.models.enums import (
+    DocumentStatus,
+    FileType,
+    EXTENSION_TO_FILE_TYPE,
+    TABULAR_FILE_TYPES,
+)
 from app.services import embedding_service, qdrant_service
+
+MIME_TO_FILE_TYPE: dict[str, FileType] = {
+    "application/pdf": FileType.pdf,
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": FileType.docx,
+    "text/plain": FileType.text,
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": FileType.pptx,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": FileType.excel,
+    "application/vnd.ms-excel": FileType.xls,
+    "application/CDFV2": FileType.xls,
+    "application/x-cfb": FileType.xls,
+    "application/vnd.ms-excel.sheet.macroEnabled.12": FileType.xlsm,
+    "application/vnd.ms-excel.sheet.binary.macroEnabled.12": FileType.xlsb,
+    "application/vnd.oasis.opendocument.spreadsheet": FileType.ods,
+    "text/csv": FileType.csv,
+    "text/tab-separated-values": FileType.tsv,
+    "audio/mpeg": FileType.audio,
+    "audio/mp3": FileType.audio,
+    "audio/wav": FileType.audio,
+    "audio/x-wav": FileType.audio,
+    "audio/x-m4a": FileType.audio,
+    "audio/m4a": FileType.audio,
+    "audio/mp4": FileType.audio,
+    "audio/x-mp4": FileType.audio,
+}
+
+
+def is_mime_compatible(ext_file_type: FileType, mime_type: str) -> bool:
+    detected_type = MIME_TO_FILE_TYPE.get(mime_type)
+    if detected_type == ext_file_type:
+        return True
+
+    # Allow compatibility between any of the Excel OpenXML MIME types and extensions (.xlsx, .xlsm, .xlsb)
+    openxml_excel_mimes = {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel.sheet.macroEnabled.12",
+        "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+    }
+    if mime_type in openxml_excel_mimes and ext_file_type in (
+        FileType.excel,
+        FileType.xlsm,
+        FileType.xlsb,
+    ):
+        return True
+
+    if mime_type == "text/plain" and ext_file_type in (
+        FileType.text,
+        FileType.csv,
+        FileType.tsv,
+    ):
+        return True
+    if mime_type == "application/octet-stream" and ext_file_type == FileType.xlsb:
+        return True
+    if mime_type == "application/zip" and ext_file_type in (
+        FileType.docx,
+        FileType.pptx,
+        FileType.excel,
+        FileType.xlsm,
+        FileType.ods,
+    ):
+        return True
+    return False
+
+
+def validate_upload_file(file: UploadFile) -> FileType:
+    """
+    Validate the file using both its extension and its MIME type (via python-magic).
+    Returns the mapped FileType if valid, otherwise raises HTTPException.
+    """
+    from fastapi import HTTPException, status
+
+    filename = file.filename or ""
+    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    ext_file_type = EXTENSION_TO_FILE_TYPE.get(ext)
+    if not ext_file_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file extension: {ext}",
+        )
+
+    try:
+        first_bytes = file.file.read(2048)
+        file.file.seek(0)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to read file for validation: {str(e)}",
+        )
+
+    try:
+        mime_type = magic.from_buffer(first_bytes, mime=True)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to detect file MIME type: {str(e)}",
+        )
+
+    if not is_mime_compatible(ext_file_type, mime_type):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File extension '{ext}' does not match detected MIME type '{mime_type}'",
+        )
+
+    return ext_file_type
+
 
 logger = logging.getLogger(__name__)
 
@@ -313,18 +425,47 @@ def extract_text_from_txt(file_path: str) -> str:
         return f.read()
 
 
-def extract_excel_schema(file_path: str) -> dict:
+def load_dataframe(file_path: str, file_type: FileType) -> pd.DataFrame:
     """
-    Read an Excel or CSV file with pandas and return a schema dict containing:
+    Load a DataFrame from a file based on its FileType.
+    """
+    if file_type == FileType.csv:
+        try:
+            return pd.read_csv(file_path, sep=None, engine="python", encoding="utf-8")
+        except Exception:
+            return pd.read_csv(file_path, sep=None, engine="python", encoding="latin-1")
+    elif file_type == FileType.tsv:
+        try:
+            return pd.read_csv(file_path, sep="\t", engine="python", encoding="utf-8")
+        except Exception:
+            return pd.read_csv(file_path, sep="\t", engine="python", encoding="latin-1")
+    elif file_type == FileType.excel:
+        return pd.read_excel(file_path, engine="openpyxl")
+    elif file_type == FileType.xlsm:
+        # macros ignored
+        return pd.read_excel(file_path, engine="openpyxl")
+    elif file_type == FileType.xls:
+        return pd.read_excel(file_path, engine="xlrd")
+    elif file_type == FileType.xlsb:
+        return pd.read_excel(file_path, engine="pyxlsb")
+    elif file_type == FileType.ods:
+        return pd.read_excel(file_path, engine="odf")
+    else:
+        raise ValueError(f"Unsupported file type for DataFrame loading: {file_type}")
+
+
+def extract_excel_schema(file_path: str, file_type: Optional[FileType] = None) -> dict:
+    """
+    Read an Excel, CSV, or other tabular/spreadsheet file with pandas and return a schema dict containing:
     columns, dtypes, shape, and 3 sample rows.
     """
-    if file_path.lower().endswith(".csv"):
-        try:
-            df = pd.read_csv(file_path, sep=None, engine="python", encoding="utf-8")
-        except Exception:
-            df = pd.read_csv(file_path, sep=None, engine="python", encoding="latin-1")
-    else:
-        df = pd.read_excel(file_path, engine="openpyxl")
+    if file_type is None:
+        ext = "." + file_path.rsplit(".", 1)[-1].lower() if "." in file_path else ""
+        file_type = EXTENSION_TO_FILE_TYPE.get(ext)
+        if not file_type:
+            raise ValueError(f"Unsupported file extension: {ext}")
+
+    df = load_dataframe(file_path, file_type)
 
     total_rows = int(df.shape[0])
     total_cols = int(df.shape[1])
@@ -334,6 +475,10 @@ def extract_excel_schema(file_path: str) -> dict:
     sample_json = df.head(3).to_json(orient="records", date_format="iso")
     sample_records = json.loads(sample_json)
 
+    print("#################")
+    print(
+        f"Extracted schema for {file_path}: {total_rows} rows, {total_cols} columns, sample: {sample_records}"
+    )
     return {
         "columns": df.columns.tolist(),
         "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
@@ -559,8 +704,8 @@ def process_document(document_id: str, db: Session) -> None:
                 )
                 chunk_index += 1
 
-        elif file_type in (FileType.excel, FileType.csv):
-            schema = extract_excel_schema(abs_file_path)
+        elif file_type in TABULAR_FILE_TYPES:
+            schema = extract_excel_schema(abs_file_path, file_type)
             document.excel_schema = schema
             document.chunk_count = 0
             document.status = DocumentStatus.ready

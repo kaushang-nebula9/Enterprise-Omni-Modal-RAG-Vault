@@ -10,6 +10,40 @@ class FileType(str, enum.Enum):
     pptx = "pptx"
     excel = "excel"
     csv = "csv"
+    xls = "xls"
+    xlsm = "xlsm"
+    xlsb = "xlsb"
+    tsv = "tsv"
+    ods = "ods"
+
+
+EXTENSION_TO_FILE_TYPE: dict[str, FileType] = {
+    ".pdf": FileType.pdf,
+    ".docx": FileType.docx,
+    ".txt": FileType.text,
+    ".pptx": FileType.pptx,
+    ".xlsx": FileType.excel,
+    ".xls": FileType.xls,
+    ".xlsm": FileType.xlsm,
+    ".xlsb": FileType.xlsb,
+    ".ods": FileType.ods,
+    ".csv": FileType.csv,
+    ".tsv": FileType.tsv,
+    ".mp3": FileType.audio,
+    ".wav": FileType.audio,
+    ".m4a": FileType.audio,
+}
+
+
+TABULAR_FILE_TYPES: set[FileType] = {
+    FileType.excel,
+    FileType.csv,
+    FileType.xls,
+    FileType.xlsm,
+    FileType.xlsb,
+    FileType.ods,
+    FileType.tsv,
+}
 
 
 class OwnerType(str, enum.Enum):

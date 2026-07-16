@@ -22,7 +22,6 @@ from app.models.query_citation import QueryCitation
 from app.models.enums import (
     MessageRole,
     DocumentStatus,
-    FileType,
     OwnerType,
     Visibility,
 )
@@ -52,18 +51,6 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-EXTENSION_TO_FILE_TYPE: dict[str, FileType] = {
-    ".pdf": FileType.pdf,
-    ".docx": FileType.docx,
-    ".txt": FileType.text,
-    ".pptx": FileType.pptx,
-    ".xlsx": FileType.excel,
-    ".xls": FileType.excel,
-    ".csv": FileType.csv,
-    ".mp3": FileType.audio,
-    ".wav": FileType.audio,
-    ".m4a": FileType.audio,
-}
 
 
 SUMMARIZE_DOC_INSTRUCTION = "The user wants a summary, not a detailed answer. Identify the key points, main arguments, and important facts from the provided context. Present them concisely, in your own words, organized in a logical order (e.g. by topic or chronology, whichever fits the source). Omit minor details unless they are essential to understanding the core content. Keep the summary significantly shorter than the source material. If summarizing a document, mention the document's overall purpose or subject in the first sentence before going into specifics."
@@ -788,15 +775,11 @@ def upload_private_document(
             detail="Session not found",
         )
 
-    # Validate file extension
+    # Validate file using extension & MIME type (python-magic)
     filename = file.filename or ""
-    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    file_type = EXTENSION_TO_FILE_TYPE.get(ext)
-    if not file_type:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported file type",
-        )
+    from app.services.document_processor import validate_upload_file
+
+    file_type = validate_upload_file(file)
 
     # Generate document ID and save file
     document_id = uuid.uuid4()

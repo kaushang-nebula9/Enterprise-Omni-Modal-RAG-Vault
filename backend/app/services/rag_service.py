@@ -23,7 +23,13 @@ from anthropic import Anthropic, AsyncAnthropic
 from app.core.config import settings
 from app.models.document import Document
 from app.models.document_access_policy import DocumentAccessPolicy
-from app.models.enums import FileType, DocumentStatus
+from app.models.enums import (
+    FileType,
+    DocumentStatus,
+    EXTENSION_TO_FILE_TYPE,
+    TABULAR_FILE_TYPES,
+)
+from app.services.document_processor import load_dataframe
 from app.models.user import User
 from app.services import embedding_service
 from app.services.qdrant_service import search_vectors
@@ -109,6 +115,7 @@ def execute_excel_query(
     file_path: str,
     schema: dict,
     query: str,
+    file_type: Optional[FileType] = None,
 ) -> Optional[str]:
     """
     Generate a pandas query via Claude and execute it in a RestrictedPython
@@ -117,17 +124,20 @@ def execute_excel_query(
     Returns str(result) on success, None on any failure.
     """
     try:
+        print(
+            f"Executing Excel query for {file_path} with schema: {json.dumps(schema)} and query: {query}"
+        )
         # Load the dataframe
-        if file_path.lower().endswith(".csv"):
-            try:
-                df = pd.read_csv(file_path, sep=None, engine="python", encoding="utf-8")
-            except Exception:
-                df = pd.read_csv(
-                    file_path, sep=None, engine="python", encoding="latin-1"
-                )
-        else:
-            df = pd.read_excel(file_path, engine="openpyxl")
+        if file_type is None:
+            ext = "." + file_path.rsplit(".", 1)[-1].lower() if "." in file_path else ""
+            file_type = EXTENSION_TO_FILE_TYPE.get(ext)
+            if not file_type:
+                raise ValueError(f"Unsupported file extension: {ext}")
+        df = load_dataframe(file_path, file_type)
 
+        print(
+            f"Loaded dataframe with shape: {df.shape} and columns: {df.columns.tolist()}"
+        )
         # Build the prompt
         prompt = _EXCEL_CODE_PROMPT.format(
             columns=schema.get("columns", []),
@@ -137,6 +147,7 @@ def execute_excel_query(
             sample=schema.get("sample", []),
             query=query,
         )
+        print(f"Generated prompt for Claude: {prompt}")
 
         # -- Anthropic LLM call (ACTIVE) ------------------------------------------
         client = _get_anthropic_client()
@@ -147,6 +158,8 @@ def execute_excel_query(
             messages=[{"role": "user", "content": prompt}],
         )
         code = (message.content[0].text or "").strip()
+
+        print(f"Received code from Claude: {code}")
 
         # Strip markdown fences if present
         if code.startswith("```"):
@@ -160,7 +173,7 @@ def execute_excel_query(
 
         # Compile with RestrictedPython
         compiled = compile_restricted(code, filename="<excel_query>", mode="exec")
-
+        print(f"Compiled code: {compiled}")
         # Build restricted globals — only allow df and safe builtins
         from RestrictedPython.Guards import guarded_iter_unpack_sequence
         from RestrictedPython.Eval import (
@@ -194,7 +207,6 @@ def execute_excel_query(
         thread = threading.Thread(target=_execute, daemon=True)
         thread.start()
         thread.join(timeout=10)
-
         if thread.is_alive():
             logger.warning("Excel query execution timed out (10s)")
             return None
@@ -204,6 +216,7 @@ def execute_excel_query(
             return None
 
         result = result_container["result"]
+        print(f"Excel query execution result: {result}")
         if result is None:
             return None
 
@@ -303,7 +316,7 @@ async def _run_excel_query(doc: Document, query: str) -> Optional[dict]:
     try:
         abs_path = get_absolute_path(doc.file_path)
         result = await asyncio.to_thread(
-            execute_excel_query, abs_path, doc.excel_schema, query
+            execute_excel_query, abs_path, doc.excel_schema, query, doc.file_type
         )
         if result is not None:
             return {
@@ -378,7 +391,7 @@ async def _resolve_compare_document(
             [],
         )
 
-    if authorized_doc.file_type in (FileType.excel, FileType.csv):
+    if authorized_doc.file_type in TABULAR_FILE_TYPES:
         if not authorized_doc.excel_schema:
             return (
                 f"Source: {filename}\n[Note: This document has no defined schema.]",
@@ -1269,11 +1282,9 @@ Please summarize and answer the user's question based on the query results. Do n
 
     all_authorized_docs = docs_query.distinct().all()
 
-    excel_docs = [
-        d for d in all_authorized_docs if d.file_type in (FileType.excel, FileType.csv)
-    ]
+    excel_docs = [d for d in all_authorized_docs if d.file_type in TABULAR_FILE_TYPES]
     non_excel_exist = any(
-        d.file_type not in (FileType.excel, FileType.csv) for d in all_authorized_docs
+        d.file_type not in TABULAR_FILE_TYPES for d in all_authorized_docs
     )
 
     # Build a lookup of document_id -> filename

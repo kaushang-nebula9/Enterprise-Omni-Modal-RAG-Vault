@@ -25,7 +25,12 @@ from app.models.document import Document
 from app.models.document_access_policy import DocumentAccessPolicy
 from app.models.role import Role
 from app.services.audit_log_service import log_audit_event
-from app.models.enums import DocumentStatus, FileType, OwnerType, Visibility
+from app.models.enums import (
+    DocumentStatus,
+    OwnerType,
+    Visibility,
+    TABULAR_FILE_TYPES,
+)
 from app.schemas.document import (
     DocumentResponse,
     DocumentWithAccessResponse,
@@ -45,19 +50,6 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-EXTENSION_TO_FILE_TYPE: dict[str, FileType] = {
-    ".pdf": FileType.pdf,
-    ".docx": FileType.docx,
-    ".txt": FileType.text,
-    ".pptx": FileType.pptx,
-    ".xlsx": FileType.excel,
-    ".xls": FileType.excel,
-    ".csv": FileType.csv,
-    ".mp3": FileType.audio,
-    ".wav": FileType.audio,
-    ".m4a": FileType.audio,
-}
 
 
 def _load_document_with_policies(
@@ -292,15 +284,11 @@ def upload_document(
                     detail="Invalid department",
                 )
 
-    # Determine file type from extension
+    # Determine file type using extension & MIME type (python-magic)
     filename = file.filename or ""
-    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    file_type = EXTENSION_TO_FILE_TYPE.get(ext)
-    if not file_type:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported file type",
-        )
+    from app.services.document_processor import validate_upload_file
+
+    file_type = validate_upload_file(file)
 
     # Generate document ID and save file
     document_id = uuid.uuid4()
@@ -582,10 +570,7 @@ def delete_document(
         )
 
     # Remove vectors from Qdrant if applicable
-    if doc.status == DocumentStatus.ready and doc.file_type not in (
-        FileType.excel,
-        FileType.csv,
-    ):
+    if doc.status == DocumentStatus.ready and doc.file_type not in TABULAR_FILE_TYPES:
         try:
             delete_document_vectors(doc.qdrant_collection, str(doc.id))
         except Exception as exc:
@@ -685,10 +670,7 @@ def update_document_access(
         new_role_ids.append(uploader_id)
 
     # Update Qdrant payload if vectors exist
-    if doc.status == DocumentStatus.ready and doc.file_type not in (
-        FileType.excel,
-        FileType.csv,
-    ):
+    if doc.status == DocumentStatus.ready and doc.file_type not in TABULAR_FILE_TYPES:
         try:
             update_document_payload(
                 doc.qdrant_collection,
@@ -845,10 +827,7 @@ def assign_department(
         new_role_ids.append(uploader_id)
 
     # Update Qdrant payload if vectors exist
-    if doc.status == DocumentStatus.ready and doc.file_type not in (
-        FileType.excel,
-        FileType.csv,
-    ):
+    if doc.status == DocumentStatus.ready and doc.file_type not in TABULAR_FILE_TYPES:
         try:
             update_document_payload(
                 doc.qdrant_collection,

@@ -51,6 +51,11 @@ const FILE_TYPE_ICON: Record<FileType, React.FC<{ className?: string }>> = {
   excel: FileSpreadsheet,
   csv: FileSpreadsheet,
   audio: FileMusic,
+  xls: FileSpreadsheet,
+  xlsm: FileSpreadsheet,
+  xlsb: FileSpreadsheet,
+  ods: FileSpreadsheet,
+  tsv: FileSpreadsheet,
 };
 
 const FILE_TYPE_BADGE: Record<FileType, { label: string; className: string }> =
@@ -88,6 +93,31 @@ const FILE_TYPE_BADGE: Record<FileType, { label: string; className: string }> =
       label: "TXT",
       className:
         "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400",
+    },
+    xls: {
+      label: "XLS",
+      className:
+        "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400",
+    },
+    xlsm: {
+      label: "XLSM",
+      className:
+        "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400",
+    },
+    xlsb: {
+      label: "XLSB",
+      className:
+        "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400",
+    },
+    ods: {
+      label: "ODS",
+      className:
+        "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400",
+    },
+    tsv: {
+      label: "TSV",
+      className:
+        "bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-400",
     },
   };
 
@@ -212,14 +242,15 @@ function UploadModal({ onClose, onSuccess }: UploadModalProps) {
                     Click to select a file
                   </span>
                   <span className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                    PDF, DOCX, PPTX, XLSX, CSV, TXT, MP3, WAV, M4A
+                    PDF, DOCX, PPTX, XLSX, XLS, XLSM, XLSB, CSV, TSV, ODS, TXT,
+                    Audio
                   </span>
                 </>
               )}
               <input
                 type="file"
                 className="hidden"
-                accept=".pdf,.docx,.pptx,.xlsx,.xls,.csv,.txt,.mp3,.wav,.m4a"
+                accept=".pdf,.docx,.pptx,.xlsx,.xls,.xlsm,.xlsb,.csv,.tsv,.ods,.txt,.mp3,.wav,.m4a"
                 onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
               />
             </label>
@@ -664,7 +695,7 @@ export default function YourDocumentsPage() {
 
       {/* Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-auto max-h-[500px]">
           <table className="w-full table-fixed text-sm">
             <colgroup>
               <col style={{ width: "30%" }} />
@@ -674,7 +705,7 @@ export default function YourDocumentsPage() {
               <col style={{ width: "15%" }} />
               <col style={{ width: "15%" }} />
             </colgroup>
-            <thead>
+            <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950 z-10">
               <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
                 <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
                   File Name
@@ -749,9 +780,9 @@ export default function YourDocumentsPage() {
                       {/* File Type */}
                       <td className="px-4 py-3.5">
                         <span
-                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${badge.className}`}
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${badge && badge.className}`}
                         >
-                          {badge.label}
+                          {badge && badge?.label}
                         </span>
                       </td>
 
@@ -832,7 +863,7 @@ export default function YourDocumentsPage() {
 
         {authDocsLoading ? (
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[500px]">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
                   <col style={{ width: "30%" }} />
@@ -842,7 +873,7 @@ export default function YourDocumentsPage() {
                   <col style={{ width: "15%" }} />
                   <col style={{ width: "15%" }} />
                 </colgroup>
-                <thead>
+                <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950 z-10">
                   <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
                     <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
                       File Name
@@ -901,7 +932,7 @@ export default function YourDocumentsPage() {
           </div>
         ) : (
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[500px]">
               <table className="w-full table-fixed text-sm">
                 <colgroup>
                   <col style={{ width: "30%" }} />
@@ -911,7 +942,7 @@ export default function YourDocumentsPage() {
                   <col style={{ width: "15%" }} />
                   <col style={{ width: "15%" }} />
                 </colgroup>
-                <thead>
+                <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950 z-10">
                   <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
                     <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
                       File Name
@@ -973,9 +1004,9 @@ export default function YourDocumentsPage() {
                         {/* File Type */}
                         <td className="px-4 py-4 whitespace-nowrap">
                           <span
-                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${badge.className}`}
+                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${badge && badge.className}`}
                           >
-                            {badge.label}
+                            {badge && badge.label}
                           </span>
                         </td>
 
