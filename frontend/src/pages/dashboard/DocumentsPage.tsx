@@ -1102,7 +1102,7 @@ export default function DocumentsPage() {
   }, [selectedFilter, collections]);
 
   return (
-    <div className="flex h-full min-h-[calc(100vh-8rem)] text-slate-800 dark:text-slate-100 animate-in fade-in duration-300 gap-6">
+    <div className="flex min-h-[calc(100vh-8rem)] text-slate-800 dark:text-slate-100 animate-in fade-in duration-300 gap-6">
       {/* Left Column: Collections Sidebar */}
       {!isCollectionsCollapsed && (
         <CollectionsSidebar

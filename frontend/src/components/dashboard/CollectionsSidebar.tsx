@@ -152,13 +152,13 @@ export const CollectionsSidebar: React.FC<CollectionsSidebarProps> = ({
     <div className="w-56 shrink-0 flex flex-col border-r border-slate-200 dark:border-slate-800 pr-4 select-none">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 px-2">
-        <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+        <span className="text-sm font-semibold text-slate-900 dark:text-slate-200">
           Collections
         </span>
         {isAdmin && (
           <button
             onClick={() => setIsCreating(true)}
-            className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="p-1 rounded-md text-slate-900 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             title="Create new collection"
           >
             <Plus className="w-4 h-4" />
@@ -170,7 +170,7 @@ export const CollectionsSidebar: React.FC<CollectionsSidebarProps> = ({
       <div className="space-y-1">
         <button
           onClick={() => onFilterChange({ type: "all" })}
-          className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-xl transition-all ${
+          className={`w-full flex items-center justify-between p-2 text-sm font-medium rounded-xl transition-all ${
             selectedFilter.type === "all"
               ? "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400"
               : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-white"
@@ -184,7 +184,7 @@ export const CollectionsSidebar: React.FC<CollectionsSidebarProps> = ({
 
         <button
           onClick={() => onFilterChange({ type: "uncategorized" })}
-          className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-xl transition-all ${
+          className={`w-full flex items-center justify-between p-2 text-sm font-medium rounded-xl transition-all ${
             selectedFilter.type === "uncategorized"
               ? "bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400"
               : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-white"
@@ -201,7 +201,7 @@ export const CollectionsSidebar: React.FC<CollectionsSidebarProps> = ({
       <div className="border-b border-slate-200 dark:border-slate-800 my-3" />
 
       {/* Dynamic Collection List */}
-      <div className="flex-1 overflow-y-auto space-y-1 pr-1 max-h-[400px]">
+      <div className="flex-1 overflow-y-auto space-y-1 max-h-[400px]">
         {collections.map((col) => {
           const isSelected =
             selectedFilter.type === "collection" &&
@@ -227,7 +227,7 @@ export const CollectionsSidebar: React.FC<CollectionsSidebarProps> = ({
                         collectionId: col.id,
                       })
                     }
-                    className="flex-1 flex items-center gap-2 px-3 py-2 text-sm text-left overflow-hidden min-w-0"
+                    className="flex-1 flex items-center gap-2 p-2 text-sm text-left overflow-hidden min-w-0"
                   >
                     <Folder className="w-4 h-4 shrink-0 text-slate-400 dark:text-slate-500" />
                     <span className="truncate flex-1" title={col.name}>

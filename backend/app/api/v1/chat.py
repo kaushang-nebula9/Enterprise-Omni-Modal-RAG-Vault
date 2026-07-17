@@ -429,6 +429,7 @@ async def send_query(
     # Fetch the last 10 messages for conversation history
     recent_messages = (
         db.query(QueryMessage)
+        .options(joinedload(QueryMessage.citations).joinedload(QueryCitation.document))
         .filter(QueryMessage.session_id == session_id)
         .order_by(QueryMessage.created_at.desc())
         .limit(10)
@@ -451,6 +452,19 @@ async def send_query(
             role_label = "User" if msg.role == MessageRole.user else "Assistant"
             if msg.role == MessageRole.assistant:
                 msg_content = msg.content
+                doc_chunks = []
+                if msg.citations:
+                    for cit in msg.citations:
+                        if cit.document:
+                            doc_chunks.append(
+                                f"Source: {cit.document.filename} | Chunk: {cit.chunk_index}\n{cit.chunk_text}"
+                            )
+                if doc_chunks:
+                    msg_content = (
+                        "Retrieved Document Chunks:\n"
+                        + "\n---\n".join(doc_chunks)
+                        + f"\n\nAnswer: {msg_content}"
+                    )
                 if getattr(msg, "generated_sql", None):
                     formatted_results = format_query_results_for_prompt(
                         msg.query_results, settings.SQL_RESULT_SUMMARY_THRESHOLD
@@ -458,7 +472,7 @@ async def send_query(
                     msg_content = (
                         f"Generated SQL:\n{msg.generated_sql}\n"
                         f"SQL Results:\n{formatted_results}\n"
-                        f"Answer: {msg.content}"
+                        f"{msg_content}"
                     )
                 history_lines.append(f"{role_label}: {msg_content}")
             else:

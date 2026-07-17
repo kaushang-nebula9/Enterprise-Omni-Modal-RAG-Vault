@@ -627,6 +627,228 @@ async def _execute_llm_stream(cfg, sys_prompt, user_prompt, max_tokens=8192):
         raise ValueError(f"Unsupported sdk_type: {cfg_sdk_type}")
 
 
+def is_cross_source_query(query: str) -> bool:
+    """
+    Heuristic to detect whether a query requires results from both
+    a database and a document/file source simultaneously.
+    """
+    q = query.lower()
+    doc_terms = {
+        "document",
+        "file",
+        "csv",
+        "spreadsheet",
+        "report",
+        "attachment",
+        "uploaded",
+    }
+    db_terms = {"database", "db", "table", "sql", "query", "record", "records"}
+    compare_terms = {
+        "compare",
+        "comparison",
+        "contrast",
+        "difference",
+        "different",
+        "vs",
+        "versus",
+        "both",
+        "also in",
+        "same in",
+        "match",
+        "matches",
+        "how does",
+        "how do",
+        "differ",
+        "unlike",
+        "similar",
+        "similarity",
+    }
+    has_compare = any(t in q for t in compare_terms)
+    has_doc = any(t in q for t in doc_terms)
+    has_db = any(t in q for t in db_terms)
+    return has_compare or (has_doc and has_db)
+
+
+async def _resolve_model_config(
+    model_id,
+    db,
+    user,
+    query: str = "",
+    context_chunks: list[str] = None,
+    has_attachments: bool = False,
+):
+    """
+    Resolves model_id to (selected_model_string, selected_provider_id, model_config, db_model).
+    Falls back to claude-haiku-4-5 / anthropic if nothing is resolved.
+    """
+    selected_model_string = "claude-haiku-4-5"
+    selected_provider_id = "anthropic"
+    model_config = None
+    db_model = None
+
+    if model_id:
+        from app.models.available_model import AvailableModel
+
+        if str(model_id) == "auto":
+            db_models = (
+                db.query(AvailableModel)
+                .filter(
+                    AvailableModel.is_active,
+                    (AvailableModel.tenant_id == user.tenant_id)
+                    | (AvailableModel.tenant_id.is_(None)),
+                )
+                .all()
+            )
+            available_models_list = [
+                {
+                    "id": m.id,
+                    "display_name": m.display_name,
+                    "model_name": m.model_name,
+                    "tier": m.tier,
+                    "provider_id": m.provider_id,
+                    "base_url": m.base_url,
+                    "api_key": m.api_key,
+                    "is_default": m.is_default,
+                }
+                for m in db_models
+            ]
+            from app.services.model_router import route_model
+
+            chosen_dict = route_model(
+                query=query,
+                context_chunks=context_chunks or [],
+                has_attachments=has_attachments,
+                available_models=available_models_list,
+            )
+            db_model = next((m for m in db_models if m.id == chosen_dict["id"]), None)
+        else:
+            db_model = (
+                db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
+            )
+
+        if db_model:
+            selected_model_string = db_model.model_name or db_model.model_string
+            selected_provider_id = db_model.provider_id
+            if not selected_provider_id:
+                # Fallback for legacy models / tests
+                provider_val = db_model.provider
+                if hasattr(provider_val, "value"):
+                    provider_val = provider_val.value
+                if provider_val == "anthropic":
+                    selected_provider_id = "anthropic"
+                elif provider_val == "openrouter":
+                    selected_provider_id = "openrouter"
+                else:
+                    selected_provider_id = "openai_compat"
+            model_config = db_model
+            model_config.provider_id = selected_provider_id
+            model_id = db_model.id
+
+    if not model_config:
+        from app.models.available_model import AvailableModel
+
+        model_config = AvailableModel(
+            provider_id=selected_provider_id,
+            model_name=selected_model_string,
+            api_key="",
+        )
+    return selected_model_string, selected_provider_id, model_config, db_model
+
+
+async def _stream_llm_response(
+    model_config,
+    default_model,
+    system_prompt: str,
+    prompt: str,
+    max_tokens: int,
+    db,
+    user,
+) -> AsyncGenerator[dict, None]:
+    """
+    Calls the LLM with fallback, streams tokens as {"type": "token", "content": ...} dicts,
+    saves a UsageLog row, triggers budget check, and finally yields a single
+    {"type": "usage_done", "full_answer": ..., "was_fallback": ..., "fallback_model_name": ...,
+     "db_model": ..., "model_string": ..., "provider_id": ...} dict.
+    """
+    from app.core.utils import call_llm_with_fallback
+
+    was_fallback = False
+    fallback_model_name = None
+    input_tokens = 0
+    output_tokens = 0
+    full_answer_list = []
+
+    # Invoke LLM with fallback support
+    stream_result, was_fallback, fallback_model_name = await call_llm_with_fallback(
+        primary_model_config=model_config,
+        default_model_config=default_model,
+        call_fn=lambda cfg: _execute_llm_stream(
+            cfg, system_prompt, prompt, max_tokens=max_tokens
+        ),
+    )
+
+    if was_fallback and default_model:
+        db_model = default_model
+        model_config = default_model
+        selected_model_string = default_model.model_name or default_model.model_string
+        selected_provider_id = default_model.provider_id
+    else:
+        db_model = (
+            model_config if getattr(model_config, "id", None) is not None else None
+        )
+        selected_model_string = model_config.model_name or model_config.model_string
+        selected_provider_id = model_config.provider_id
+
+    async for event_type, data in stream_result:
+        if event_type == "token":
+            full_answer_list.append(data)
+            yield {"type": "token", "content": data}
+        elif event_type == "usage":
+            input_tokens = data["input_tokens"]
+            output_tokens = data["output_tokens"]
+
+    # Save UsageLog row
+    try:
+        from app.models.usage_log import UsageLog
+
+        usage_log = UsageLog(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            provider=selected_provider_id,
+            model_string=selected_model_string,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+        db.add(usage_log)
+        db.commit()
+
+        # Trigger budget check task in background
+        try:
+            import sys
+
+            if "pytest" not in sys.modules:
+                from app.tasks.billing_tasks import check_tenant_budgets_task
+
+                check_tenant_budgets_task.delay()
+        except Exception as task_exc:
+            logger.error("Failed to trigger check_tenant_budgets_task: %s", task_exc)
+    except Exception as db_exc:
+        logger.error("Failed to save usage log to database: %s", db_exc)
+        db.rollback()
+
+    full_answer = "".join(full_answer_list).strip()
+
+    yield {
+        "type": "usage_done",
+        "full_answer": full_answer,
+        "was_fallback": was_fallback,
+        "fallback_model_name": fallback_model_name,
+        "db_model": db_model,
+        "model_string": selected_model_string,
+        "provider_id": selected_provider_id,
+    }
+
+
 async def run_rag_pipeline(
     query: str,
     user: User,
@@ -650,6 +872,14 @@ async def run_rag_pipeline(
       5. Use Claude to stream response
       6. Yield tokens and final citations
     """
+    should_fallback_to_docs = False
+    cross_source = bool(database_id and document_id and is_cross_source_query(query))
+    db_sql_query = None
+    db_query_results = None
+    db_formatted_results = None
+    db_connection_name = None
+    execution_time_ms = 0
+
     if database_id:
         connection = (
             db.query(ExternalDatabaseConnection)
@@ -660,289 +890,139 @@ async def run_rag_pipeline(
             .first()
         )
         if not connection:
-            yield {"type": "token", "content": "Error: Database connection not found."}
-            yield {
-                "type": "done",
-                "answer": "Error: Database connection not found.",
-                "citations": [],
-                "follow_up_questions": [],
-            }
-            return
-
-        if not check_user_db_access(db, user, database_id):
+            logger.info("Database connection not found, falling back to documents")
             yield {
                 "type": "token",
-                "content": "Error: You do not have permission to access this database.",
+                "content": "\n*Database connection not found. Searching documents...*\n\n",
             }
-            yield {
-                "type": "done",
-                "answer": "Error: Access denied.",
-                "citations": [],
-                "follow_up_questions": [],
-            }
-            return
+            should_fallback_to_docs = True
 
-        schema_cache = (
-            db.query(DatabaseSchemaCache)
-            .filter(DatabaseSchemaCache.connection_id == database_id)
-            .first()
-        )
-        if not schema_cache or not schema_cache.schema_data:
-            yield {
-                "type": "token",
-                "content": "Error: Database schema has not been introspected yet. Please contact your administrator.",
-            }
-            yield {
-                "type": "done",
-                "answer": "Error: Schema missing.",
-                "citations": [],
-                "follow_up_questions": [],
-            }
-            return
+        if not should_fallback_to_docs:
+            if not check_user_db_access(db, user, database_id):
+                logger.info("Database access denied, falling back to documents")
+                yield {
+                    "type": "token",
+                    "content": "\n*Database access denied. Searching documents...*\n\n",
+                }
+                should_fallback_to_docs = True
 
-        all_tables = [t["name"] for t in schema_cache.schema_data.get("tables", [])]
-        authorized_table_names = get_user_authorized_tables(
-            db, user, database_id, all_tables
-        )
-        if not authorized_table_names:
-            yield {
-                "type": "token",
-                "content": "Error: You do not have access to any tables in this database.",
-            }
-            yield {
-                "type": "done",
-                "answer": "Error: Table access denied.",
-                "citations": [],
-                "follow_up_questions": [],
-            }
-            return
+        if not should_fallback_to_docs:
+            schema_cache = (
+                db.query(DatabaseSchemaCache)
+                .filter(DatabaseSchemaCache.connection_id == database_id)
+                .first()
+            )
+            if not schema_cache or not schema_cache.schema_data:
+                logger.info("Database schema missing, falling back to documents")
+                yield {
+                    "type": "token",
+                    "content": "\n*Database schema missing. Searching documents...*\n\n",
+                }
+                should_fallback_to_docs = True
 
-        from app.models.external_database import DatabaseAccessPolicy
-        from app.services.database_service import (
-            get_user_authorized_columns_for_table,
-            check_sql_authorized_columns,
-        )
+        if not should_fallback_to_docs:
+            all_tables = [t["name"] for t in schema_cache.schema_data.get("tables", [])]
+            authorized_table_names = get_user_authorized_tables(
+                db, user, database_id, all_tables
+            )
+            if not authorized_table_names:
+                logger.info("No authorized tables found, falling back to documents")
+                yield {
+                    "type": "token",
+                    "content": "\n*No authorized tables in database. Searching documents...*\n\n",
+                }
+                should_fallback_to_docs = True
 
-        policies = []
-        if not user.role.is_admin:
-            policies = (
-                db.query(DatabaseAccessPolicy)
-                .filter(
-                    DatabaseAccessPolicy.connection_id == database_id,
-                    DatabaseAccessPolicy.role_id == user.role_id,
-                )
-                .all()
+        if not should_fallback_to_docs:
+            from app.models.external_database import DatabaseAccessPolicy
+            from app.services.database_service import (
+                get_user_authorized_columns_for_table,
+                check_sql_authorized_columns,
             )
 
-        authorized_cols_by_table = {}
-        all_physical_cols_by_table = {}
-        valid_tables = {
-            t["name"].lower() for t in schema_cache.schema_data.get("tables", [])
-        }
-        authorized_tables_info = []
-
-        for t in schema_cache.schema_data.get("tables", []):
-            t_name = t["name"]
-            if t_name in authorized_table_names:
-                all_cols = [c["name"] for c in t.get("columns", [])]
-                all_physical_cols_by_table[t_name.lower()] = set(
-                    c.lower() for c in all_cols
-                )
-                if user.role.is_admin:
-                    auth_cols = set(c.lower() for c in all_cols)
-                else:
-                    auth_cols = get_user_authorized_columns_for_table(
-                        policies, t_name, all_cols
-                    )
-
-                if auth_cols or user.role.is_admin:
-                    authorized_cols_by_table[t_name.lower()] = auth_cols
-                    tbl_copy = dict(t)
-                    # Filter columns shown to the LLM to only the ones authorized
-                    tbl_copy["columns"] = [
-                        col
-                        for col in t.get("columns", [])
-                        if col["name"].lower() in auth_cols
-                    ]
-                    authorized_tables_info.append(tbl_copy)
-
-        if not authorized_tables_info:
-            yield {
-                "type": "token",
-                "content": "Error: You do not have access to any columns/tables in this database.",
-            }
-            yield {
-                "type": "done",
-                "answer": "Error: Table access denied.",
-                "citations": [],
-                "follow_up_questions": [],
-                "db_connection_id": connection.id,
-                "generated_sql": None,
-                "execution_time_ms": 0,
-                "status": "failed",
-                "error_message": "Error: Table access denied.",
-                "error_type": "Unauthorized Column",
-            }
-            return
-
-        db_connection_id = connection.id
-        execution_time_ms = 0
-        status = "success"
-        error_message = None
-        error_type = None
-
-        filtered_schema_data = {"tables": authorized_tables_info}
-
-        yield {
-            "type": "token",
-            "content": "*Thinking... Translating your request to SQL...*\n\n",
-        }
-        turns = []
-        if session_id:
-            turns = get_recent_turns(db, session_id, settings.SQL_HISTORY_LIMIT)
-
-        access_denied_error = None
-        try:
-            sql_query = await translate_nl_to_sql(
-                query=query,
-                schema_data_filtered=filtered_schema_data,
-                engine_type=connection.engine,
-                db=db,
-                model_id=model_id,
-                conversation_history=turns,
-                user_id=user.id,
-                tenant_id=user.tenant_id,
-            )
-
-            # Enforce guardrails on generated SQL
+            policies = []
             if not user.role.is_admin:
-                try:
-                    check_sql_authorized_columns(
-                        sql_query=sql_query,
-                        engine_type=connection.engine,
-                        authorized_cols_by_table=authorized_cols_by_table,
-                        valid_tables=valid_tables,
-                        all_physical_cols_by_table=all_physical_cols_by_table,
+                policies = (
+                    db.query(DatabaseAccessPolicy)
+                    .filter(
+                        DatabaseAccessPolicy.connection_id == database_id,
+                        DatabaseAccessPolicy.role_id == user.role_id,
                     )
-                except ValueError as val_err:
-                    if "access denied" in str(val_err).lower():
-                        access_denied_error = val_err
-                    else:
-                        raise val_err
+                    .all()
+                )
 
-            # If access denied occurred on the first attempt, try self-correction
-            if access_denied_error:
-                logger.warning(
-                    f"Connection {connection.id} - SQL translation accessed unauthorized columns: {str(access_denied_error)}. "
-                    f"Original SQL: {sql_query}. Attempting self-correction for alternative path..."
+            authorized_cols_by_table = {}
+            all_physical_cols_by_table = {}
+            valid_tables = {
+                t["name"].lower() for t in schema_cache.schema_data.get("tables", [])
+            }
+            authorized_tables_info = []
+
+            for t in schema_cache.schema_data.get("tables", []):
+                t_name = t["name"]
+                if t_name in authorized_table_names:
+                    all_cols = [c["name"] for c in t.get("columns", [])]
+                    all_physical_cols_by_table[t_name.lower()] = set(
+                        c.lower() for c in all_cols
+                    )
+                    if user.role.is_admin:
+                        auth_cols = set(c.lower() for c in all_cols)
+                    else:
+                        auth_cols = get_user_authorized_columns_for_table(
+                            policies, t_name, all_cols
+                        )
+
+                    if auth_cols or user.role.is_admin:
+                        authorized_cols_by_table[t_name.lower()] = auth_cols
+                        tbl_copy = dict(t)
+                        # Filter columns shown to the LLM to only the ones authorized
+                        tbl_copy["columns"] = [
+                            col
+                            for col in t.get("columns", [])
+                            if col["name"].lower() in auth_cols
+                        ]
+                        authorized_tables_info.append(tbl_copy)
+
+            if not authorized_tables_info:
+                logger.info(
+                    "No authorized columns/tables found, falling back to documents"
                 )
                 yield {
                     "type": "token",
-                    "content": "\n*Attempting self-correction to find an alternative authorized query path...*\n\n",
+                    "content": "\n*No authorized columns in database. Searching documents...*\n\n",
                 }
+                should_fallback_to_docs = True
 
-                try:
-                    # Regenerate SQL with access denied feedback
-                    sql_query = await translate_nl_to_sql(
-                        query=query,
-                        schema_data_filtered=filtered_schema_data,
-                        engine_type=connection.engine,
-                        db=db,
-                        model_id=model_id,
-                        failed_sql=sql_query,
-                        error_message=str(access_denied_error),
-                        conversation_history=turns,
-                        user_id=user.id,
-                        tenant_id=user.tenant_id,
-                    )
+        if not should_fallback_to_docs:
+            db_connection_id = connection.id
+            execution_time_ms = 0
 
-                    # Re-verify guardrails on regenerated SQL
-                    if not user.role.is_admin:
-                        check_sql_authorized_columns(
-                            sql_query=sql_query,
-                            engine_type=connection.engine,
-                            authorized_cols_by_table=authorized_cols_by_table,
-                            valid_tables=valid_tables,
-                            all_physical_cols_by_table=all_physical_cols_by_table,
-                        )
-                except Exception as retry_exc:
-                    # If the self-correction failed, revert to the original access denied error
-                    logger.error(
-                        f"Connection {connection.id} - SQL self-correction for access denied failed: {str(retry_exc)}. "
-                        f"Reverting to original access denied error."
-                    )
-                    raise access_denied_error
+            filtered_schema_data = {"tables": authorized_tables_info}
 
             yield {
                 "type": "token",
-                "content": f"**Generated SQL Query:**\n```sql\n{sql_query}\n```\n\n*Executing query...*\n\n",
+                "content": "*Thinking... Translating your request to SQL...*\n\n",
             }
-        except Exception as e:
-            err_msg = str(e)
-            status = "failed"
-            error_message = err_msg
-            if "I cannot generate a SQL query, this is ambiguous" in err_msg:
-                err_msg = "I cannot generate a SQL query, this is ambiguous"
-                error_type = "Ambiguous"
-            elif "access denied" in err_msg.lower():
-                error_type = "Unauthorized Column"
-            elif "timeout" in err_msg.lower():
-                error_type = "Timeout"
-            else:
-                error_type = "Other"
-            yield {"type": "token", "content": err_msg}
-            yield {
-                "type": "done",
-                "answer": err_msg,
-                "citations": [],
-                "follow_up_questions": [],
-                "db_connection_id": db_connection_id,
-                "generated_sql": None,
-                "execution_time_ms": 0,
-                "status": status,
-                "error_message": error_message,
-                "error_type": error_type,
-            }
-            return
+            turns = []
+            if session_id:
+                turns = get_recent_turns(db, session_id, settings.SQL_HISTORY_LIMIT)
 
-        try:
-            start_time = time.perf_counter()
-            query_results = run_query_on_connection(
-                connection=connection,
-                sql_query=sql_query,
-                schema_cache_tables=schema_cache.schema_data.get("tables", []),
-            )
-            execution_time_ms = int((time.perf_counter() - start_time) * 1000)
-            status = "success"
-        except Exception as e:
-            if is_value_mismatch_error(connection.engine, e):
-                # Log retry event
-                logger.warning(
-                    f"Connection {connection.id} - NL-to-SQL execution failed with value/literal mismatch: {str(e)}. "
-                    f"Original SQL: {sql_query}. Attempting self-correction..."
+            access_denied_error = None
+            try:
+                sql_query = await translate_nl_to_sql(
+                    query=query,
+                    schema_data_filtered=filtered_schema_data,
+                    engine_type=connection.engine,
+                    db=db,
+                    model_id=model_id,
+                    conversation_history=turns,
+                    user_id=user.id,
+                    tenant_id=user.tenant_id,
                 )
-                yield {
-                    "type": "token",
-                    "content": f"\n*Database reported a value/literal mismatch error: {str(e)}.*\n*Attempting self-correction (retry 1/1)...*\n\n",
-                }
 
-                try:
-                    # Regenerate SQL with error feedback
-                    sql_query = await translate_nl_to_sql(
-                        query=query,
-                        schema_data_filtered=filtered_schema_data,
-                        engine_type=connection.engine,
-                        db=db,
-                        model_id=model_id,
-                        failed_sql=sql_query,
-                        error_message=str(e),
-                        conversation_history=turns,
-                        user_id=user.id,
-                        tenant_id=user.tenant_id,
-                    )
-
-                    # Enforce guardrails on regenerated SQL
-                    if not user.role.is_admin:
+                # Enforce guardrails on generated SQL
+                if not user.role.is_admin:
+                    try:
                         check_sql_authorized_columns(
                             sql_query=sql_query,
                             engine_type=connection.engine,
@@ -950,307 +1030,280 @@ async def run_rag_pipeline(
                             valid_tables=valid_tables,
                             all_physical_cols_by_table=all_physical_cols_by_table,
                         )
+                    except ValueError as val_err:
+                        if "access denied" in str(val_err).lower():
+                            access_denied_error = val_err
+                        else:
+                            raise val_err
 
+                # If access denied occurred on the first attempt, try self-correction
+                if access_denied_error:
+                    logger.warning(
+                        f"Connection {connection.id} - SQL translation accessed unauthorized columns: {str(access_denied_error)}. "
+                        f"Original SQL: {sql_query}. Attempting self-correction for alternative path..."
+                    )
                     yield {
                         "type": "token",
-                        "content": f"**Regenerated SQL Query:**\n```sql\n{sql_query}\n```\n\n*Executing corrected query...*\n\n",
+                        "content": "\n*Attempting self-correction to find an alternative authorized query path...*\n\n",
                     }
 
-                    # Re-run execution and re-verify
-                    start_time = time.perf_counter()
-                    query_results = run_query_on_connection(
-                        connection=connection,
-                        sql_query=sql_query,
-                        schema_cache_tables=schema_cache.schema_data.get("tables", []),
-                    )
-                    execution_time_ms = int((time.perf_counter() - start_time) * 1000)
-                    status = "success"
+                    try:
+                        # Regenerate SQL with access denied feedback
+                        sql_query = await translate_nl_to_sql(
+                            query=query,
+                            schema_data_filtered=filtered_schema_data,
+                            engine_type=connection.engine,
+                            db=db,
+                            model_id=model_id,
+                            failed_sql=sql_query,
+                            error_message=str(access_denied_error),
+                            conversation_history=turns,
+                            user_id=user.id,
+                            tenant_id=user.tenant_id,
+                        )
 
-                    # Log successful retry
-                    logger.info(
-                        f"Connection {connection.id} - NL-to-SQL self-correction successful. New SQL: {sql_query}"
-                    )
+                        # Re-verify guardrails on regenerated SQL
+                        if not user.role.is_admin:
+                            check_sql_authorized_columns(
+                                sql_query=sql_query,
+                                engine_type=connection.engine,
+                                authorized_cols_by_table=authorized_cols_by_table,
+                                valid_tables=valid_tables,
+                                all_physical_cols_by_table=all_physical_cols_by_table,
+                            )
+                    except Exception as retry_exc:
+                        # If the self-correction failed, revert to the original access denied error
+                        logger.error(
+                            f"Connection {connection.id} - SQL self-correction for access denied failed: {str(retry_exc)}. "
+                            f"Reverting to original access denied error."
+                        )
+                        raise access_denied_error
 
-                except Exception as retry_err:
-                    # Log failed retry
-                    logger.error(
-                        f"Connection {connection.id} - NL-to-SQL self-correction failed. "
-                        f"Regenerated SQL: {sql_query}. Error: {str(retry_err)}"
-                    )
-                    err_msg = str(retry_err)
-                    status = "failed"
-                    error_message = err_msg
-                    if "access denied" in err_msg.lower():
-                        error_type = "Unauthorized Column"
-                    elif "timeout" in err_msg.lower():
-                        error_type = "Timeout"
-                    else:
-                        error_type = "SQL Error"
-
-                    if "I cannot generate a SQL query, this is ambiguous" in err_msg:
-                        err_msg = "I cannot generate a SQL query, this is ambiguous"
-                    else:
-                        err_msg = f"Error executing query: {str(retry_err)}"
-                    yield {"type": "token", "content": err_msg}
-                    yield {
-                        "type": "done",
-                        "answer": err_msg,
-                        "citations": [],
-                        "follow_up_questions": [],
-                        "db_connection_id": db_connection_id,
-                        "generated_sql": sql_query,
-                        "execution_time_ms": execution_time_ms,
-                        "status": status,
-                        "error_message": error_message,
-                        "error_type": error_type,
-                    }
-                    return
-            else:
-                err_msg = str(e)
-                status = "failed"
-                error_message = err_msg
-                if "access denied" in err_msg.lower():
-                    error_type = "Unauthorized Column"
-                elif "timeout" in err_msg.lower():
-                    error_type = "Timeout"
-                else:
-                    error_type = "SQL Error"
-
-                if "I cannot generate a SQL query, this is ambiguous" in err_msg:
-                    err_msg = "I cannot generate a SQL query, this is ambiguous"
-                else:
-                    err_msg = f"Error executing query: {str(e)}"
-                yield {"type": "token", "content": err_msg}
                 yield {
-                    "type": "done",
-                    "answer": err_msg,
-                    "citations": [],
-                    "follow_up_questions": [],
-                    "db_connection_id": db_connection_id,
-                    "generated_sql": sql_query,
-                    "execution_time_ms": execution_time_ms,
-                    "status": status,
-                    "error_message": error_message,
-                    "error_type": error_type,
+                    "type": "token",
+                    "content": f"**Generated SQL Query:**\n```sql\n{sql_query}\n```\n\n*Executing query...*\n\n",
                 }
-                return
+            except Exception as e:
+                logger.info(f"SQL translation failed, falling back to documents: {e}")
+                yield {
+                    "type": "token",
+                    "content": "\n*Could not translate query to SQL. Searching documents...*\n\n",
+                }
+                should_fallback_to_docs = True
 
-        formatted_results_str = json.dumps(query_results, indent=2, default=str)
+        if not should_fallback_to_docs:
+            try:
+                start_time = time.perf_counter()
+                query_results = run_query_on_connection(
+                    connection=connection,
+                    sql_query=sql_query,
+                    schema_cache_tables=schema_cache.schema_data.get("tables", []),
+                )
+                execution_time_ms = int((time.perf_counter() - start_time) * 1000)
+            except Exception as e:
+                if is_value_mismatch_error(connection.engine, e):
+                    # Log retry event
+                    logger.warning(
+                        f"Connection {connection.id} - NL-to-SQL execution failed with value/literal mismatch: {str(e)}. "
+                        f"Original SQL: {sql_query}. Attempting self-correction..."
+                    )
+                    yield {
+                        "type": "token",
+                        "content": f"\n*Database reported a value/literal mismatch error: {str(e)}.*\n*Attempting self-correction (retry 1/1)...*\n\n",
+                    }
 
-        system_prompt = (
-            "You are a helpful data analyst assistant. Your job is to analyze the executed SQL query and its returned results, "
-            "and provide a clear, concise, and professional natural language answer to the user's original question. "
-            "Make sure to format the output nicely (e.g. use markdown tables or bullet points where appropriate). "
-            "Always cite values directly from the query results. If the results are empty, explain that no matching records were found.\n\n"
-            "CHART OUTPUT RULE:\n"
-            "If and only if your answer contains numerical data that can be meaningfully visualised (comparisons, trends, distributions, rankings, time series), "
-            "append a chart specification at the very end of your response using this exact format:\n\n"
-            'CHART_SPEC:{"chart_type":"bar","title":"<descriptive title>","x_key":"<field name>","y_keys":["<field name>"],"data":[{...},{...}]}\n\n'
-            "Rules for the chart spec:\n"
-            "- chart_type must be one of: bar, line, area, pie\n"
-            "- Choose the most appropriate chart_type for the data\n"
-            "- data must be a JSON array of flat objects, all objects must have the same keys\n"
-            "- x_key is the categorical or time-based field\n"
-            "- y_keys is an array of one or more numeric fields\n"
-            "- For pie charts, y_keys must contain exactly one field\n"
-            "- All values in y_keys fields must be numbers, not strings\n"
-            "- The CHART_SPEC line must be on its own line at the very end of your response, after all text\n"
-            "- Do not emit CHART_SPEC if the answer is narrative, qualitative, or contains no numerical comparisons\n"
-            "- Do not wrap CHART_SPEC in markdown code fences"
-        )
+                    try:
+                        # Regenerate SQL with error feedback
+                        sql_query = await translate_nl_to_sql(
+                            query=query,
+                            schema_data_filtered=filtered_schema_data,
+                            engine_type=connection.engine,
+                            db=db,
+                            model_id=model_id,
+                            failed_sql=sql_query,
+                            error_message=str(e),
+                            conversation_history=turns,
+                            user_id=user.id,
+                            tenant_id=user.tenant_id,
+                        )
 
-        prompt = f"""User Question: {query}
+                        # Enforce guardrails on regenerated SQL
+                        if not user.role.is_admin:
+                            check_sql_authorized_columns(
+                                sql_query=sql_query,
+                                engine_type=connection.engine,
+                                authorized_cols_by_table=authorized_cols_by_table,
+                                valid_tables=valid_tables,
+                                all_physical_cols_by_table=all_physical_cols_by_table,
+                            )
+
+                        yield {
+                            "type": "token",
+                            "content": f"**Regenerated SQL Query:**\n```sql\n{sql_query}\n```\n\n*Executing corrected query...*\n\n",
+                        }
+
+                        # Re-run execution and re-verify
+                        start_time = time.perf_counter()
+                        query_results = run_query_on_connection(
+                            connection=connection,
+                            sql_query=sql_query,
+                            schema_cache_tables=schema_cache.schema_data.get(
+                                "tables", []
+                            ),
+                        )
+                        execution_time_ms = int(
+                            (time.perf_counter() - start_time) * 1000
+                        )
+
+                        # Log successful retry
+                        logger.info(
+                            f"Connection {connection.id} - NL-to-SQL self-correction successful. New SQL: {sql_query}"
+                        )
+
+                    except Exception as retry_err:
+                        logger.info(
+                            f"SQL execution failed, falling back to documents: {retry_err}"
+                        )
+                        yield {
+                            "type": "token",
+                            "content": "\n*Database query execution failed. Searching documents...*\n\n",
+                        }
+                        should_fallback_to_docs = True
+                else:
+                    logger.info(f"SQL execution failed, falling back to documents: {e}")
+                    yield {
+                        "type": "token",
+                        "content": "\n*Database query execution failed. Searching documents...*\n\n",
+                    }
+                    should_fallback_to_docs = True
+
+        if not should_fallback_to_docs:
+            if not query_results or len(query_results) == 0:
+                logger.info("SQL query returned 0 results, falling back to documents")
+                yield {
+                    "type": "token",
+                    "content": "\n*No matching records found in database. Searching documents...*\n\n",
+                }
+                should_fallback_to_docs = True
+
+        if not should_fallback_to_docs and not cross_source:
+            # Generate NATURAL LANGUAGE answer for database connection query
+            formatted_results_str = json.dumps(query_results, indent=2, default=str)
+
+            system_prompt = (
+                "You are a helpful data analyst assistant. Your job is to analyze the executed SQL query and its returned results, "
+                "and provide a clear, concise, and professional natural language answer to the user's original question. "
+                "Make sure to format the output nicely (e.g. use markdown tables or bullet points where appropriate). "
+                "Always cite values directly from the query results. If the results are empty, explain that no matching records were found.\n\n"
+                "CHART OUTPUT RULE:\n"
+                "If and only if your answer contains numerical data that can be meaningfully visualised (comparisons, trends, distributions, rankings, time series), "
+                "append a chart specification at the very end of your response using this exact format:\n\n"
+                'CHART_SPEC:{"chart_type":"bar","title":"<descriptive title>","x_key":"<field name>","y_keys":["<field name>"],"data":[{...},{...}]}\n\n'
+                "Rules for the chart spec:\n"
+                "- chart_type must be one of: bar, line, area, pie\n"
+                "- Choose the most appropriate chart_type for the data\n"
+                "- data must be a JSON array of flat objects, all objects must have the same keys\n"
+                "- x_key is the categorical or time-based field\n"
+                "- y_keys is an array of one or more numeric fields\n"
+                "- For pie charts, y_keys must contain exactly one field\n"
+                "- All values in y_keys fields must be numbers, not strings\n"
+                "- The CHART_SPEC line must be on its own line at the very end of your response, after all text\n"
+                "- Do not emit CHART_SPEC if the answer is narrative, qualitative, or contains no numerical comparisons\n"
+                "- Do not wrap CHART_SPEC in markdown code fences"
+            )
+
+            prompt = f"""User Question: {query}
 Generated SQL Query: {sql_query}
 Query Results:
 {formatted_results_str}
 
 Please summarize and answer the user's question based on the query results. Do not make up any facts."""
 
-        selected_model_string = "claude-haiku-4-5"
-        selected_provider_id = "anthropic"
-        model_config = None
-        db_model = None
-
-        if model_id:
-            from app.models.available_model import AvailableModel
-
-            if str(model_id) == "auto":
-                db_models = (
-                    db.query(AvailableModel)
-                    .filter(
-                        AvailableModel.is_active,
-                        (AvailableModel.tenant_id == user.tenant_id)
-                        | (AvailableModel.tenant_id.is_(None)),
-                    )
-                    .all()
-                )
-                available_models_list = [
-                    {
-                        "id": m.id,
-                        "display_name": m.display_name,
-                        "model_name": m.model_name,
-                        "tier": m.tier,
-                        "provider_id": m.provider_id,
-                        "base_url": m.base_url,
-                        "api_key": m.api_key,
-                        "is_default": m.is_default,
-                    }
-                    for m in db_models
-                ]
-                from app.services.model_router import route_model
-
-                chosen_dict = route_model(
-                    query=query,
-                    context_chunks=[],
-                    has_attachments=False,
-                    available_models=available_models_list,
-                )
-                db_model = next(
-                    (m for m in db_models if m.id == chosen_dict["id"]), None
-                )
-            else:
-                db_model = (
-                    db.query(AvailableModel)
-                    .filter(AvailableModel.id == model_id)
-                    .first()
-                )
-
-            if db_model:
-                selected_model_string = db_model.model_name or db_model.model_string
-                selected_provider_id = db_model.provider_id
-                if not selected_provider_id:
-                    # Fallback for legacy models / tests
-                    provider_val = db_model.provider
-                    if hasattr(provider_val, "value"):
-                        provider_val = provider_val.value
-                    if provider_val == "anthropic":
-                        selected_provider_id = "anthropic"
-                    elif provider_val == "openrouter":
-                        selected_provider_id = "openrouter"
-                    else:
-                        selected_provider_id = "openai_compat"
-                model_config = db_model
-                model_config.provider_id = selected_provider_id
-                model_id = db_model.id
-
-        if not model_config:
-            from app.models.available_model import AvailableModel
-
-            model_config = AvailableModel(
-                provider_id=selected_provider_id,
-                model_name=selected_model_string,
-                api_key="",
+            (
+                selected_model_string,
+                selected_provider_id,
+                model_config,
+                db_model,
+            ) = await _resolve_model_config(
+                model_id=model_id,
+                db=db,
+                user=user,
+                query=query,
+                context_chunks=[],
+                has_attachments=False,
             )
 
-        input_tokens = 0
-        output_tokens = 0
-        full_answer_list = []
+            # Fetch default model config
+            from app.services.model_router import get_default_model_config
 
-        # Initialize fallback variables
-        was_fallback = False
-        fallback_model_name = None
+            default_model = get_default_model_config(db, user.tenant_id)
 
-        # Fetch default model config
-        from app.services.model_router import get_default_model_config
+            usage_done_event = None
+            async for event in _stream_llm_response(
+                model_config=model_config,
+                default_model=default_model,
+                system_prompt=system_prompt,
+                prompt=prompt,
+                max_tokens=4096,
+                db=db,
+                user=user,
+            ):
+                if event["type"] == "token":
+                    yield event
+                elif event["type"] == "usage_done":
+                    usage_done_event = event
 
-        default_model = get_default_model_config(db, user.tenant_id)
+            full_answer = usage_done_event["full_answer"]
+            was_fallback = usage_done_event["was_fallback"]
+            fallback_model_name = usage_done_event["fallback_model_name"]
+            db_model = usage_done_event["db_model"]
+            selected_model_string = usage_done_event["model_string"]
+            selected_provider_id = usage_done_event["provider_id"]
 
-        from app.core.utils import call_llm_with_fallback
+            citations = [
+                {
+                    "document_id": str(database_id),
+                    "filename": f"Database: {connection.name}",
+                    "chunk_text": f"SQL: {sql_query}\nResults: {formatted_results_str[:1000]}...",
+                    "page_number": None,
+                    "slide_number": None,
+                    "chunk_index": 0,
+                }
+            ]
 
-        # Invoke LLM with fallback support
-        stream_result, was_fallback, fallback_model_name = await call_llm_with_fallback(
-            primary_model_config=model_config,
-            default_model_config=default_model,
-            call_fn=lambda cfg: _execute_llm_stream(
-                cfg, system_prompt, prompt, max_tokens=4096
-            ),
-        )
-
-        if was_fallback and default_model:
-            db_model = default_model
-            model_config = default_model
-            selected_model_string = (
-                default_model.model_name or default_model.model_string
-            )
-            selected_provider_id = default_model.provider_id
-
-        async for event_type, data in stream_result:
-            if event_type == "token":
-                full_answer_list.append(data)
-                yield {"type": "token", "content": data}
-            elif event_type == "usage":
-                input_tokens = data["input_tokens"]
-                output_tokens = data["output_tokens"]
-
-        # Save SQL summarization UsageLog row
-        try:
-            from app.models.usage_log import UsageLog
-
-            usage_log = UsageLog(
-                tenant_id=user.tenant_id,
-                user_id=user.id,
-                provider=selected_provider_id,
-                model_string=selected_model_string,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-            )
-            db.add(usage_log)
-            db.commit()
-
-            # Trigger budget check task in background
-            try:
-                import sys
-
-                if "pytest" not in sys.modules:
-                    from app.tasks.billing_tasks import check_tenant_budgets_task
-
-                    check_tenant_budgets_task.delay()
-            except Exception as task_exc:
-                logger.error(
-                    "Failed to trigger check_tenant_budgets_task: %s", task_exc
+            # Ensure query_results is JSON serializable
+            serializable_results = None
+            if query_results is not None:
+                serializable_results = json.loads(
+                    json.dumps(query_results, default=str)
                 )
-        except Exception as usage_err:
-            logger.error(f"Failed to save SQL summarization usage log: {usage_err}")
 
-        full_answer = "".join(full_answer_list).strip()
-
-        citations = [
-            {
-                "document_id": str(database_id),
-                "filename": f"Database: {connection.name}",
-                "chunk_text": f"SQL: {sql_query}\nResults: {formatted_results_str[:1000]}...",
-                "page_number": None,
-                "slide_number": None,
-                "chunk_index": 0,
+            yield {
+                "type": "done",
+                "answer": full_answer,
+                "citations": citations,
+                "model_string": selected_model_string,
+                "follow_up_questions": [],
+                "generated_sql": sql_query,
+                "query_results": serializable_results,
+                "db_connection_id": db_connection_id,
+                "execution_time_ms": execution_time_ms,
+                "status": "success",
+                "error_message": None,
+                "error_type": None,
+                "resolved_model": db_model.display_name
+                if db_model
+                else selected_model_string,
+                "resolved_model_id": db_model.id if db_model else None,
+                "was_fallback": was_fallback,
+                "fallback_model_name": fallback_model_name,
             }
-        ]
-
-        # Ensure query_results is JSON serializable (converts UUIDs, datetimes, etc. to strings)
-        serializable_results = None
-        if query_results is not None:
-            serializable_results = json.loads(json.dumps(query_results, default=str))
-
-        yield {
-            "type": "done",
-            "answer": full_answer,
-            "citations": citations,
-            "model_string": selected_model_string,
-            "follow_up_questions": [],
-            "generated_sql": sql_query,
-            "query_results": serializable_results,
-            "db_connection_id": db_connection_id,
-            "execution_time_ms": execution_time_ms,
-            "status": "success",
-            "error_message": None,
-            "error_type": None,
-            "resolved_model": db_model.display_name
-            if db_model
-            else selected_model_string,
-            "resolved_model_id": db_model.id if db_model else None,
-            "was_fallback": was_fallback,
-            "fallback_model_name": fallback_model_name,
-        }
-        return
+            return
+        elif not should_fallback_to_docs and cross_source:
+            db_sql_query = sql_query
+            db_query_results = query_results
+            db_formatted_results = json.dumps(query_results, indent=2, default=str)
+            db_connection_name = connection.name
 
     tenant_id = str(user.tenant_id)
     role_id = str(user.role_id)
@@ -1424,6 +1477,182 @@ Please summarize and answer the user's question based on the query results. Do n
             "\n".join(context_parts) if context_parts else "No relevant context found."
         )
 
+    if cross_source and not should_fallback_to_docs:
+        fusion_system_prompt = (
+            "You are a helpful data analyst assistant. You have been given results from two sources: "
+            "an external database (via SQL) and one or more documents or files. "
+            "Your job is to answer the user's question using both sources. "
+            "Decide the best format for your answer based on the question: "
+            "if the question asks for a direct comparison, present both results clearly and then give a conclusion. "
+            "If the question can be answered as a unified narrative using both sources, do that instead. "
+            "Always cite which source each piece of information comes from. "
+            "Do not make up any facts. Only use information present in the provided results."
+        )
+
+        fusion_prompt = f"""User Question: {query}
+
+--- Database Source: {db_connection_name} ---
+SQL Query: {db_sql_query}
+Results:
+{db_formatted_results}
+
+--- Document/File Source ---
+{context_block}
+
+Answer the user's question using both sources above."""
+
+        # Context chunks
+        context_chunks = []
+        for hit in qdrant_results:
+            context_chunks.append(hit.get("payload", {}).get("chunk_text", ""))
+        for er in excel_results:
+            context_chunks.append(str(er.get("result", "")))
+
+        # Resolve model and provider
+        (
+            selected_model_string,
+            selected_provider_id,
+            model_config,
+            db_model,
+        ) = await _resolve_model_config(
+            model_id=model_id,
+            db=db,
+            user=user,
+            query=query,
+            context_chunks=context_chunks,
+            has_attachments=bool(document_id),
+        )
+
+        # Fetch default model config
+        from app.services.model_router import get_default_model_config
+
+        default_model = get_default_model_config(db, user.tenant_id)
+
+        usage_done_event = None
+        try:
+            async for event in _stream_llm_response(
+                model_config=model_config,
+                default_model=default_model,
+                system_prompt=fusion_system_prompt,
+                prompt=fusion_prompt,
+                max_tokens=8192,
+                db=db,
+                user=user,
+            ):
+                if event["type"] == "token":
+                    yield event
+                elif event["type"] == "usage_done":
+                    usage_done_event = event
+        except Exception as exc:
+            logger.error(
+                "%s streaming answer generation failed: %s", selected_provider_id, exc
+            )
+            error_msg = (
+                "I encountered an error while generating an answer. Please try again."
+            )
+            usage_done_event = {
+                "full_answer": error_msg,
+                "was_fallback": False,
+                "fallback_model_name": None,
+                "db_model": db_model,
+                "model_string": selected_model_string,
+                "provider_id": selected_provider_id,
+            }
+            yield {"type": "token", "content": error_msg}
+
+        full_answer = usage_done_event["full_answer"]
+        was_fallback = usage_done_event["was_fallback"]
+        fallback_model_name = usage_done_event["fallback_model_name"]
+        db_model = usage_done_event["db_model"]
+        selected_model_string = usage_done_event["model_string"]
+        selected_provider_id = usage_done_event["provider_id"]
+
+        if not full_answer:
+            full_answer = (
+                "I could not generate an answer. Please try rephrasing your question."
+            )
+            yield {"type": "token", "content": full_answer}
+
+        # Parse follow up questions using regex split
+        import re
+
+        answer_parts = re.split(r"(?i)\[follow[-_]up\]", full_answer)
+        clean_answer = answer_parts[0].strip()
+        follow_up_questions: list[str] = []
+        if len(answer_parts) > 1:
+            raw_questions = answer_parts[1].strip().split("\n")
+            for q in raw_questions:
+                q = q.strip().lstrip("-").lstrip("*").lstrip("123456789.").strip()
+                if q:
+                    follow_up_questions.append(q)
+
+        # Build citations list
+        citations = []
+        # DB citation
+        citations.append(
+            {
+                "document_id": str(database_id),
+                "filename": f"Database: {db_connection_name}",
+                "chunk_text": f"SQL: {db_sql_query}\nResults: {db_formatted_results[:1000]}...",
+                "page_number": None,
+                "slide_number": None,
+                "chunk_index": 0,
+            }
+        )
+        # Doc citations
+        for hit in qdrant_results:
+            payload = hit.get("payload", {})
+            doc_id = payload.get("document_id", "")
+            citations.append(
+                {
+                    "document_id": doc_id,
+                    "filename": doc_id_to_filename.get(doc_id, "Unknown"),
+                    "chunk_text": payload.get("chunk_text", ""),
+                    "page_number": payload.get("page_number"),
+                    "slide_number": payload.get("slide_number"),
+                    "chunk_index": payload.get("chunk_index", 0),
+                }
+            )
+
+        # Excel citations
+        for er in excel_results:
+            citations.append(
+                {
+                    "document_id": str(er.get("document_id", "")),
+                    "filename": er.get("filename", "Unknown"),
+                    "chunk_text": f"Query: {query}\nResult: {str(er.get('result', ''))[:1000]}",
+                    "page_number": None,
+                    "slide_number": None,
+                    "chunk_index": 0,
+                }
+            )
+
+        serializable_results = None
+        if db_query_results is not None:
+            serializable_results = json.loads(json.dumps(db_query_results, default=str))
+
+        yield {
+            "type": "done",
+            "answer": clean_answer,
+            "citations": citations,
+            "model_string": selected_model_string,
+            "follow_up_questions": follow_up_questions,
+            "generated_sql": db_sql_query,
+            "query_results": serializable_results,
+            "db_connection_id": database_id,
+            "execution_time_ms": execution_time_ms,
+            "status": "success",
+            "error_message": None,
+            "error_type": None,
+            "resolved_model": db_model.display_name
+            if db_model
+            else selected_model_string,
+            "resolved_model_id": db_model.id if db_model else None,
+            "was_fallback": was_fallback,
+            "fallback_model_name": fallback_model_name,
+        }
+        return
+
     # Call LLM for the final answer (using Anthropic Claude Streaming)
     final_prompt = f"""Context:
     {context_block}
@@ -1439,157 +1668,52 @@ Please summarize and answer the user's question based on the query results. Do n
     if command_instruction:
         system_prompt += f"\n\n[Instructions]\n{command_instruction}"
 
+    # Context chunks
+    context_chunks = []
+    for hit in qdrant_results:
+        context_chunks.append(hit.get("payload", {}).get("chunk_text", ""))
+    for er in excel_results:
+        context_chunks.append(str(er.get("result", "")))
+
     # Resolve model and provider
-    selected_model_string = "claude-haiku-4-5"
-    selected_provider_id = "anthropic"
-    model_config = None
-    db_model = None
+    (
+        selected_model_string,
+        selected_provider_id,
+        model_config,
+        db_model,
+    ) = await _resolve_model_config(
+        model_id=model_id,
+        db=db,
+        user=user,
+        query=query,
+        context_chunks=context_chunks,
+        has_attachments=bool(document_id),
+    )
 
-    if model_id:
-        from app.models.available_model import AvailableModel
+    # Fetch default model config
+    from app.services.model_router import get_default_model_config
 
-        if str(model_id) == "auto":
-            db_models = (
-                db.query(AvailableModel)
-                .filter(
-                    AvailableModel.is_active,
-                    (AvailableModel.tenant_id == user.tenant_id)
-                    | (AvailableModel.tenant_id.is_(None)),
-                )
-                .all()
-            )
-            available_models_list = [
-                {
-                    "id": m.id,
-                    "display_name": m.display_name,
-                    "model_name": m.model_name,
-                    "tier": m.tier,
-                    "provider_id": m.provider_id,
-                    "base_url": m.base_url,
-                    "api_key": m.api_key,
-                    "is_default": m.is_default,
-                }
-                for m in db_models
-            ]
+    default_model = get_default_model_config(db, user.tenant_id)
 
-            # Context chunks
-            context_chunks = []
-            for hit in qdrant_results:
-                context_chunks.append(hit.get("payload", {}).get("chunk_text", ""))
-            for er in excel_results:
-                context_chunks.append(str(er.get("result", "")))
+    # Initialize fallback variables
+    was_fallback = False
+    fallback_model_name = None
 
-            from app.services.model_router import route_model
-
-            chosen_dict = route_model(
-                query=query,
-                context_chunks=context_chunks,
-                has_attachments=bool(document_id),
-                available_models=available_models_list,
-            )
-            db_model = next((m for m in db_models if m.id == chosen_dict["id"]), None)
-        else:
-            db_model = (
-                db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
-            )
-
-        if db_model:
-            selected_model_string = db_model.model_name or db_model.model_string
-            selected_provider_id = db_model.provider_id
-            if not selected_provider_id:
-                # Fallback for legacy models / tests
-                provider_val = db_model.provider
-                if hasattr(provider_val, "value"):
-                    provider_val = provider_val.value
-                if provider_val == "anthropic":
-                    selected_provider_id = "anthropic"
-                elif provider_val == "openrouter":
-                    selected_provider_id = "openrouter"
-                else:
-                    selected_provider_id = "openai_compat"
-            model_config = db_model
-            model_config.provider_id = selected_provider_id
-            model_id = db_model.id
-
-    if not model_config:
-        from app.models.available_model import AvailableModel
-
-        model_config = AvailableModel(
-            provider_id=selected_provider_id,
-            model_name=selected_model_string,
-            api_key="",
-        )
-
-    full_answer_list = []
-    input_tokens = 0
-    output_tokens = 0
+    usage_done_event = None
     try:
-        # Initialize fallback variables
-        was_fallback = False
-        fallback_model_name = None
-
-        # Fetch default model config
-        from app.services.model_router import get_default_model_config
-
-        default_model = get_default_model_config(db, user.tenant_id)
-
-        from app.core.utils import call_llm_with_fallback
-
-        # Invoke LLM with fallback support
-        stream_result, was_fallback, fallback_model_name = await call_llm_with_fallback(
-            primary_model_config=model_config,
-            default_model_config=default_model,
-            call_fn=lambda cfg: _execute_llm_stream(
-                cfg, system_prompt, final_prompt, max_tokens=8192
-            ),
-        )
-
-        if was_fallback and default_model:
-            db_model = default_model
-            model_config = default_model
-            selected_model_string = (
-                default_model.model_name or default_model.model_string
-            )
-            selected_provider_id = default_model.provider_id
-
-        async for event_type, data in stream_result:
-            if event_type == "token":
-                full_answer_list.append(data)
-                yield {"type": "token", "content": data}
-            elif event_type == "usage":
-                input_tokens = data["input_tokens"]
-                output_tokens = data["output_tokens"]
-
-        # Save UsageLog row
-        try:
-            from app.models.usage_log import UsageLog
-
-            usage_log = UsageLog(
-                tenant_id=user.tenant_id,
-                user_id=user.id,
-                provider=selected_provider_id,
-                model_string=selected_model_string,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-            )
-            db.add(usage_log)
-            db.commit()
-
-            # Trigger budget check task in background
-            try:
-                import sys
-
-                if "pytest" not in sys.modules:
-                    from app.tasks.billing_tasks import check_tenant_budgets_task
-
-                    check_tenant_budgets_task.delay()
-            except Exception as task_exc:
-                logger.error(
-                    "Failed to trigger check_tenant_budgets_task: %s", task_exc
-                )
-        except Exception as db_exc:
-            logger.error("Failed to save usage log to database: %s", db_exc)
-            db.rollback()
+        async for event in _stream_llm_response(
+            model_config=model_config,
+            default_model=default_model,
+            system_prompt=system_prompt,
+            prompt=final_prompt,
+            max_tokens=8192,
+            db=db,
+            user=user,
+        ):
+            if event["type"] == "token":
+                yield event
+            elif event["type"] == "usage_done":
+                usage_done_event = event
     except Exception as exc:
         logger.error(
             "%s streaming answer generation failed: %s", selected_provider_id, exc
@@ -1597,10 +1721,23 @@ Please summarize and answer the user's question based on the query results. Do n
         error_msg = (
             "I encountered an error while generating an answer. Please try again."
         )
-        full_answer_list.append(error_msg)
+        usage_done_event = {
+            "full_answer": error_msg,
+            "was_fallback": was_fallback,
+            "fallback_model_name": fallback_model_name,
+            "db_model": db_model,
+            "model_string": selected_model_string,
+            "provider_id": selected_provider_id,
+        }
         yield {"type": "token", "content": error_msg}
 
-    full_answer = "".join(full_answer_list).strip()
+    full_answer = usage_done_event["full_answer"]
+    was_fallback = usage_done_event["was_fallback"]
+    fallback_model_name = usage_done_event["fallback_model_name"]
+    db_model = usage_done_event["db_model"]
+    selected_model_string = usage_done_event["model_string"]
+    selected_provider_id = usage_done_event["provider_id"]
+
     if not full_answer:
         full_answer = (
             "I could not generate an answer. Please try rephrasing your question."

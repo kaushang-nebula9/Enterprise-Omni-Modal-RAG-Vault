@@ -643,7 +643,6 @@ const ChatPage: React.FC = () => {
   // Select document and remove the trigger slash, inserting document filename instead of slash
   const handleSelectDocument = (doc: DocumentResponse) => {
     setAttachedDocument(doc);
-    setAttachedDatabase(null);
     setUploadedFile(null); // clear any uploaded file to avoid duplicate attachments
     setIsDropdownOpen(false);
     setDropdownSearch("");
