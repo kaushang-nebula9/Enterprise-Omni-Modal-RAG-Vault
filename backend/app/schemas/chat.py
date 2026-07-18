@@ -139,3 +139,26 @@ class QueryResponse(BaseModel):
 
 class TranscriptionResponse(BaseModel):
     text: str
+
+
+class MatchingLineItem(BaseModel):
+    text: str
+    role: str
+
+
+class ChatSearchItem(BaseModel):
+    conversation_id: UUID
+    conversation_title: Optional[str] = None
+    conversation_updated_at: datetime
+    conversation_date: datetime
+    matching_lines: list[MatchingLineItem]
+    match_in_title: bool
+    match_count: int
+
+    model_config = {"from_attributes": True}
+
+
+class ChatSearchResponse(BaseModel):
+    results: list[ChatSearchItem]
+    total_count: int
+    has_more: bool

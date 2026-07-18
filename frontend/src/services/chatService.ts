@@ -4,6 +4,7 @@ import type {
   SessionDetailResponse,
   CitationResponse,
   AvailableModel,
+  ChatSearchResponse,
 } from "../types/chat";
 import type { DocumentResponse } from "../types/document";
 import type { MessageResponse as ApiMessageResponse } from "../types/auth";
@@ -214,6 +215,21 @@ export const chatService = {
       formData,
       { headers: { "Content-Type": "multipart/form-data" } },
     );
+    return response.data;
+  },
+
+  searchConversations: async (
+    q: string,
+    offset: number = 0,
+    date_from?: string,
+    date_to?: string,
+    match_in?: string,
+    sort?: string,
+    case_sensitive?: boolean,
+  ): Promise<ChatSearchResponse> => {
+    const response = await api.get<ChatSearchResponse>("/api/conversations/search", {
+      params: { q, offset, date_from, date_to, match_in, sort, case_sensitive },
+    });
     return response.data;
   },
 };

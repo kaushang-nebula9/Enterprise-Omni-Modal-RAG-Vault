@@ -105,3 +105,25 @@ export interface ReportStatus {
   completed_at: string | null;
   steps: ReportAgentStep[];
 }
+
+export interface MatchingLineItem {
+  text: string;
+  role: "user" | "assistant";
+}
+
+export interface ChatSearchItem {
+  conversation_id: string;
+  conversation_title: string;
+  conversation_updated_at: string;
+  conversation_date: string;
+  matching_lines: MatchingLineItem[];
+  match_in_title: boolean;
+  match_count: number;
+}
+
+export interface ChatSearchResponse {
+  results: ChatSearchItem[];
+  total_count: number;
+  has_more: boolean;
+}
+

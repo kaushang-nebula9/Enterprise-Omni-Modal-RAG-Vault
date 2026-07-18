@@ -26,6 +26,7 @@ import ChatPage from "./pages/dashboard/ChatPage";
 import YourDocumentsPage from "./pages/dashboard/YourDocumentsPage";
 import EvaluationResultsPage from "./pages/dashboard/EvaluationResultsPage";
 import ReportsPage from "./pages/dashboard/ReportsPage";
+import SearchPage from "./pages/dashboard/SearchPage";
 
 const App: React.FC = () => {
   const theme = useThemeStore((state) => state.theme);
@@ -152,6 +153,7 @@ const App: React.FC = () => {
               </ProtectedAdminRoute>
             }
           />
+          <Route path="search" element={<SearchPage />} />
         </Route>
 
         {/* Root Redirect to Login */}

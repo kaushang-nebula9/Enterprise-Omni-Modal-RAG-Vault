@@ -676,7 +676,7 @@ export default function YourDocumentsPage() {
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="bg-transparent text-sm text-slate-700 dark:text-slate-300 font-medium py-2 focus:outline-none cursor-pointer w-[115px]"
+              className="bg-transparent text-sm text-slate-700 dark:text-slate-300 font-medium py-2 focus:outline-none cursor-pointer w-fit uppercase dark:[color-scheme:dark]"
               title="Start Date"
             />
             <span className="text-slate-300 dark:text-slate-655 font-medium px-1">
@@ -686,7 +686,7 @@ export default function YourDocumentsPage() {
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="bg-transparent text-sm text-slate-700 dark:text-slate-300 font-medium py-2 focus:outline-none cursor-pointer w-[115px]"
+              className="bg-transparent text-sm text-slate-700 dark:text-slate-300 font-medium py-2 focus:outline-none cursor-pointer w-fit uppercase dark:[color-scheme:dark]"
               title="End Date"
             />
           </div>

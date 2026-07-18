@@ -16,6 +16,7 @@ import {
   History,
   Database,
   ScrollText,
+  Search,
 } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { chatService } from "../../services/chatService";
@@ -426,9 +427,18 @@ const Sidebar: React.FC<SidebarProps> = ({ isExpanded, toggleSidebar }) => {
 
                     {/* ── Chat History section ── */}
                     {isExpanded && (
-                      <h3 className="text-sm font-bold text-slate-900 dark:text-slate-400 mb-3 px-3 select-none">
-                        Chat History
-                      </h3>
+                      <div className="flex items-center justify-between mb-3 px-3 select-none">
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-400">
+                          Chat History
+                        </h3>
+                        <button
+                          onClick={() => navigate("/dashboard/search")}
+                          className="p-1 rounded-full transition-colors text-slate-500 dark:text-slate-400"
+                          title="Search Chats"
+                        >
+                          <Search className="w-4 h-4" />
+                        </button>
+                      </div>
                     )}
 
                     {unpinnedSessions.length > 0 && isExpanded && (
