@@ -37,12 +37,12 @@ EXTENSION_TO_FILE_TYPE: dict[str, FileType] = {
 
 TABULAR_FILE_TYPES: set[FileType] = {
     FileType.excel,
-    FileType.csv,
     FileType.xls,
     FileType.xlsm,
     FileType.xlsb,
-    FileType.ods,
+    FileType.csv,
     FileType.tsv,
+    FileType.ods,
 }
 
 

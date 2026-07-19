@@ -53,10 +53,3 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"status": "Enterprise RAG Vault API is running"}
-
-
-@app.get("/api/providers")
-def get_providers():
-    from app.core.utils import PROVIDER_REGISTRY
-
-    return PROVIDER_REGISTRY
