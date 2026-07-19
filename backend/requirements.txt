@@ -41,4 +41,4 @@ sqlglot
 pymysql
 matplotlib
 reportlab
-magic
+python-magic
