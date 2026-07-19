@@ -255,7 +255,7 @@ const LoginPage: React.FC = () => {
       </form>
 
       {/* Support Link */}
-      <div className="mt-8 text-center text-sm text-slate-500 dark:text-slate-400">
+      <div className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
         Need help accessing your account?{" "}
         <a
           href="#"
@@ -264,6 +264,27 @@ const LoginPage: React.FC = () => {
           Contact IT Support
         </a>
       </div>
+
+            {/* Divider */}
+      <div className="relative flex mt-2 items-center">
+        <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
+        <span className="flex-shrink mx-4 text-xs font-semibold tracking-wider text-slate-400 dark:text-slate-500 uppercase">
+          OR
+        </span>
+        <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
+      </div>
+
+      {/* Redirect to Register */}
+      <div className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
+        Want to register your organization?{" "}
+        <Link
+          to="/register"
+          className="font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300"
+        >
+          Register
+        </Link>
+      </div>
+
     </div>
   );
 };
