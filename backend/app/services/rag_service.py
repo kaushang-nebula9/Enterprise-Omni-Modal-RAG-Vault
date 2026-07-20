@@ -14,6 +14,7 @@ import uuid
 from typing import Optional, AsyncGenerator
 import pandas as pd
 from RestrictedPython import compile_restricted, safe_globals
+from sentence_transformers import CrossEncoder
 from sqlalchemy.orm import Session
 
 from anthropic import Anthropic, AsyncAnthropic
@@ -61,10 +62,10 @@ def _get_async_anthropic_client() -> AsyncAnthropic:
 # CrossEncoder model (ACTIVE)
 # ---------------------------------------------------------------------------
 
-_cross_encoder: Optional["CrossEncoder"] = None  # noqa: F821
+_cross_encoder: Optional["CrossEncoder"] = None
 
 
-def _get_cross_encoder() -> "CrossEncoder":  # noqa: F821
+def _get_cross_encoder() -> "CrossEncoder":
     """Lazily load and cache the CrossEncoder model."""
     global _cross_encoder
     if not settings.ENABLE_CROSS_ENCODER_RERANKING:

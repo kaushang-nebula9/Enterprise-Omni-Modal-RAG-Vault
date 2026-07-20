@@ -143,7 +143,7 @@ async def test_database_to_document_fallback_translation_failure(db):
 
     with (
         patch(
-            "app.services.rag_service.translate_nl_to_sql",
+            "app.services.database_service.translate_nl_to_sql",
             side_effect=ValueError("Ambiguous column"),
         ),
         patch("app.services.embedding_service.embed_text", side_effect=mock_embed),
@@ -254,11 +254,11 @@ async def test_database_to_document_fallback_empty_results(db):
 
     with (
         patch(
-            "app.services.rag_service.translate_nl_to_sql",
+            "app.services.database_service.translate_nl_to_sql",
             return_value="SELECT * FROM users;",
         ),
         patch(
-            "app.services.rag_service.run_query_on_connection", return_value=[]
+            "app.services.database_service.run_query_on_connection", return_value=[]
         ),  # returns empty results
         patch("app.services.embedding_service.embed_text", side_effect=mock_embed),
         patch("app.services.rag_service.search_vectors", side_effect=mock_search),
@@ -473,11 +473,11 @@ async def test_cross_source_fusion_success(db):
 
     with (
         patch(
-            "app.services.rag_service.translate_nl_to_sql",
+            "app.services.database_service.translate_nl_to_sql",
             return_value="SELECT count(*) FROM users;",
         ),
         patch(
-            "app.services.rag_service.run_query_on_connection",
+            "app.services.database_service.run_query_on_connection",
             return_value=[{"count": 10}],
         ),
         patch("app.services.embedding_service.embed_text", side_effect=mock_embed),

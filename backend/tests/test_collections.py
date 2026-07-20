@@ -53,9 +53,15 @@ def override_require_admin():
     return test_context["current_admin"]
 
 
-app.dependency_overrides[get_db] = override_get_db
-app.dependency_overrides[get_current_user] = override_get_current_user
-app.dependency_overrides[require_admin] = override_require_admin
+@pytest.fixture(autouse=True)
+def configure_dependency_overrides():
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[require_admin] = override_require_admin
+    yield
+    app.dependency_overrides.pop(get_db, None)
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(require_admin, None)
 
 
 @pytest.fixture(name="db")

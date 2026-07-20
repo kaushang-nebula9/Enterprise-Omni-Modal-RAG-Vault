@@ -102,9 +102,9 @@ async def test_translate_nl_to_sql_logs_usage(mock_anthropic_client, db):
 @pytest.mark.asyncio
 @patch("app.services.rag_service._async_anthropic_client")
 @patch("app.services.database_service._async_anthropic_client")
-@patch("app.services.rag_service.check_user_db_access")
-@patch("app.services.rag_service.get_user_authorized_tables")
-@patch("app.services.rag_service.run_query_on_connection")
+@patch("app.services.database_service.check_user_db_access")
+@patch("app.services.database_service.get_user_authorized_tables")
+@patch("app.services.database_service.run_query_on_connection")
 async def test_run_rag_pipeline_database_logs_usage(
     mock_run_query,
     mock_get_tables,

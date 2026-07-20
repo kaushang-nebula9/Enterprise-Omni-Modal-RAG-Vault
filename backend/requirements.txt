@@ -42,3 +42,4 @@ pymysql
 matplotlib
 reportlab
 python-magic
+odfpy

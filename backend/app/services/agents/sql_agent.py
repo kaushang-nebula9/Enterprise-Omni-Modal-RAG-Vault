@@ -12,12 +12,7 @@ from app.models.external_database import (
     DatabaseSchemaCache,
     DatabaseAccessPolicy,
 )
-from app.services.database_service import (
-    check_user_db_access,
-    get_user_authorized_tables,
-    get_user_authorized_columns_for_table,
-    check_sql_authorized_columns,
-)
+from app.services import database_service
 import app.services.rag_service as rag_service
 from app.services.agents.types import SQLAgentResult
 
@@ -110,7 +105,7 @@ async def run_sql_agent(
 
     print(f"[SQL Agent] Connection found: {connection.name}")
 
-    if not check_user_db_access(db, user, database_id):
+    if not database_service.check_user_db_access(db, user, database_id):
         error_reason = "Database access denied"
         logger.info("Database access denied, falling back to documents")
         yield {
@@ -148,7 +143,7 @@ async def run_sql_agent(
     all_tables = [t["name"] for t in schema_cache.schema_data.get("tables", [])]
     print(f"[SQL Agent] Schema cache loaded. Tables available: {len(all_tables)}")
 
-    authorized_table_names = get_user_authorized_tables(
+    authorized_table_names = database_service.get_user_authorized_tables(
         db, user, database_id, all_tables
     )
     if not authorized_table_names:
@@ -195,7 +190,7 @@ async def run_sql_agent(
             if user.role.is_admin:
                 auth_cols = set(c.lower() for c in all_cols)
             else:
-                auth_cols = get_user_authorized_columns_for_table(
+                auth_cols = database_service.get_user_authorized_columns_for_table(
                     policies, t_name, all_cols
                 )
 
@@ -267,7 +262,7 @@ async def run_sql_agent(
                     f"Previous error: {previous_error}. {previous_results_summary}"
                 )
 
-            sql_query = await rag_service.translate_nl_to_sql(
+            sql_query = await database_service.translate_nl_to_sql(
                 query=query,
                 schema_data_filtered=filtered_schema_data,
                 engine_type=connection.engine,
@@ -285,7 +280,7 @@ async def run_sql_agent(
             access_denied_error = None
             if not user.role.is_admin:
                 try:
-                    check_sql_authorized_columns(
+                    database_service.check_sql_authorized_columns(
                         sql_query=sql_query,
                         engine_type=connection.engine,
                         authorized_cols_by_table=authorized_cols_by_table,
@@ -316,7 +311,7 @@ async def run_sql_agent(
             }
 
             start_time = time.perf_counter()
-            query_results = rag_service.run_query_on_connection(
+            query_results = database_service.run_query_on_connection(
                 connection=connection,
                 sql_query=sql_query,
                 schema_cache_tables=schema_cache.schema_data.get("tables", []),
@@ -351,7 +346,15 @@ async def run_sql_agent(
             continue
 
         # OBSERVE
-        judgment = await _call_judge_llm(query, sql_query, query_results)
+        if not query_results or len(query_results) == 0:
+            judgment = {
+                "sufficient": False,
+                "confidence": 0.0,
+                "reasoning": "No matching records found in database.",
+                "fix_instruction": "Try adjusting filters or search criteria.",
+            }
+        else:
+            judgment = await _call_judge_llm(query, sql_query, query_results)
         print(
             f"[SQL Agent] Judge evaluation - sufficient: {judgment['sufficient']}, confidence: {judgment['confidence']}"
         )

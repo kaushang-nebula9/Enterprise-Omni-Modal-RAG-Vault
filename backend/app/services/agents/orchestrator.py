@@ -4,7 +4,6 @@ from typing import Optional, AsyncGenerator
 from sqlalchemy.orm import Session
 
 from app.models.user import User
-from app.services import embedding_service
 import app.services.rag_service as rag_service
 from app.services.agents.types import RAGAgentResult, FusionInput
 from app.services.agents.sql_agent import run_sql_agent
@@ -31,7 +30,6 @@ async def run_orchestrator(
     print(f"[Orchestrator] Query received: {query[:100]}")
     print("[Orchestrator] Embedding query vector...")
     # Embed the query vector once
-    query_vector = embedding_service.embed_text(query)
 
     # Determine initial mode
     if database_id and document_id and rag_service.is_cross_source_query(query):
@@ -50,7 +48,6 @@ async def run_orchestrator(
         rag_task = asyncio.create_task(
             run_rag_agent(
                 query=query,
-                query_vector=query_vector,
                 user=user,
                 db=db,
                 document_id=document_id,
@@ -85,6 +82,21 @@ async def run_orchestrator(
         if not sql_result or not sql_result.success:
             degraded_mode = "doc_only"
             print(f"[Orchestrator] SQL Agent failed - degrading to: {degraded_mode}")
+            if not sql_result or not sql_result.sql_query:
+                yield {
+                    "type": "token",
+                    "content": "\n*Could not translate query to SQL. Searching documents...*\n\n",
+                }
+            elif not sql_result.query_results or len(sql_result.query_results) == 0:
+                yield {
+                    "type": "token",
+                    "content": "\n*No matching records found in database. Searching documents...*\n\n",
+                }
+            else:
+                yield {
+                    "type": "token",
+                    "content": "\n*Database query execution failed. Searching documents...*\n\n",
+                }
             mode = degraded_mode
         elif not rag_result or not rag_result.success:
             mode = "db_only"
@@ -108,10 +120,24 @@ async def run_orchestrator(
         if not sql_result or not sql_result.success:
             degraded_mode = "doc_only"
             print(f"[Orchestrator] SQL Agent failed - degrading to: {degraded_mode}")
+            if not sql_result or not sql_result.sql_query:
+                yield {
+                    "type": "token",
+                    "content": "\n*Could not translate query to SQL. Searching documents...*\n\n",
+                }
+            elif not sql_result.query_results or len(sql_result.query_results) == 0:
+                yield {
+                    "type": "token",
+                    "content": "\n*No matching records found in database. Searching documents...*\n\n",
+                }
+            else:
+                yield {
+                    "type": "token",
+                    "content": "\n*Database query execution failed. Searching documents...*\n\n",
+                }
             mode = degraded_mode
             rag_result = await run_rag_agent(
                 query=query,
-                query_vector=query_vector,
                 user=user,
                 db=db,
                 document_id=document_id,
@@ -126,7 +152,6 @@ async def run_orchestrator(
         sql_result = None
         rag_result = await run_rag_agent(
             query=query,
-            query_vector=query_vector,
             user=user,
             db=db,
             document_id=document_id,

@@ -169,7 +169,7 @@ async def test_run_rag_pipeline_access_denied_self_correction(db):
             return_value=mock_client,
         ),
         patch(
-            "app.services.rag_service.run_query_on_connection",
+            "app.services.database_service.run_query_on_connection",
             side_effect=mock_run_query,
         ),
     ):
