@@ -422,81 +422,6 @@ async def _resolve_compare_document(
     return "\n---\n".join(lines), doc_results
 
 
-def is_value_mismatch_error(engine_type: str, e: Exception) -> bool:
-    err_str = str(e).lower()
-    orig = getattr(e, "orig", None)
-    from app.models.enums import DatabaseEngine
-
-    if engine_type == DatabaseEngine.postgresql:
-        if orig and hasattr(orig, "pgcode") and orig.pgcode == "22P02":
-            return True
-        if "invalid input value for enum" in err_str:
-            return True
-        if "invalidtextrepresentation" in err_str:
-            return True
-        if "invalid input syntax for" in err_str:
-            return True
-
-    elif engine_type == DatabaseEngine.mysql:
-        if (
-            orig
-            and hasattr(orig, "args")
-            and isinstance(orig.args, tuple)
-            and len(orig.args) > 0
-        ):
-            err_code = orig.args[0]
-            if err_code in (1265, 1366, 1292):
-                return True
-        if "data truncated" in err_str:
-            return True
-        if "truncated incorrect" in err_str:
-            return True
-        if "incorrect integer value" in err_str:
-            return True
-
-    return False
-
-
-def get_recent_turns(db: Session, session_id: uuid.UUID, limit: int = 5) -> list[dict]:
-    from app.models.query_message import QueryMessage
-    from app.models.enums import MessageRole
-
-    messages = (
-        db.query(QueryMessage)
-        .filter(QueryMessage.session_id == session_id)
-        .order_by(QueryMessage.created_at.desc())
-        .limit(limit * 2)
-        .all()
-    )
-    messages = list(reversed(messages))
-
-    turns = []
-    i = 0
-    while i < len(messages):
-        msg = messages[i]
-        if msg.role == MessageRole.user:
-            if i + 1 < len(messages) and messages[i + 1].role == MessageRole.assistant:
-                turns.append(
-                    {
-                        "question": msg.content,
-                        "answer": messages[i + 1].content,
-                        "generated_sql": getattr(
-                            messages[i + 1], "generated_sql", None
-                        ),
-                        "query_results": getattr(
-                            messages[i + 1], "query_results", None
-                        ),
-                    }
-                )
-                i += 2
-            else:
-                i += 1
-        else:
-            i += 1
-
-    return turns[-limit:]
-
-
 async def _execute_llm_stream(cfg, sys_prompt, user_prompt, max_tokens=8192):
     """
     Streams tokens and usage dict from the appropriate provider SDK based on configuration.
@@ -616,228 +541,6 @@ async def _execute_llm_stream(cfg, sys_prompt, user_prompt, max_tokens=8192):
         raise ValueError(f"Unsupported sdk_type: {cfg_sdk_type}")
 
 
-def is_cross_source_query(query: str) -> bool:
-    """
-    Heuristic to detect whether a query requires results from both
-    a database and a document/file source simultaneously.
-    """
-    q = query.lower()
-    doc_terms = {
-        "document",
-        "file",
-        "csv",
-        "spreadsheet",
-        "report",
-        "attachment",
-        "uploaded",
-    }
-    db_terms = {"database", "db", "table", "sql", "query", "record", "records"}
-    compare_terms = {
-        "compare",
-        "comparison",
-        "contrast",
-        "difference",
-        "different",
-        "vs",
-        "versus",
-        "both",
-        "also in",
-        "same in",
-        "match",
-        "matches",
-        "how does",
-        "how do",
-        "differ",
-        "unlike",
-        "similar",
-        "similarity",
-    }
-    has_compare = any(t in q for t in compare_terms)
-    has_doc = any(t in q for t in doc_terms)
-    has_db = any(t in q for t in db_terms)
-    return has_compare or (has_doc and has_db)
-
-
-async def _resolve_model_config(
-    model_id,
-    db,
-    user,
-    query: str = "",
-    context_chunks: list[str] = None,
-    has_attachments: bool = False,
-):
-    """
-    Resolves model_id to (selected_model_string, selected_provider_id, model_config, db_model).
-    Falls back to claude-haiku-4-5 / anthropic if nothing is resolved.
-    """
-    selected_model_string = "claude-haiku-4-5"
-    selected_provider_id = "anthropic"
-    model_config = None
-    db_model = None
-
-    if model_id:
-        from app.models.available_model import AvailableModel
-
-        if str(model_id) == "auto":
-            db_models = (
-                db.query(AvailableModel)
-                .filter(
-                    AvailableModel.is_active,
-                    (AvailableModel.tenant_id == user.tenant_id)
-                    | (AvailableModel.tenant_id.is_(None)),
-                )
-                .all()
-            )
-            available_models_list = [
-                {
-                    "id": m.id,
-                    "display_name": m.display_name,
-                    "model_name": m.model_name,
-                    "tier": m.tier,
-                    "provider_id": m.provider_id,
-                    "base_url": m.base_url,
-                    "api_key": m.api_key,
-                    "is_default": m.is_default,
-                }
-                for m in db_models
-            ]
-            from app.services.model_router import route_model
-
-            chosen_dict = route_model(
-                query=query,
-                context_chunks=context_chunks or [],
-                has_attachments=has_attachments,
-                available_models=available_models_list,
-            )
-            db_model = next((m for m in db_models if m.id == chosen_dict["id"]), None)
-        else:
-            db_model = (
-                db.query(AvailableModel).filter(AvailableModel.id == model_id).first()
-            )
-
-        if db_model:
-            selected_model_string = db_model.model_name or db_model.model_string
-            selected_provider_id = db_model.provider_id
-            if not selected_provider_id:
-                # Fallback for legacy models / tests
-                provider_val = db_model.provider
-                if hasattr(provider_val, "value"):
-                    provider_val = provider_val.value
-                if provider_val == "anthropic":
-                    selected_provider_id = "anthropic"
-                elif provider_val == "openrouter":
-                    selected_provider_id = "openrouter"
-                else:
-                    selected_provider_id = "openai_compat"
-            model_config = db_model
-            model_config.provider_id = selected_provider_id
-            model_id = db_model.id
-
-    if not model_config:
-        from app.models.available_model import AvailableModel
-
-        model_config = AvailableModel(
-            provider_id=selected_provider_id,
-            model_name=selected_model_string,
-            api_key="",
-        )
-    return selected_model_string, selected_provider_id, model_config, db_model
-
-
-async def _stream_llm_response(
-    model_config,
-    default_model,
-    system_prompt: str,
-    prompt: str,
-    max_tokens: int,
-    db,
-    user,
-) -> AsyncGenerator[dict, None]:
-    """
-    Calls the LLM with fallback, streams tokens as {"type": "token", "content": ...} dicts,
-    saves a UsageLog row, triggers budget check, and finally yields a single
-    {"type": "usage_done", "full_answer": ..., "was_fallback": ..., "fallback_model_name": ...,
-     "db_model": ..., "model_string": ..., "provider_id": ...} dict.
-    """
-    from app.core.utils import call_llm_with_fallback
-
-    was_fallback = False
-    fallback_model_name = None
-    input_tokens = 0
-    output_tokens = 0
-    full_answer_list = []
-
-    # Invoke LLM with fallback support
-    stream_result, was_fallback, fallback_model_name = await call_llm_with_fallback(
-        primary_model_config=model_config,
-        default_model_config=default_model,
-        call_fn=lambda cfg: _execute_llm_stream(
-            cfg, system_prompt, prompt, max_tokens=max_tokens
-        ),
-    )
-
-    if was_fallback and default_model:
-        db_model = default_model
-        model_config = default_model
-        selected_model_string = default_model.model_name or default_model.model_string
-        selected_provider_id = default_model.provider_id
-    else:
-        db_model = (
-            model_config if getattr(model_config, "id", None) is not None else None
-        )
-        selected_model_string = model_config.model_name or model_config.model_string
-        selected_provider_id = model_config.provider_id
-
-    async for event_type, data in stream_result:
-        if event_type == "token":
-            full_answer_list.append(data)
-            yield {"type": "token", "content": data}
-        elif event_type == "usage":
-            input_tokens = data["input_tokens"]
-            output_tokens = data["output_tokens"]
-
-    # Save UsageLog row
-    try:
-        from app.models.usage_log import UsageLog
-
-        usage_log = UsageLog(
-            tenant_id=user.tenant_id,
-            user_id=user.id,
-            provider=selected_provider_id,
-            model_string=selected_model_string,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-        )
-        db.add(usage_log)
-        db.commit()
-
-        # Trigger budget check task in background
-        try:
-            import sys
-
-            if "pytest" not in sys.modules:
-                from app.tasks.billing_tasks import check_tenant_budgets_task
-
-                check_tenant_budgets_task.delay()
-        except Exception as task_exc:
-            logger.error("Failed to trigger check_tenant_budgets_task: %s", task_exc)
-    except Exception as db_exc:
-        logger.error("Failed to save usage log to database: %s", db_exc)
-        db.rollback()
-
-    full_answer = "".join(full_answer_list).strip()
-
-    yield {
-        "type": "usage_done",
-        "full_answer": full_answer,
-        "was_fallback": was_fallback,
-        "fallback_model_name": fallback_model_name,
-        "db_model": db_model,
-        "model_string": selected_model_string,
-        "provider_id": selected_provider_id,
-    }
-
-
 async def run_rag_pipeline(
     query: str,
     user: User,
@@ -852,29 +555,112 @@ async def run_rag_pipeline(
     model_id: Optional[uuid.UUID] = None,
     session_id: Optional[uuid.UUID] = None,
 ) -> AsyncGenerator[dict, None]:
-    """
-    Main RAG pipeline with streaming output:
-      1. Embed the user query
-      2. Fetch authorised documents
-      3. Qdrant semantic search (non-Excel) / Excel code-gen pipeline (run concurrently)
-      4. Build context
-      5. Use Claude to stream response
-      6. Yield tokens and final citations
-    """
-    from app.services.agents.orchestrator import run_orchestrator
+    from app.services.agents.graph import rag_graph
+    from app.services.agents.types import AgentState
 
-    async for event in run_orchestrator(
-        query=query,
-        user=user,
-        db=db,
-        conversation_history=conversation_history,
-        document_id=document_id,
-        database_id=database_id,
-        command_instruction=command_instruction,
-        compare_document_ids=compare_document_ids,
-        is_compare_mode=is_compare_mode,
-        is_summarize_mode=is_summarize_mode,
-        model_id=model_id,
-        session_id=session_id,
-    ):
-        yield event
+    # Build initial state
+    initial_state: AgentState = {
+        "query": query,
+        "user_id": str(user.id),
+        "tenant_id": str(user.tenant_id),
+        "database_id": str(database_id) if database_id else None,
+        "document_id": str(document_id) if document_id else None,
+        "conversation_history": conversation_history,
+        "model_id": str(model_id) if model_id else None,
+        "session_id": str(session_id) if session_id else None,
+        "command_instruction": command_instruction,
+        "compare_document_ids": [str(d) for d in compare_document_ids]
+        if compare_document_ids
+        else None,
+        "is_compare_mode": is_compare_mode,
+        "is_summarize_mode": is_summarize_mode,
+        # Initialize all other fields to defaults
+        "invoke_sql": False,
+        "invoke_rag": False,
+        "mode": "doc_only",
+        "orchestrator_reasoning": "",
+        "progress_tokens": [],
+        "sql_result": None,
+        "rag_result": None,
+        "sql_attempts": 0,
+        "sql_max_attempts": 3,
+        "rag_attempts": 0,
+        "rag_max_attempts": 3,
+        "sql_sufficient": False,
+        "sql_judge_reasoning": "",
+        "sql_fix_instruction": "",
+        "rag_sufficient": False,
+        "rag_judge_reasoning": "",
+        "rag_fix_instruction": "",
+        "final_answer": "",
+        "citations": [],
+        "follow_up_questions": [],
+        "chart_spec": None,
+        "generated_sql": None,
+        "query_results": None,
+        "model_string": None,
+        "resolved_model": None,
+        "resolved_model_id": None,
+        "was_fallback": False,
+        "fallback_model_name": None,
+        "execution_time_ms": 0,
+        "db_connection_id": None,
+    }
+
+    # Thread config for LangGraph checkpointer
+    config = {
+        "configurable": {
+            "thread_id": str(session_id) if session_id else str(uuid.uuid4())
+        }
+    }
+
+    # Stream graph execution - yield progress tokens as they arrive
+    # then yield the final done event when graph completes
+    yielded_tokens = set()  # deduplicate progress tokens
+
+    print(f"[Graph] Starting graph execution for query: {query[:100]}")
+
+    async for chunk in rag_graph.astream(initial_state, config=config):
+        # Each chunk is a dict of {node_name: partial_state_update}
+        for node_name, node_output in chunk.items():
+            print(f"[Graph] Node completed: {node_name}")
+
+            # Stream progress tokens to user as they arrive from each node
+            if isinstance(node_output, dict) and "progress_tokens" in node_output:
+                for token in node_output["progress_tokens"]:
+                    token_key = f"{node_name}:{token}"
+                    if token_key not in yielded_tokens:
+                        yielded_tokens.add(token_key)
+                        yield {"type": "token", "content": token}
+
+    # After graph completes, get the final state
+    # LangGraph astream yields node outputs - get the last full state
+    full_final_state = await rag_graph.aget_state(config)
+    state_values = full_final_state.values
+
+    print("[Graph] Graph execution complete.")
+    print(f"[Graph] Final mode: {state_values.get('mode')}")
+    print(f"[Graph] Final answer length: {len(state_values.get('final_answer', ''))}")
+
+    # Yield the done event using final state values
+    yield {
+        "type": "done",
+        "answer": state_values.get(
+            "final_answer", "I could not generate an answer. Please try again."
+        ),
+        "citations": state_values.get("citations", []),
+        "model_string": state_values.get("model_string"),
+        "follow_up_questions": state_values.get("follow_up_questions", []),
+        "generated_sql": state_values.get("generated_sql"),
+        "query_results": state_values.get("query_results"),
+        "db_connection_id": state_values.get("db_connection_id"),
+        "execution_time_ms": state_values.get("execution_time_ms", 0),
+        "status": "success",
+        "error_message": None,
+        "error_type": None,
+        "resolved_model": state_values.get("resolved_model"),
+        "resolved_model_id": state_values.get("resolved_model_id"),
+        "was_fallback": state_values.get("was_fallback", False),
+        "fallback_model_name": state_values.get("fallback_model_name"),
+        "chart_spec": state_values.get("chart_spec"),
+    }
