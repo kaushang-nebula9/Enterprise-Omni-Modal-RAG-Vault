@@ -190,25 +190,25 @@ async def fusion_node(state: AgentState) -> dict:
             sql_query = sql_result.sql_query if sql_result else ""
             formatted_results_str = sql_result.formatted_results if sql_result else ""
             prompt = f"""User Question: {query}
-Generated SQL Query: {sql_query}
-Query Results:
-{formatted_results_str}
+            Generated SQL Query: {sql_query}
+            Query Results:
+            {formatted_results_str}
 
-Please summarize and answer the user's question based on the query results. Do not make up any facts."""
+            Please summarize and answer the user's question based on the query results. Do not make up any facts."""
 
         elif actual_mode == "doc_only":
             context_block = (
                 rag_result.context_block if rag_result else "No relevant context found."
             )
             prompt = f"""Context:
-{context_block}
+            {context_block}
 
-Conversation History (recent messages):
-{conversation_history if conversation_history else "No previous messages."}
+            Conversation History (recent messages):
+            {conversation_history if conversation_history else "No previous messages."}
 
-User Question: {query}
+            User Question: {query}
 
-Answer:"""
+            Answer:"""
             system_prompt = rag_service._SYSTEM_PROMPT
             if command_instruction:
                 system_prompt += f"\n\n[Instructions]\n{command_instruction}"
@@ -232,24 +232,24 @@ Answer:"""
 
             prompt = f"""User Question: {query}
 
---- Database Source: {db_connection_name} ---
-SQL Query: {db_sql_query}
-Results:
-{db_formatted_results}
+            --- Database Source: {db_connection_name} ---
+            SQL Query: {db_sql_query}
+            Results:
+            {db_formatted_results}
 
---- Document/File Source ---
-{context_block}
+            --- Document/File Source ---
+            {context_block}
 
-Answer the user's question using both sources above."""
+            Answer the user's question using both sources above."""
 
-        print("[Fusion Node] Mode: {mode}")
+        print(f"[Fusion Node] Mode: {mode}")
         print(
-            "[Fusion Node] SQL result available: {bool(sql_result and sql_result.success)}"
+            f"[Fusion Node] SQL result available: {bool(sql_result and sql_result.success)}"
         )
         print(
-            "[Fusion Node] RAG result available: {bool(rag_result and rag_result.success)}"
+            f"[Fusion Node] RAG result available: {bool(rag_result and rag_result.success)}"
         )
-        print("[Fusion Node] Model resolved: {selected_model_string}")
+        print(f"[Fusion Node] Model resolved: {selected_model_string}")
         print("[Fusion Node] Calling LLM...")
 
         max_tokens = 8192 if actual_mode in ("cross_source", "doc_only") else 4096
@@ -275,7 +275,7 @@ Answer the user's question using both sources above."""
 
         full_answer = "".join(full_answer_list).strip()
         print(
-            "[Fusion Node] LLM complete. Input tokens: {input_tokens}, Output tokens: {output_tokens}"
+            f"[Fusion Node] LLM complete. Input tokens: {input_tokens}, Output tokens: {output_tokens}"
         )
 
         # Resolve final active model details (for usage logging and citations)
@@ -396,7 +396,7 @@ Answer the user's question using both sources above."""
                 )
 
         print(
-            "[Fusion Node] Done. Answer length: {len(cleaned_answer)} chars, Citations: {len(citations)}"
+            f"[Fusion Node] Done. Answer length: {len(cleaned_answer)} chars, Citations: {len(citations)}"
         )
 
         return {

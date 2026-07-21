@@ -70,37 +70,6 @@ def route_after_rag_judge(state: AgentState) -> str:
         return "rag_retry"
 
 
-def route_to_fusion(state: AgentState) -> str:
-    """
-    After both agents complete (or whichever were invoked), check if we are
-    ready to proceed to fusion. Both invoked agents must be done before fusion runs.
-    SQL and RAG run in parallel - this node is reached by each independently.
-    LangGraph will call this after each parallel branch completes.
-    Only proceed to fusion when all required agents are done.
-    """
-    sql_done = (not state["invoke_sql"]) or (
-        state["sql_attempts"] > 0
-        and (
-            state["sql_sufficient"]
-            or state["sql_attempts"] >= state["sql_max_attempts"]
-        )
-    )
-    rag_done = (not state["invoke_rag"]) or (
-        state["rag_attempts"] > 0
-        and (
-            state["rag_sufficient"]
-            or state["rag_attempts"] >= state["rag_max_attempts"]
-        )
-    )
-
-    if sql_done and rag_done:
-        print("[Graph] All required agents complete. Routing to fusion.")
-        return "fusion_node"
-    else:
-        print("[Graph] Waiting for agents. sql_done={sql_done}, rag_done={rag_done}")
-        return END
-
-
 def build_graph() -> StateGraph:
     graph = StateGraph(AgentState)
 

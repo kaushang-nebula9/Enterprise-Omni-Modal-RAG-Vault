@@ -37,16 +37,16 @@ async def _call_reformulate_llm(
         )
 
         reformulate_prompt = f"""Original Query: {query}
-Previous Retrieval Query Used: {current_query}
-Retrieved Context (that was insufficient):
-{previous_context_block[:500] if previous_context_block else "None"}
-Judge Feedback: {previous_judgment.get("reasoning", "") if previous_judgment else ""}
-Instruction from Orchestrator: {instruction or "None"}
- 
-Reformulate the query to retrieve more relevant context."""
+        Previous Retrieval Query Used: {current_query}
+        Retrieved Context (that was insufficient):
+        {previous_context_block[:500] if previous_context_block else "None"}
+        Judge Feedback: {previous_judgment.get("reasoning", "") if previous_judgment else ""}
+        Instruction from Orchestrator: {instruction or "None"}
+        
+        Reformulate the query to retrieve more relevant context."""
 
         response = await client.messages.create(
-            model="claude-3-5-haiku-20241022",
+            model="claude-haiku-4-5-20251001",
             max_tokens=256,
             system=reformulate_system,
             messages=[{"role": "user", "content": reformulate_prompt}],
@@ -89,13 +89,13 @@ async def _call_rag_judge(
         )
 
         judge_prompt = f"""User Query: {query}
-Retrieved Context:
-{context_block[:1500]}
-Number of chunks retrieved: {len(qdrant_results)}
-Number of Excel results: {len(excel_results)}"""
+        Retrieved Context:
+        {context_block[:1500]}
+        Number of chunks retrieved: {len(qdrant_results)}
+        Number of Excel results: {len(excel_results)}"""
 
         response = await client.messages.create(
-            model="claude-3-5-haiku-20241022",
+            model="claude-haiku-4-5-20251001",
             max_tokens=256,
             system=judge_system,
             messages=[{"role": "user", "content": judge_prompt}],
@@ -121,6 +121,154 @@ Number of Excel results: {len(excel_results)}"""
             "reasoning": "Judge unavailable",
             "fix_instruction": "",
         }
+
+
+async def excel_agent(doc, query: str) -> Optional[dict]:
+    print(f"[Excel Agent] Attempt 1 for {doc.filename}")
+    result, error = await rag_service._run_excel_query(doc, query)
+    if result is not None:
+        return result
+
+    print(
+        f"[Excel Agent] Attempt 1 failed for {doc.filename}. Retrying with error feedback."
+    )
+
+    judgment = {"pandas_code": "", "reasoning": ""}
+    try:
+        client = rag_service._get_async_anthropic_client()
+        system_prompt = (
+            "You are a pandas code generation specialist. A previous attempt to generate pandas code to answer a user query against an Excel file failed during execution. \n"
+            "Your job is to generate corrected pandas code.\n"
+            "The dataframe is already loaded as the variable `df`.\n"
+            "Respond ONLY with a JSON object in this exact format with no other text:\n"
+            '{"pandas_code": "the corrected pandas code as a single string", "reasoning": "one sentence on what you changed"}'
+        )
+
+        user_prompt = f"""Excel File: {doc.filename}
+        Schema: {json.dumps(doc.excel_schema)}
+        User Query: {query}
+        Previous attempt failed during execution.
+        Execution Error: {error}
+        Generate corrected pandas code to answer the query.
+        The dataframe is loaded as `df`. Return only the final result as a variable named `result`."""
+
+        response = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=512,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+
+        text = response.content[0].text.strip()
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match:
+            text = match.group(0)
+        parsed = json.loads(text)
+        if "pandas_code" in parsed:
+            judgment = parsed
+    except Exception as exc:
+        logger.warning("Excel Agent LLM call failed or parsed incorrectly: %s", exc)
+        print(
+            f"[Excel Agent] Attempt 2 also failed for {doc.filename}. Returning None."
+        )
+        return None
+
+    code = judgment.get("pandas_code", "").strip()
+    if not code:
+        print(
+            f"[Excel Agent] Attempt 2 also failed for {doc.filename}. Returning None."
+        )
+        return None
+
+    # Strip markdown fences if present
+    if code.startswith("```"):
+        code = code.split("\n", 1)[-1]
+        if code.endswith("```"):
+            code = code[: -len("```")].strip()
+
+    if not code:
+        print(
+            f"[Excel Agent] Attempt 2 also failed for {doc.filename}. Returning None."
+        )
+        return None
+
+    # Replicate execution mechanism of execute_excel_query
+    try:
+        import pandas as pd
+        import threading
+        from RestrictedPython import compile_restricted, safe_globals
+        from RestrictedPython.Guards import guarded_iter_unpack_sequence
+        from RestrictedPython.Eval import (
+            default_guarded_getitem,
+            default_guarded_getiter,
+        )
+
+        # Load dataframe
+        abs_path = rag_service.get_absolute_path(doc.file_path)
+        df = rag_service.load_dataframe(abs_path, doc.file_type)
+
+        compiled = compile_restricted(code, filename="<excel_query>", mode="exec")
+
+        restricted_globals = dict(safe_globals)
+        restricted_globals["_getattr_"] = getattr
+        restricted_globals["_getitem_"] = default_guarded_getitem
+        restricted_globals["_getiter_"] = default_guarded_getiter
+        restricted_globals["_iter_unpack_sequence_"] = guarded_iter_unpack_sequence
+        restricted_globals["_write_"] = lambda x: x
+        restricted_globals["pd"] = pd
+
+        restricted_locals = {"df": df}
+
+        result_container = {"result": None, "error": None}
+
+        def _execute():
+            try:
+                exec(compiled, restricted_globals, restricted_locals)
+                result_container["result"] = restricted_locals.get("result")
+            except Exception as exc:
+                result_container["error"] = str(exc)
+
+        thread = threading.Thread(target=_execute, daemon=True)
+        thread.start()
+        thread.join(timeout=10)
+
+        if thread.is_alive():
+            logger.warning("Excel query execution timed out (10s) on attempt 2")
+            print(
+                f"[Excel Agent] Attempt 2 also failed for {doc.filename}. Returning None."
+            )
+            return None
+
+        if result_container["error"]:
+            logger.debug(
+                "Excel query execution error on attempt 2: %s",
+                result_container["error"],
+            )
+            print(
+                f"[Excel Agent] Attempt 2 also failed for {doc.filename}. Returning None."
+            )
+            return None
+
+        result = result_container["result"]
+        if result is None:
+            print(
+                f"[Excel Agent] Attempt 2 also failed for {doc.filename}. Returning None."
+            )
+            return None
+
+        print(f"[Excel Agent] Attempt 2 succeeded for {doc.filename}")
+        return {
+            "filename": doc.filename,
+            "document_id": str(doc.id),
+            "result": str(result),
+        }
+
+    except Exception as exc:
+        logger.error("excel_agent attempt 2 execution failed: %s", exc)
+        print(
+            f"[Excel Agent] Attempt 2 also failed for {doc.filename}. Returning None."
+        )
+        return None
 
 
 def get_db_session():
@@ -353,10 +501,7 @@ async def rag_node(state: AgentState) -> dict:
 
             async def run_excel():
                 sub_results = await asyncio.gather(
-                    *[
-                        rag_service._run_excel_query(doc, current_query)
-                        for doc in excel_docs_to_run
-                    ]
+                    *[excel_agent(doc, current_query) for doc in excel_docs_to_run]
                 )
                 return [r for r in sub_results if r is not None]
 
@@ -436,7 +581,7 @@ async def rag_judge_node(state: AgentState) -> dict:
         rag_result = RAGAgentResult(success=False)
 
     if (
-        rag_result.success.is_(False)
+        not rag_result.success
         or rag_result.context_block == "No relevant context found."
     ):
         judgment = {

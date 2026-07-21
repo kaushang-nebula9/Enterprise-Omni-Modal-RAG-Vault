@@ -197,23 +197,23 @@ def execute_excel_query(
         thread.start()
         thread.join(timeout=10)
         if thread.is_alive():
-            logger.warning("Excel query execution timed out (10s)")
-            return None
+            raise TimeoutError("Excel query execution timed out (10s)")
 
         if result_container["error"]:
-            logger.debug("Excel query execution error: %s", result_container["error"])
-            return None
+            raise RuntimeError(
+                f"Excel query execution error: {result_container['error']}"
+            )
 
         result = result_container["result"]
         print(f"Excel query execution result: {result}")
         if result is None:
-            return None
+            raise ValueError("No result was assigned to the 'result' variable.")
 
         return str(result)
 
     except Exception as exc:
         logger.error("execute_excel_query failed: %s", exc)
-        return None
+        raise exc
 
 
 # ---------------------------------------------------------------------------
@@ -298,10 +298,12 @@ def _format_chunk_context(filename: str, hit: dict) -> str:
     return f"Source: {filename}{location_str} | Chunk: {chunk_idx}\n{chunk_text}"
 
 
-async def _run_excel_query(doc: Document, query: str) -> Optional[dict]:
-    """Runs an Excel code-gen query for a single document. Returns None on failure or no schema."""
+async def _run_excel_query(
+    doc: Document, query: str
+) -> tuple[Optional[dict], Optional[str]]:
+    """Runs an Excel code-gen query for a single document. Returns (result_dict, None) on success, (None, error_str) on failure."""
     if not doc.excel_schema:
-        return None
+        return None, "Document has no excel schema defined."
     try:
         abs_path = get_absolute_path(doc.file_path)
         result = await asyncio.to_thread(
@@ -312,10 +314,11 @@ async def _run_excel_query(doc: Document, query: str) -> Optional[dict]:
                 "filename": doc.filename,
                 "document_id": str(doc.id),
                 "result": result,
-            }
+            }, None
     except Exception as exc:
         logger.warning("Excel query failed for %s: %s", doc.filename, exc)
-    return None
+        return None, str(exc)
+    return None, "Unknown execution failure."
 
 
 async def _run_qdrant_search(
@@ -386,7 +389,7 @@ async def _resolve_compare_document(
                 f"Source: {filename}\n[Note: This document has no defined schema.]",
                 [],
             )
-        result = await _run_excel_query(authorized_doc, query)
+        result, error = await _run_excel_query(authorized_doc, query)
         if result is not None:
             return f"Source: {filename}\nQuery: {query}\nResult: {result['result']}", []
         return (
@@ -420,6 +423,46 @@ async def _resolve_compare_document(
 
     lines = [_format_chunk_context(filename, hit) for hit in doc_results]
     return "\n---\n".join(lines), doc_results
+
+
+def get_recent_turns(db: Session, session_id: uuid.UUID, limit: int = 5) -> list[dict]:
+    from app.models.query_message import QueryMessage
+    from app.models.enums import MessageRole
+
+    messages = (
+        db.query(QueryMessage)
+        .filter(QueryMessage.session_id == session_id)
+        .order_by(QueryMessage.created_at.desc())
+        .limit(limit * 2)
+        .all()
+    )
+    messages = list(reversed(messages))
+
+    turns = []
+    i = 0
+    while i < len(messages):
+        msg = messages[i]
+        if msg.role == MessageRole.user:
+            if i + 1 < len(messages) and messages[i + 1].role == MessageRole.assistant:
+                turns.append(
+                    {
+                        "question": msg.content,
+                        "answer": messages[i + 1].content,
+                        "generated_sql": getattr(
+                            messages[i + 1], "generated_sql", None
+                        ),
+                        "query_results": getattr(
+                            messages[i + 1], "query_results", None
+                        ),
+                    }
+                )
+                i += 2
+            else:
+                i += 1
+        else:
+            i += 1
+
+    return turns[-limit:]
 
 
 async def _execute_llm_stream(cfg, sys_prompt, user_prompt, max_tokens=8192):
@@ -605,6 +648,8 @@ async def run_rag_pipeline(
         "fallback_model_name": None,
         "execution_time_ms": 0,
         "db_connection_id": None,
+        "answer_judge_feedback": None,
+        "answer_judge_attempts": 0,
     }
 
     # Thread config for LangGraph checkpointer

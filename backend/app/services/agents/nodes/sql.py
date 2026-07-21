@@ -35,12 +35,12 @@ async def _call_judge_llm(
         )
 
         judge_prompt = f"""User Query: {query}
-SQL Executed: {sql_query}
-Results (first 10 rows): {json.dumps(query_results[:10], default=str)}
-Row count: {len(query_results)}"""
+        SQL Executed: {sql_query}
+        Results (first 10 rows): {json.dumps(query_results[:10], default=str)}
+        Row count: {len(query_results)}"""
 
         response = await client.messages.create(
-            model="claude-3-5-haiku-20241022",
+            model="claude-haiku-4-5-20251001",
             max_tokens=256,
             system=judge_system,
             messages=[{"role": "user", "content": judge_prompt}],
@@ -326,7 +326,7 @@ async def sql_node(state: AgentState) -> dict:
 
 async def sql_judge_node(state: AgentState) -> dict:
     sql_result = state.get("sql_result")
-    if not sql_result or sql_result.success.is_(False):
+    if not sql_result or not sql_result.success:
         return {
             "sql_sufficient": False,
             "sql_judge_reasoning": sql_result.error

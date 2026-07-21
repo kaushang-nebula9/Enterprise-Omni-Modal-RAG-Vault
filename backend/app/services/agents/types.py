@@ -143,6 +143,8 @@ if __name__ == "__main__":
         fallback_model_name=None,
         execution_time_ms=0,
         db_connection_id=None,
+        answer_judge_feedback=None,
+        answer_judge_attempts=0,
     )
     print("AgentState OK")
     print("LangGraph import OK")
