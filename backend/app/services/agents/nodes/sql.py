@@ -340,7 +340,7 @@ def _parse_schema_selection_json(text: str) -> dict | None:
     return None
 
 
-async def schema_intelligence_node(state: AgentState) -> dict:
+async def schema_selection_node(state: AgentState) -> dict:
     """
     Schema Intelligence Agent following the ReAct pattern.
     Understands user intent and dynamically discovers database schema using tools

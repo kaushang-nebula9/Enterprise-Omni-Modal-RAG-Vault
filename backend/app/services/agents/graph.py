@@ -3,7 +3,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from app.services.agents.types import AgentState
 from app.services.agents.nodes.orchestrator import orchestrator_node
 from app.services.agents.nodes.sql import (
-    schema_intelligence_node,
+    schema_selection_node,
     sql_generation_node,
     sql_execution_node,
     sql_result_judge_node,
@@ -93,7 +93,7 @@ def build_graph() -> StateGraph:
 
     # Add all nodes
     graph.add_node("orchestrator_node", orchestrator_node)
-    graph.add_node("schema_intelligence_node", schema_intelligence_node)
+    graph.add_node("schema_selection_node", schema_selection_node)
     graph.add_node("sql_generation_node", sql_generation_node)
     graph.add_node("sql_execution_node", sql_execution_node)
     graph.add_node("sql_result_judge_node", sql_result_judge_node)
@@ -109,13 +109,13 @@ def build_graph() -> StateGraph:
         "orchestrator_node",
         route_after_orchestrator,
         {
-            "sql_node": "schema_intelligence_node",
+            "sql_node": "schema_selection_node",
             "rag_node": "rag_node",
             "fusion_node": "fusion_node",
         },
     )
 
-    graph.add_edge("schema_intelligence_node", "sql_generation_node")
+    graph.add_edge("schema_selection_node", "sql_generation_node")
 
     graph.add_conditional_edges(
         "sql_generation_node",
