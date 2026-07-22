@@ -595,19 +595,19 @@ SQL Query:"""
             )
 
             prompt = f"""Database Schema (Engine: {engine_type}):
-{schema_str}
-{history_str}
-User Question: {query}
+            {schema_str}
+            {history_str}
+            User Question: {query}
 
-Previously Generated SQL:
-{failed_sql}
+            Previously Generated SQL:
+            {failed_sql}
 
-Database Error Message:
-{error_message}
+            Database Error Message:
+            {error_message}
 
-Please correct the SQL query to fix the value/literal mismatch or enum issue reported in the error message. Ensure the SQL is completely valid and follows all rules.
+            Please correct the SQL query to fix the value/literal mismatch or enum issue reported in the error message. Ensure the SQL is completely valid and follows all rules.
 
-SQL Query:"""
+            SQL Query:"""
     else:
         system_prompt = (
             "You are an expert SQL translation assistant. Your task is to translate the user's natural language question "
@@ -624,11 +624,11 @@ SQL Query:"""
         )
 
         prompt = f"""Database Schema (Engine: {engine_type}):
-{schema_str}
-{history_str}
-User Question: {query}
+        {schema_str}
+        {history_str}
+        User Question: {query}
 
-SQL Query:"""
+        SQL Query:"""
 
     db_model = None
     if model_id and str(model_id) != "auto":

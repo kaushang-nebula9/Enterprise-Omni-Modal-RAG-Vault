@@ -625,13 +625,31 @@ async def run_rag_pipeline(
         "progress_tokens": [],
         "sql_result": None,
         "rag_result": None,
-        "sql_attempts": 0,
-        "sql_max_attempts": 3,
+        "db_user_id": None,
+        "db_connection_id": None,
+        "db_authorized_schema": None,
+        "db_session_turns": None,
+        "db_authorized_cols_by_table": None,
+        "db_all_physical_cols_by_table": None,
+        "db_valid_tables": None,
+        "db_connection_engine": None,
+        "db_connection_name": None,
+        "context_error": None,
+        "query_plan": None,
+        "db_filtered_schema": None,
+        "generated_sql": None,
+        "previous_sql": None,
+        "sql_generation_attempts": 0,
+        "sql_generation_error": None,
+        "sql_execution_result": None,
+        "sql_execution_error": None,
+        "sql_execution_attempts": 0,
+        "sql_sufficient": False,
+        "sql_judge_reasoning": None,
+        "sql_fix_instruction": None,
+        "sql_result_attempts": 0,
         "rag_attempts": 0,
         "rag_max_attempts": 3,
-        "sql_sufficient": False,
-        "sql_judge_reasoning": "",
-        "sql_fix_instruction": "",
         "rag_sufficient": False,
         "rag_judge_reasoning": "",
         "rag_fix_instruction": "",
@@ -639,7 +657,6 @@ async def run_rag_pipeline(
         "citations": [],
         "follow_up_questions": [],
         "chart_spec": None,
-        "generated_sql": None,
         "query_results": None,
         "model_string": None,
         "resolved_model": None,
@@ -647,10 +664,16 @@ async def run_rag_pipeline(
         "was_fallback": False,
         "fallback_model_name": None,
         "execution_time_ms": 0,
-        "db_connection_id": None,
         "answer_judge_feedback": None,
         "answer_judge_attempts": 0,
     }
+
+    # Call gather_sql_context upfront if database_id is present
+    if database_id:
+        from app.services.agents.nodes.sql import gather_sql_context
+
+        context_updates = await gather_sql_context(initial_state, db)
+        initial_state.update(context_updates)
 
     # Thread config for LangGraph checkpointer
     config = {
