@@ -456,6 +456,9 @@ def get_authorized_documents(
         )
     )
 
+    if not (current_user.role and current_user.role.is_admin):
+        query = query.filter(Document.is_archived.is_(False))
+
     if collection_id is not None:
         query = query.filter(Document.collection_id == collection_id)
     elif uncategorized:
@@ -840,4 +843,110 @@ def assign_department(
             )
 
     # Reload and return
+    return _load_document_with_policies(db, document_id, current_admin.tenant_id)
+
+
+@router.patch("/{document_id}/archive", response_model=DocumentWithAccessResponse)
+def archive_document(
+    document_id: uuid.UUID,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Archive a document and update its Qdrant payload."""
+    doc = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.tenant_id == current_admin.tenant_id,
+        )
+        .first()
+    )
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
+        )
+
+    doc.is_archived = True
+    db.commit()
+
+    # Update Qdrant payload if vectors exist
+    if doc.status == DocumentStatus.ready and doc.file_type not in TABULAR_FILE_TYPES:
+        try:
+            update_document_payload(
+                doc.qdrant_collection,
+                str(doc.id),
+                {"is_archived": True},
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to update Qdrant payload to archived=True for document %s: %s",
+                document_id,
+                exc,
+            )
+
+    log_audit_event(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        actor_user_id=current_admin.id,
+        action="document.archive",
+        description=f"Archived document '{doc.filename}'",
+        metadata={
+            "document_id": str(doc.id),
+            "filename": doc.filename,
+        },
+    )
+
+    return _load_document_with_policies(db, document_id, current_admin.tenant_id)
+
+
+@router.patch("/{document_id}/unarchive", response_model=DocumentWithAccessResponse)
+def unarchive_document(
+    document_id: uuid.UUID,
+    current_admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Unarchive a document and update its Qdrant payload."""
+    doc = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.tenant_id == current_admin.tenant_id,
+        )
+        .first()
+    )
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Document not found"
+        )
+
+    doc.is_archived = False
+    db.commit()
+
+    # Update Qdrant payload if vectors exist
+    if doc.status == DocumentStatus.ready and doc.file_type not in TABULAR_FILE_TYPES:
+        try:
+            update_document_payload(
+                doc.qdrant_collection,
+                str(doc.id),
+                {"is_archived": False},
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to update Qdrant payload to archived=False for document %s: %s",
+                document_id,
+                exc,
+            )
+
+    log_audit_event(
+        db=db,
+        tenant_id=current_admin.tenant_id,
+        actor_user_id=current_admin.id,
+        action="document.unarchive",
+        description=f"Unarchived document '{doc.filename}'",
+        metadata={
+            "document_id": str(doc.id),
+            "filename": doc.filename,
+        },
+    )
+
     return _load_document_with_policies(db, document_id, current_admin.tenant_id)

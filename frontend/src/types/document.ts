@@ -39,6 +39,7 @@ export interface DocumentResponse {
   department_name?: string | null;
   collection_id: string | null;
   collection_name: string | null;
+  is_archived: boolean;
 }
 
 export interface CollectionResponse {

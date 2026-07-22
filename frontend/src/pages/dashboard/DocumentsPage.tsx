@@ -21,6 +21,8 @@ import {
   Folder,
   ChevronLeft,
   ChevronRight,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react";
 import { documentService } from "../../services/documentService";
 import { roleService } from "../../services/roleService";
@@ -900,6 +902,75 @@ function DeleteModal({ document, onClose, onSuccess }: DeleteModalProps) {
   );
 }
 
+interface ArchiveModalProps {
+  document: DocumentResponse;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function ArchiveModal({ document, onClose, onSuccess }: ArchiveModalProps) {
+  const archiveMutation = useMutation({
+    mutationFn: () => documentService.archiveDocument(document.id),
+    onSuccess: () => onSuccess(),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-800">
+        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800">
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+            Archive Document
+          </h2>
+        </div>
+        <div className="px-6 py-5">
+          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            Archive this document? It will no longer be available for querying.
+          </p>
+        </div>
+        <div className="flex gap-3 px-6 pb-6">
+          <button
+            onClick={onClose}
+            disabled={archiveMutation.isPending}
+            className="flex-1 px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => archiveMutation.mutate()}
+            disabled={archiveMutation.isPending}
+            className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl px-4 py-2.5 transition-colors disabled:opacity-70"
+          >
+            {archiveMutation.isPending ? (
+              <svg
+                className="animate-spin w-4 h-4"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v8H4z"
+                />
+              </svg>
+            ) : (
+              <Archive className="w-4 h-4" />
+            )}
+            Archive
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Role Chips
 // ---------------------------------------------------------------------------
@@ -936,7 +1007,8 @@ type ModalState =
   | { type: "none" }
   | { type: "upload" }
   | { type: "edit"; document: DocumentResponse }
-  | { type: "delete"; document: DocumentResponse };
+  | { type: "delete"; document: DocumentResponse }
+  | { type: "archive"; document: DocumentResponse };
 
 export default function DocumentsPage() {
   const queryClient = useQueryClient();
@@ -985,6 +1057,18 @@ export default function DocumentsPage() {
 
   const { user } = useAuthStore();
   const isAdmin = user?.role?.is_admin ?? false;
+  const [isArchivedSectionExpanded, setIsArchivedSectionExpanded] =
+    useState(false);
+
+  const unarchiveMutation = useMutation({
+    mutationFn: (documentId: string) =>
+      documentService.unarchiveDocument(documentId),
+    onSuccess: () => handleSuccess("Document unarchived successfully"),
+  });
+
+  const handleUnarchive = (documentId: string) => {
+    unarchiveMutation.mutate(documentId);
+  };
 
   const {
     collections,
@@ -1045,8 +1129,16 @@ export default function DocumentsPage() {
     queryFn: departmentService.getDepartments,
   });
 
+  const activeDocuments = useMemo(() => {
+    return documents.filter((doc) => !doc.is_archived);
+  }, [documents]);
+
+  const archivedDocuments = useMemo(() => {
+    return documents.filter((doc) => doc.is_archived);
+  }, [documents]);
+
   const filteredDocuments = useMemo(() => {
-    return documents.filter((doc) => {
+    return activeDocuments.filter((doc) => {
       // 1. Search name
       if (search && !doc.filename.toLowerCase().includes(search.toLowerCase()))
         return false;
@@ -1077,7 +1169,41 @@ export default function DocumentsPage() {
 
       return true;
     });
-  }, [documents, search, filterType, filterStatus, startDate, endDate]);
+  }, [activeDocuments, search, filterType, filterStatus, startDate, endDate]);
+
+  const filteredArchivedDocuments = useMemo(() => {
+    return archivedDocuments.filter((doc) => {
+      // 1. Search name
+      if (search && !doc.filename.toLowerCase().includes(search.toLowerCase()))
+        return false;
+
+      // 2. Type filter
+      if (filterType !== "all" && doc.file_type !== filterType) return false;
+
+      // 3. Status filter
+      if (filterStatus !== "all" && doc.status !== filterStatus) return false;
+
+      // 4. Date filter
+      if (startDate || endDate) {
+        const uploadedDate = new Date(doc.uploaded_at);
+        uploadedDate.setHours(0, 0, 0, 0);
+
+        if (startDate) {
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          if (uploadedDate < start) return false;
+        }
+
+        if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          if (uploadedDate > end) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [archivedDocuments, search, filterType, filterStatus, startDate, endDate]);
 
   function handleSuccess(message: string) {
     setModal({ type: "none" });
@@ -1485,6 +1611,18 @@ export default function DocumentsPage() {
                               />
                             )}
 
+                            {isAdmin && (
+                              <button
+                                title="Archive"
+                                onClick={() =>
+                                  setModal({ type: "archive", document: doc })
+                                }
+                                className="p-2 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors"
+                              >
+                                <Archive className="w-4 h-4" />
+                              </button>
+                            )}
+
                             <button
                               title="Delete"
                               onClick={() =>
@@ -1508,13 +1646,168 @@ export default function DocumentsPage() {
           {!docsLoading && filteredDocuments.length > 0 && (
             <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950">
               <p className="text-xs text-slate-400 dark:text-slate-500">
-                Showing {filteredDocuments.length} of {documents.length}{" "}
+                Showing {filteredDocuments.length} of {activeDocuments.length}{" "}
                 document
-                {documents.length !== 1 ? "s" : ""}
+                {activeDocuments.length !== 1 ? "s" : ""}
               </p>
             </div>
           )}
         </div>
+
+        {/* Collapsible Archived Documents Section */}
+        {isAdmin && archivedDocuments.length > 0 && (
+          <div className="mt-8 border border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/30 dark:bg-slate-900/30 overflow-hidden shadow-sm">
+            <button
+              onClick={() =>
+                setIsArchivedSectionExpanded(!isArchivedSectionExpanded)
+              }
+              className="w-full flex items-center justify-between px-6 py-4 bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-900/60 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Archive className="w-5 h-5 text-slate-500 dark:text-slate-400" />
+                <span className="font-semibold text-slate-850 dark:text-slate-200">
+                  Archived Documents
+                </span>
+                <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-semibold bg-slate-200 dark:bg-slate-800 text-slate-650 dark:text-slate-400 rounded-full">
+                  {archivedDocuments.length}
+                </span>
+              </div>
+              <ChevronDown
+                className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${
+                  isArchivedSectionExpanded ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+
+            {isArchivedSectionExpanded && (
+              <div className="border-t border-slate-200 dark:border-slate-800 overflow-x-auto overflow-y-auto max-h-[400px]">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-50 dark:bg-slate-950 z-10">
+                    <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800">
+                      <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
+                        File Name
+                      </th>
+                      <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
+                        Type
+                      </th>
+                      <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
+                        Size
+                      </th>
+                      <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
+                        Upload Date
+                      </th>
+                      <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
+                        Status
+                      </th>
+                      <th className="px-4 py-3.5 text-left font-semibold text-slate-600 dark:text-slate-400">
+                        Roles
+                      </th>
+                      <th className="px-4 py-3.5 text-right font-semibold text-slate-600 dark:text-slate-400">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                    {filteredArchivedDocuments.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={7}
+                          className="px-4 py-12 text-center text-slate-400 dark:text-slate-500"
+                        >
+                          No archived documents match the current filters.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredArchivedDocuments.map((doc) => {
+                        const TypeIcon = FILE_TYPE_ICON[doc.file_type] ?? File;
+                        const badge = FILE_TYPE_BADGE[doc.file_type];
+                        const statusInfo = STATUS_BADGE[doc.status];
+
+                        return (
+                          <tr
+                            key={doc.id}
+                            className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors opacity-60 saturate-50 pointer-events-auto"
+                          >
+                            {/* File Name */}
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-start gap-2.5 min-w-0">
+                                <TypeIcon className="w-5 h-5 text-slate-400 dark:text-slate-500 shrink-0 mt-0.5" />
+                                <div className="flex flex-col min-w-0">
+                                  <span
+                                    className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[200px]"
+                                    title={doc.filename}
+                                  >
+                                    {doc.filename}
+                                  </span>
+                                  {doc.collection_name && (
+                                    <div className="flex items-center gap-1 text-[10px] font-medium text-slate-500 dark:text-slate-455 bg-slate-100/70 dark:bg-slate-800/80 px-2 py-0.5 rounded-full mt-1 w-max">
+                                      <Folder className="w-3 h-3 text-slate-400 dark:text-slate-500" />
+                                      <span className="truncate max-w-[120px]">
+                                        {doc.collection_name}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* File Type */}
+                            <td className="px-4 py-3.5">
+                              <span
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${badge && badge.className}`}
+                              >
+                                {badge && badge.label}
+                              </span>
+                            </td>
+
+                            {/* Size */}
+                            <td className="px-4 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                              {formatBytes(doc.file_size)}
+                            </td>
+
+                            {/* Date */}
+                            <td className="px-4 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                              {formatDate(doc.uploaded_at)}
+                            </td>
+
+                            {/* Status */}
+                            <td className="px-4 py-3.5">
+                              <span
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${statusInfo.className} ${
+                                  statusInfo.pulse ? "animate-pulse" : ""
+                                }`}
+                              >
+                                {statusInfo.label}
+                              </span>
+                            </td>
+
+                            {/* Roles */}
+                            <td className="px-4 py-3.5">
+                              <RoleChips roles={doc.access_policies} />
+                            </td>
+
+                            {/* Actions */}
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  title="Unarchive"
+                                  onClick={() => handleUnarchive(doc.id)}
+                                  className="p-2 text-slate-400 dark:text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 rounded-lg transition-colors"
+                                >
+                                  <ArchiveRestore className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Modals */}
         {modal.type === "upload" && (
@@ -1542,6 +1835,13 @@ export default function DocumentsPage() {
             document={modal.document}
             onClose={() => setModal({ type: "none" })}
             onSuccess={() => handleSuccess("Document deleted successfully")}
+          />
+        )}
+        {modal.type === "archive" && (
+          <ArchiveModal
+            document={modal.document}
+            onClose={() => setModal({ type: "none" })}
+            onSuccess={() => handleSuccess("Document archived successfully")}
           />
         )}
       </div>

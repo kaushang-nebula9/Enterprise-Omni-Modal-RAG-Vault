@@ -507,6 +507,7 @@ def build_vector_point(
         "file_type": file_type,
         "chunk_index": chunk_index,
         "chunk_text": chunk,
+        "is_archived": False,
     }
 
     if page_number is not None:
@@ -662,6 +663,7 @@ def process_document(document_id: str, db: Session) -> None:
                             "slide_number": slide["slide_number"],
                             "slide_title": slide["slide_title"],
                             "chunk_text": slide["text"],
+                            "is_archived": False,
                         },
                     }
                 )

@@ -1954,11 +1954,16 @@ const ChatPage: React.FC = () => {
                                   <FileText className="w-3.5 h-3.5 text-indigo-500" />
                                   {cite.filename}
                                 </p>
-                                <p className="leading-relaxed whitespace-pre-wrap text-slate-500 dark:text-slate-400">
-                                  {cite.chunk_text.length > 150
-                                    ? `${cite.chunk_text.slice(0, 150)}...`
-                                    : cite.chunk_text}
-                                </p>
+                                <div className="leading-relaxed text-slate-500 dark:text-slate-400">
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                    components={markdownComponents}
+                                  >
+                                    {cite.chunk_text.length > 150
+                                      ? `${cite.chunk_text.slice(0, 150)}...`
+                                      : cite.chunk_text}
+                                  </ReactMarkdown>
+                                </div>
                               </div>
                             ))}
                           </div>

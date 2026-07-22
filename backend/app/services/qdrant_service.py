@@ -60,6 +60,30 @@ def _get_client() -> QdrantClient:
     )
 
 
+def ensure_payload_indexes(collection_name: str) -> None:
+    """
+    Ensure all required payload indexes exist on the collection.
+    Creates indexes for role_ids (KEYWORD), document_id (KEYWORD), and is_archived (BOOL).
+    """
+    from qdrant_client.models import PayloadSchemaType
+
+    client = _get_client()
+    indexes = [
+        ("role_ids", PayloadSchemaType.KEYWORD),
+        ("document_id", PayloadSchemaType.KEYWORD),
+        ("is_archived", PayloadSchemaType.BOOL),
+    ]
+    for field_name, field_schema in indexes:
+        try:
+            client.create_payload_index(
+                collection_name=collection_name,
+                field_name=field_name,
+                field_schema=field_schema,
+            )
+        except Exception:
+            pass
+
+
 def get_or_create_tenant_collection(tenant_id: str) -> str:
     """
     Return the collection name for a tenant, creating it if it does not exist.
@@ -82,24 +106,11 @@ def get_or_create_tenant_collection(tenant_id: str) -> str:
             },
             sparse_vectors_config={"sparse": SparseVectorParams(modifier=Modifier.IDF)},
         )
-
-        # Create indexes for fields we use in Filters
-        from qdrant_client.models import PayloadSchemaType
-
-        client.create_payload_index(
-            collection_name=collection_name,
-            field_name="role_ids",
-            field_schema=PayloadSchemaType.KEYWORD,
-        )
-        client.create_payload_index(
-            collection_name=collection_name,
-            field_name="document_id",
-            field_schema=PayloadSchemaType.KEYWORD,
-        )
-        logger.info("Created Qdrant collection and indexes: %s", collection_name)
+        logger.info("Created Qdrant collection: %s", collection_name)
     else:
         logger.debug("Qdrant collection already exists: %s", collection_name)
 
+    ensure_payload_indexes(collection_name)
     return collection_name
 
 
@@ -159,15 +170,16 @@ def search_vectors(
     Perform a semantic search with a role-based access filter using Hybrid Search.
 
     Only returns results where the payload role_ids contains at least one
-    of the user's role_ids (MatchAny).
+    of the user's role_ids (MatchAny) and document is not archived.
     """
+    ensure_payload_indexes(collection_name)
     client = _get_client()
 
     must_conditions = [
         FieldCondition(
             key="role_ids",
             match=MatchAny(any=role_ids),
-        )
+        ),
     ]
     if document_id:
         must_conditions.append(
@@ -177,7 +189,14 @@ def search_vectors(
             )
         )
 
-    role_filter = Filter(must=must_conditions)
+    must_not_conditions = [
+        FieldCondition(
+            key="is_archived",
+            match=MatchValue(value=True),
+        )
+    ]
+
+    role_filter = Filter(must=must_conditions, must_not=must_not_conditions)
 
     if not settings.ENABLE_SPARSE_SEARCH:
         results = client.query_points(

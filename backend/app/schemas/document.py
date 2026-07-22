@@ -25,6 +25,7 @@ class DocumentResponse(BaseModel):
     department_name: Optional[str] = None
     collection_id: Optional[UUID] = None
     collection_name: Optional[str] = None
+    is_archived: bool
     uploaded_at: datetime
     updated_at: datetime
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 import uuid
 from typing import Optional, TYPE_CHECKING
-from sqlalchemy import String, DateTime, Uuid, ForeignKey, Integer, Text, func
+from sqlalchemy import String, DateTime, Uuid, ForeignKey, Integer, Text, func, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
@@ -54,6 +54,9 @@ class Document(Base):
         ForeignKey("collections.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
     )
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

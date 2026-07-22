@@ -32,12 +32,19 @@ def list_collections(
     """
     List all collections for the current tenant with their document counts.
     """
+    is_admin = current_user.role.is_admin if current_user.role else False
+
+    join_cond = (Document.collection_id == Collection.id) & (
+        Document.owner_type == OwnerType.organisation
+    )
+    if not is_admin:
+        join_cond = join_cond & (Document.is_archived.is_(False))
+
     collections_data = (
         db.query(Collection, func.count(Document.id).label("document_count"))
         .outerjoin(
             Document,
-            (Document.collection_id == Collection.id)
-            & (Document.owner_type == OwnerType.organisation),
+            join_cond,
         )
         .filter(Collection.tenant_id == current_user.tenant_id)
         .group_by(Collection.id)
@@ -57,14 +64,16 @@ def list_collections(
         )
         collections_list.append(resp)
 
+    uncategorized_filters = [
+        Document.tenant_id == current_user.tenant_id,
+        Document.owner_type == OwnerType.organisation,
+        Document.collection_id.is_(None),
+    ]
+    if not is_admin:
+        uncategorized_filters.append(Document.is_archived.is_(False))
+
     uncategorized_count = (
-        db.query(func.count(Document.id))
-        .filter(
-            Document.tenant_id == current_user.tenant_id,
-            Document.owner_type == OwnerType.organisation,
-            Document.collection_id.is_(None),
-        )
-        .scalar()
+        db.query(func.count(Document.id)).filter(*uncategorized_filters).scalar()
     ) or 0
 
     total_documents = (

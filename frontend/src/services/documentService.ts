@@ -1,5 +1,9 @@
 import api from "./api";
-import type { DocumentResponse, CollectionResponse, CollectionListResponse } from "../types/document";
+import type {
+  DocumentResponse,
+  CollectionResponse,
+  CollectionListResponse,
+} from "../types/document";
 import type { MessageResponse, RoleResponse } from "../types/auth";
 
 export const documentService = {
@@ -124,6 +128,18 @@ export const documentService = {
     return response.data;
   },
 
+  archiveDocument: async (documentId: string): Promise<DocumentResponse> => {
+    const response = await api.patch(`/api/v1/documents/${documentId}/archive`);
+    return response.data;
+  },
+
+  unarchiveDocument: async (documentId: string): Promise<DocumentResponse> => {
+    const response = await api.patch(
+      `/api/v1/documents/${documentId}/unarchive`,
+    );
+    return response.data;
+  },
+
   // Personal Documents Endpoints
   getPersonalDocuments: async (): Promise<DocumentResponse[]> => {
     const response = await api.get("/api/v1/personal-documents");
@@ -179,13 +195,21 @@ export const getCollections = async (): Promise<CollectionListResponse> => {
   return response.data;
 };
 
-export const createCollection = async (data: { name: string; description?: string }): Promise<CollectionResponse> => {
+export const createCollection = async (data: {
+  name: string;
+  description?: string;
+}): Promise<CollectionResponse> => {
   const response = await api.post("/api/collections", data);
   return response.data;
 };
 
-export const renameCollection = async (collectionId: string, name: string): Promise<CollectionResponse> => {
-  const response = await api.patch(`/api/collections/${collectionId}`, { name });
+export const renameCollection = async (
+  collectionId: string,
+  name: string,
+): Promise<CollectionResponse> => {
+  const response = await api.patch(`/api/collections/${collectionId}`, {
+    name,
+  });
   return response.data;
 };
 
@@ -195,7 +219,9 @@ export const deleteCollection = async (collectionId: string): Promise<void> => {
 
 export const moveDocumentToCollection = async (
   documentId: string,
-  collectionId: string | null
+  collectionId: string | null,
 ): Promise<void> => {
-  await api.patch(`/api/documents/${documentId}/collection`, { collection_id: collectionId });
+  await api.patch(`/api/documents/${documentId}/collection`, {
+    collection_id: collectionId,
+  });
 };

@@ -351,6 +351,7 @@ async def rag_node(state: AgentState) -> dict:
             .filter(
                 Document.tenant_id == user.tenant_id,
                 Document.status == DocumentStatus.ready,
+                Document.is_archived.is_(False),
                 or_(
                     DocumentAccessPolicy.role_id == user.role_id,
                     Document.uploaded_by == user.id,
