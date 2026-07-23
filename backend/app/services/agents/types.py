@@ -61,17 +61,6 @@ class AgentState(TypedDict):
     sql_generation_attempts: int
     sql_generation_error: Optional[str]
 
-    # --- Execution ---
-    sql_execution_result: Optional[list]
-    sql_execution_error: Optional[str]
-    sql_execution_attempts: int
-
-    # --- Result judge ---
-    sql_sufficient: bool
-    sql_judge_reasoning: Optional[str]
-    sql_fix_instruction: Optional[str]
-    sql_result_attempts: int
-
     # --- Retry tracking ---
     rag_attempts: int
     rag_max_attempts: int
@@ -166,13 +155,6 @@ if __name__ == "__main__":
         previous_sql=None,
         sql_generation_attempts=0,
         sql_generation_error=None,
-        sql_execution_result=None,
-        sql_execution_error=None,
-        sql_execution_attempts=0,
-        sql_sufficient=False,
-        sql_judge_reasoning=None,
-        sql_fix_instruction=None,
-        sql_result_attempts=0,
         rag_attempts=0,
         rag_max_attempts=3,
         rag_sufficient=False,

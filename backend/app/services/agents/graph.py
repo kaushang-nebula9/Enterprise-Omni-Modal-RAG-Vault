@@ -5,8 +5,6 @@ from app.services.agents.nodes.orchestrator import orchestrator_node
 from app.services.agents.nodes.sql import (
     schema_selection_node,
     sql_generation_node,
-    sql_execution_node,
-    sql_result_judge_node,
 )
 from app.services.agents.nodes.rag import rag_node, rag_judge_node
 from app.services.agents.nodes.fusion import fusion_node
@@ -30,39 +28,11 @@ def route_after_orchestrator(state: AgentState) -> list[str]:
 
 
 def route_after_sql_generation(state: AgentState) -> str:
-    if state.get("sql_generation_error"):
-        attempts = state["sql_generation_attempts"]
-        if attempts >= 2:
-            print("[Graph] SQL generation: max attempts reached. Routing to END.")
-            return "sql_failed"
-        print("[Graph] SQL generation: validation error. Retrying.")
-        return "sql_retry"
-    return "sql_execute"
-
-
-def route_after_sql_execution(state: AgentState) -> str:
-    if state.get("sql_execution_error"):
-        attempts = state["sql_generation_attempts"]
-        if attempts >= 2:
-            print("[Graph] SQL execution: max attempts reached.")
-            return "sql_failed"
-        print("[Graph] SQL execution: error. Retrying generation.")
-        return "sql_retry"
-    return "sql_judge"
-
-
-def route_after_sql_result_judge(state: AgentState) -> str:
-    sufficient = state["sql_sufficient"]
-    attempts = state["sql_result_attempts"]
-    if sufficient:
-        print("[Graph] SQL result judge: sufficient. Proceeding to fusion.")
+    if state.get("sql_result") and state["sql_result"].success:
+        print("[Graph] SQL Agent: success. Routing to fusion.")
         return "sql_done"
-    elif attempts >= 1:
-        print("[Graph] SQL result judge: max attempts reached. Proceeding anyway.")
-        return "sql_done"
-    else:
-        print("[Graph] SQL result judge: insufficient. Retrying generation.")
-        return "sql_retry"
+    print("[Graph] SQL Agent: failed. Routing to fusion with error.")
+    return "sql_failed"
 
 
 def route_after_rag_judge(state: AgentState) -> str:
@@ -95,8 +65,6 @@ def build_graph() -> StateGraph:
     graph.add_node("orchestrator_node", orchestrator_node)
     graph.add_node("schema_selection_node", schema_selection_node)
     graph.add_node("sql_generation_node", sql_generation_node)
-    graph.add_node("sql_execution_node", sql_execution_node)
-    graph.add_node("sql_result_judge_node", sql_result_judge_node)
     graph.add_node("rag_node", rag_node)
     graph.add_node("rag_judge_node", rag_judge_node)
     graph.add_node("fusion_node", fusion_node)
@@ -121,28 +89,8 @@ def build_graph() -> StateGraph:
         "sql_generation_node",
         route_after_sql_generation,
         {
-            "sql_retry": "sql_generation_node",
-            "sql_execute": "sql_execution_node",
-            "sql_failed": "fusion_node",
-        },
-    )
-
-    graph.add_conditional_edges(
-        "sql_execution_node",
-        route_after_sql_execution,
-        {
-            "sql_retry": "sql_generation_node",
-            "sql_judge": "sql_result_judge_node",
-            "sql_failed": "fusion_node",
-        },
-    )
-
-    graph.add_conditional_edges(
-        "sql_result_judge_node",
-        route_after_sql_result_judge,
-        {
             "sql_done": "fusion_node",
-            "sql_retry": "sql_generation_node",
+            "sql_failed": "fusion_node",
         },
     )
 

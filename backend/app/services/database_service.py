@@ -849,173 +849,11 @@ SQL Query:"""
     return cleaned_sql
 
 
-def resolve_categorical_literals(
-    sql_query: str, schema_tables: List[Dict[str, Any]]
-) -> str:
-    """
-    Case-insensitively resolves single-quoted literal values in the SQL query against
-    allowed_values cached in the schema tables.
-    If the column is an enum:
-        - If matched, rewrites the filter to: col = 'CanonicalValue'
-        - If fallback, rewrites the filter to: col::text ILIKE '%value%'
-    If the column is a non-enum TEXT/VARCHAR:
-        - Leaves the case-insensitive ILIKE/LOWER operator intact.
-    """
-    import re
-
-    # 1. Build a map of column names and their allowed values
-    # To be precise, identify which tables are mentioned in the query
-    mentioned_tables = []
-    sql_lower = sql_query.lower()
-    for tbl in schema_tables:
-        tname = tbl.get("name", "").lower()
-        if tname and tname in re.split(r"\b", sql_lower):
-            mentioned_tables.append(tbl)
-
-    if not mentioned_tables:
-        mentioned_tables = schema_tables
-
-    column_allowed_vals = {}
-    for tbl in mentioned_tables:
-        tname = tbl.get("name", "").lower()
-        for col in tbl.get("columns", []):
-            cname = col.get("name", "").lower()
-            if "allowed_values" in col and col["allowed_values"]:
-                # Map both direct column name and fully-qualified column name
-                column_allowed_vals[cname] = (col["allowed_values"], col.get("name"))
-                if tname:
-                    column_allowed_vals[f"{tname}.{cname}"] = (
-                        col["allowed_values"],
-                        col.get("name"),
-                    )
-
-    if not column_allowed_vals:
-        return sql_query
-
-    # Regexes to detect operators immediately preceding the literal
-    op_regex = re.compile(r"\b([a-zA-Z0-9_\.]+)\s+(ILIKE|LIKE|=)\s*$", re.IGNORECASE)
-    lower_op_regex = re.compile(
-        r"\bLOWER\s*\(\s*([a-zA-Z0-9_\.]+)\s*\)\s*=\s*LOWER\s*\(\s*$", re.IGNORECASE
-    )
-
-    # 2. Find all string literals in the query
-    literal_regex = re.compile(r"'((?:''|[^'])*)'")
-
-    matches = list(literal_regex.finditer(sql_query))
-    if not matches:
-        return sql_query
-
-    replacements = []
-    for match in matches:
-        start_idx, end_idx = match.span()
-        literal_val = match.group(1)
-        unescaped_val = literal_val.replace("''", "'")
-
-        before_text = sql_query[:start_idx]
-
-        # Try to match preceding operator patterns
-        op_match = op_regex.search(before_text)
-        lower_match = lower_op_regex.search(before_text)
-
-        target_col_token = None
-        target_allowed_vals = None
-        target_col_display_name = None
-        filter_start_idx = None
-
-        if op_match:
-            target_col_token = op_match.group(1)
-            filter_start_idx = op_match.start(1)
-        elif lower_match:
-            target_col_token = lower_match.group(1)
-            filter_start_idx = lower_match.start()  # Start of LOWER(col)
-
-        if target_col_token:
-            lookup_key = target_col_token.lower()
-            if "." in lookup_key:
-                lookup_key = lookup_key.split(".")[-1]
-
-            if lookup_key in column_allowed_vals:
-                target_allowed_vals, target_col_display_name = column_allowed_vals[
-                    lookup_key
-                ]
-
-        # Safety fallback scanning if regex didn't find the column operator
-        if not target_allowed_vals:
-            before_text_lower = before_text.lower()
-            tokens = re.split(r"[^a-zA-Z0-9_\.]+", before_text_lower)
-            tokens = [t for t in tokens if t]
-            for t in reversed(tokens):
-                lookup_key = t
-                if "." in t:
-                    lookup_key = t.split(".")[-1]
-                if lookup_key in column_allowed_vals:
-                    target_allowed_vals, target_col_display_name = column_allowed_vals[
-                        lookup_key
-                    ]
-                    target_col_token = t
-                    filter_start_idx = before_text_lower.rfind(t)
-                    break
-
-        if target_allowed_vals:
-            matched_canonical = None
-            for val in target_allowed_vals:
-                if isinstance(val, str) and val.lower() == unescaped_val.lower():
-                    matched_canonical = val
-                    break
-
-            if matched_canonical is not None:
-                # Canonical rewrite: use plain =
-                escaped_canonical = matched_canonical.replace("'", "''")
-                replacement_text = f"{target_col_token} = '{escaped_canonical}'"
-
-                # If we have filter_start_idx, replace from operator start to literal end
-                if filter_start_idx is not None and filter_start_idx >= 0:
-                    replacements.append((filter_start_idx, end_idx, replacement_text))
-                else:
-                    replacements.append((start_idx, end_idx, f"'{escaped_canonical}'"))
-
-                logger.info(
-                    f"SQL Casing Rewrite (Enum Match): column '{target_col_display_name}', "
-                    f"original literal '{literal_val}', resolved literal '{escaped_canonical}'"
-                )
-            else:
-                # Fallback rewrite: cast to text and use ILIKE
-                escaped_literal = unescaped_val.replace("'", "''")
-                replacement_text = (
-                    f"{target_col_token}::text ILIKE '%{escaped_literal}%'"
-                )
-
-                if filter_start_idx is not None and filter_start_idx >= 0:
-                    replacements.append((filter_start_idx, end_idx, replacement_text))
-
-                logger.info(
-                    f"SQL Casing Rewrite (Enum Fallback): column '{target_col_display_name}', "
-                    f"original literal '{literal_val}', casting enum to text ILIKE"
-                )
-
-    if replacements:
-        replacements.sort(key=lambda x: x[0], reverse=True)
-        sql_list = list(sql_query)
-        for start, end, rep_str in replacements:
-            sql_list[start:end] = list(rep_str)
-        return "".join(sql_list)
-
-    return sql_query
-
-
 def run_query_on_connection(
     connection: ExternalDatabaseConnection,
     sql_query: str,
-    schema_cache_tables: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """
-    Executes the query on the database. Checks for schema drift and enforces bounds.
-    """
-    try:
-        sql_query = resolve_categorical_literals(sql_query, schema_cache_tables)
-    except Exception as exc:
-        logger.error(f"Error during categorical literal resolution: {exc}")
-
+    # Decrypt password and build connection URL
     password_decrypted = decrypt_password(connection.password)
     url = get_connection_url(
         engine_type=connection.engine,
@@ -1027,23 +865,14 @@ def run_query_on_connection(
         ssl_mode=connection.ssl_mode,
     )
 
-    # Compile the cache of valid schema objects for drift checking
-    # valid_tables = {tbl["name"].lower() for tbl in schema_cache_tables}
-    valid_columns = {}
-    for tbl in schema_cache_tables:
-        valid_columns[tbl["name"].lower()] = {
-            col["name"].lower() for col in tbl["columns"]
-        }
-
-    # Read-only configuration & execution bounds
     engine = create_engine(url)
     try:
         with engine.connect() as conn:
-            # Enforce read-only transaction if supported
+            # Enforce read-only transaction for PostgreSQL
             if connection.engine == DatabaseEngine.postgresql:
                 conn.execute(text("SET TRANSACTION READ ONLY"))
 
-            # SQL sanity validation: prevent modification queries
+            # Prevent modification queries
             sql_upper = sql_query.upper().strip()
             if not sql_upper.startswith("SELECT") and not sql_upper.startswith("WITH"):
                 raise ValueError("Only read-only SELECT queries are allowed.")
@@ -1054,8 +883,8 @@ def run_query_on_connection(
                 # Fetch maximum of 100 rows to enforce safety bounds
                 rows = result.fetchmany(100)
 
+                # Build output as list of dicts
                 output = []
-                # Handle empty/non-result-returning queries safely
                 if result.returns_rows:
                     keys = list(result.keys())
                     for row in rows:
@@ -1063,22 +892,15 @@ def run_query_on_connection(
                 return output
 
             except Exception as e:
+                # Detect schema drift and return actionable error
                 err_str = str(e).lower()
-                # Check for table or column missing/undefined (schema drift indicator)
-                # PostgreSQL errors: 'relation "..." does not exist' or 'column "..." does not exist'
-                # MySQL errors: "table '...' doesn't exist" or "unknown column '...' in 'field list'"
-                is_drift = False
-                if "relation" in err_str and "does not exist" in err_str:
-                    is_drift = True
-                elif "column" in err_str and "does not exist" in err_str:
-                    is_drift = True
-                elif "table" in err_str and "exist" in err_str:
-                    is_drift = True
-                elif "column" in err_str and "field list" in err_str:
-                    is_drift = True
-                elif "unknown column" in err_str:
-                    is_drift = True
-
+                is_drift = (
+                    ("relation" in err_str and "does not exist" in err_str)
+                    or ("column" in err_str and "does not exist" in err_str)
+                    or ("table" in err_str and "exist" in err_str)
+                    or ("column" in err_str and "field list" in err_str)
+                    or ("unknown column" in err_str)
+                )
                 if is_drift:
                     raise ValueError(
                         f"Database execution failed due to a detected schema mismatch (drift): {str(e)}. "
