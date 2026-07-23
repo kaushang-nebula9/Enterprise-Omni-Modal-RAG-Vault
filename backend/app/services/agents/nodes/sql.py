@@ -1,5 +1,6 @@
 # SQL agent node and SQL judge node
 
+from typing import Optional
 import uuid
 import time
 import json
@@ -17,6 +18,161 @@ from app.core.config import settings
 import app.services.rag_service as rag_service
 
 logger = rag_service.logger
+
+
+async def generate_sql(
+    query: str,
+    schema: dict,
+    engine_type: str,
+    conversation_history: Optional[list],
+    failed_sql: Optional[str] = None,
+    error_message: Optional[str] = None,
+) -> str:
+    # Conditional rule for case-insensitive comparison based on the database engine type
+    rule_case = (
+        "9. For equality filters against TEXT/VARCHAR columns, ALWAYS use ILIKE instead of = (e.g. col ILIKE 'value'). Do not apply to non-text columns."
+        if engine_type == "postgresql"
+        else "9. For equality filters against TEXT/VARCHAR columns, use case-insensitive comparison via LIKE or LOWER(). Do not apply to non-text columns."
+    )
+
+    schema_str = json.dumps(schema)
+    history_str = (
+        f"\nPrior Conversation Context:\n{json.dumps(conversation_history)}\n"
+        if conversation_history
+        else ""
+    )
+
+    # If access is denied, instruct the model to find an alternative query using only authorized tables/columns.
+    if failed_sql and error_message and "access denied" in error_message.lower():
+        system_prompt = (
+            "You are an expert SQL translation assistant. You previously generated a SQL query that accessed an unauthorized table or column (Access Denied).\n"
+            "Your task is to correct the SQL query by looking for an alternative path or query structure using other tables or columns in the schema that are authorized to answer the question.\n"
+            "Follow these strict rules:\n"
+            "1. Output ONLY the raw SQL query. Do not wrap it in markdown code blocks, do not add comments, and do not write any introductory or explanatory text.\n"
+            f"2. Use {engine_type} SQL syntax.\n"
+            "3. Pay attention to case-sensitivity and quote identifiers correctly if needed (e.g. backticks for MySQL, double quotes for PostgreSQL).\n"
+            "4. Only query the tables and columns listed in the schema. Do not invent columns.\n"
+            "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
+            "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT).\n"
+            "7. Use the 'Prior Conversation Context' to resolve references to concrete values or conditions in the SQL query. If no context exists, treat the question as standalone and generate the best possible query from the schema alone.\n"
+            "8. You MUST NOT return any workaround (such as returning dummy/constant values, placeholder fields, or inventing columns not present in the schema). You must strictly return what's being asked. If there is no alternative way to answer the question using only the allowed tables and columns, you must output 'I cannot generate a SQL query, this is ambiguous'.\n"
+            f"{rule_case}"
+        )
+
+        prompt = f"""Database Schema (Engine: {engine_type}):
+        {schema_str}
+        {history_str}
+        User Question: {query}
+
+        Previously Generated SQL:
+        {failed_sql}
+
+        Database Error Message:
+        {error_message}
+
+        The previously generated query failed because it accessed an unauthorized table or column. Please find another way to query the database using other authorized tables or columns to answer the question. Do NOT use any unauthorized columns or tables mentioned in the error message. Do NOT return any workarounds (e.g. using dummy/constant values, placeholder fields, or inventing columns). You must strictly return what is asked. If there is no other way to answer the question, output "I cannot generate a SQL query, this is ambiguous".
+
+        SQL Query:"""
+
+        # Instruct the model to correct the SQL query based on the error message and user's original question.
+    elif failed_sql:
+        system_prompt = (
+            "You are an expert SQL translation assistant. You previously generated a SQL query that failed with a database error.\n"
+            "Your task is to correct the SQL query based on the database error message and user's original question. Follow these strict rules:\n"
+            "1. Output ONLY the raw SQL query. Do not wrap it in markdown code blocks, do not add comments, and do not write any introductory or explanatory text.\n"
+            f"2. Use {engine_type} SQL syntax.\n"
+            "3. Pay attention to case-sensitivity and quote identifiers correctly if needed (e.g. backticks for MySQL, double quotes for PostgreSQL).\n"
+            "4. Only query the tables and columns listed in the schema. Do not invent columns.\n"
+            "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
+            "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT).\n"
+            "7. Use the 'Prior Conversation Context' to resolve references (pronouns like 'he', 'she', 'it', or phrases like 'that document', 'the same region', 'last quarter') to concrete values or conditions in the SQL query. If no context exists, treat the question as standalone and generate the best possible query from the schema alone.\n"
+            "8. Only return 'I cannot generate a SQL query, this is ambiguous' as an absolute last resort - specifically when the question refers to something that has multiple equally valid interpretations AND the schema provides no way to distinguish between them, AND there is no conversation context to resolve it. A question that is broad or open-ended (e.g. 'show me costs', 'which is the worst performing') is NOT ambiguous - map it to the most natural columns in the schema and generate a query. When in doubt, generate a query.\n"
+            f"{rule_case}"
+        )
+
+        prompt = f"""Database Schema (Engine: {engine_type}):
+        {schema_str}
+        {history_str}
+        User Question: {query}
+
+        Previously Generated SQL:
+        {failed_sql}
+
+        Database Error Message:
+        {error_message}
+
+        Please correct the SQL query to fix the value/literal mismatch or enum issue reported in the error message. Ensure the SQL is completely valid and follows all rules.
+
+        SQL Query:"""
+        # General system prompt
+    else:
+        system_prompt = (
+            "You are an expert SQL translation assistant. Your task is to translate the user's natural language question "
+            "into a valid, executable SQL query for the given database schema. Follow these strict rules:\n"
+            "1. Output ONLY the raw SQL query. Do not wrap it in markdown code blocks, do not add comments, and do not write any introductory or explanatory text.\n"
+            f"2. Use {engine_type} SQL syntax.\n"
+            "3. Pay attention to case-sensitivity and quote identifiers correctly if needed (e.g. backticks for MySQL, double quotes for PostgreSQL).\n"
+            "4. Only query the tables and columns listed in the schema. Do not invent columns.\n"
+            "5. ALWAYS add a LIMIT or TOP clause of 100 to prevent returning too many rows, unless the query is an aggregation (COUNT, SUM, AVG).\n"
+            "6. Do NOT output any write queries (INSERT, UPDATE, DELETE, DROP, ALTER). The query must be purely read-only (SELECT).\n"
+            "7. Use the 'Prior Conversation Context' to resolve references (pronouns like 'he', 'she', 'it', or phrases like 'that document', 'the same region', 'last quarter') to concrete values or conditions in the SQL query. If no context exists, treat the question as standalone and generate the best possible query from the schema alone.\n"
+            "8. Only return 'I cannot generate a SQL query, this is ambiguous' as an absolute last resort - specifically when the question refers to something that has multiple equally valid interpretations AND the schema provides no way to distinguish between them, AND there is no conversation context to resolve it. A question that is broad or open-ended (e.g. 'show me costs', 'which is the worst performing') is NOT ambiguous - map it to the most natural columns in the schema and generate a query. When in doubt, generate a query.\n"
+            f"{rule_case}"
+        )
+
+        prompt = f"""Database Schema (Engine: {engine_type}):
+        {schema_str}
+        {history_str}
+        User Question: {query}
+
+        SQL Query:"""
+
+    # Call the LLM to generate SQL
+    print(f"[SQL Generation] Prompting LLM with query: {query}")
+    client = rag_service._get_async_anthropic_client()
+    response = await client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=2048,
+        temperature=0,
+        system=system_prompt,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    sql = response.content[0].text.strip()
+
+    print(f"[SQL Generation] LLM Response: {sql}")
+
+    # SQL clearing: remove code block markers, comments, and ensure it starts with SELECT or WITH
+    cleaned_sql = sql.strip()
+    if cleaned_sql.lower().startswith("```sql"):
+        cleaned_sql = cleaned_sql[6:]
+    elif cleaned_sql.lower().startswith("```"):
+        cleaned_sql = cleaned_sql[3:]
+    if cleaned_sql.endswith("```"):
+        cleaned_sql = cleaned_sql[:-3]
+    cleaned_sql = cleaned_sql.strip()
+
+    lines = cleaned_sql.split("\n")
+    cleaned_lines = []
+    for line in lines:
+        stripped_line = line.strip()
+        if (
+            stripped_line
+            and not stripped_line.startswith("--")
+            and not stripped_line.startswith("/*")
+            and not stripped_line.startswith("#")
+        ):
+            cleaned_lines.append(stripped_line)
+
+    first_non_comment_line = cleaned_lines[0].lower() if cleaned_lines else ""
+    if not (
+        first_non_comment_line.startswith("select")
+        or first_non_comment_line.startswith("with")
+    ):
+        print(f"[SQL Generation] Invalid SQL generated: {sql}")
+        raise ValueError(sql)
+
+    print(f"[SQL Generation] Cleaned SQL: {cleaned_sql}")
+    return cleaned_sql
 
 
 async def _call_judge_llm(
@@ -228,6 +384,7 @@ async def gather_sql_context(state: AgentState, db) -> dict:
             "db_connection_name": connection.name,
             "db_connection_id": str(connection.id),
             "db_session_turns": turns,
+            "db_is_admin": user.role.is_admin if user.role else False,
             "context_error": None,
         }
     except Exception as exc:
@@ -269,6 +426,48 @@ SCHEMA_INTELLIGENCE_TOOLS = [
             "type": "object",
             "properties": {},
             "required": [],
+        },
+    },
+]
+
+
+SQL_GENERATION_TOOLS = [
+    {
+        "name": "generate_sql",
+        "description": (
+            "Generates a SQL query from the user's natural language question using the provided schema. "
+            "Pass failed_sql and error_message if a previous attempt failed, so the model can correct it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "failed_sql": {
+                    "type": "string",
+                    "description": "The previously generated SQL that failed. Omit on first attempt.",
+                },
+                "error_message": {
+                    "type": "string",
+                    "description": "The error from the previous attempt. Omit on first attempt.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "validate_sql",
+        "description": (
+            "Validates whether the generated SQL only accesses tables and columns the user is authorized to query. "
+            "Always call this after generate_sql before proceeding."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sql": {
+                    "type": "string",
+                    "description": "The SQL query to validate.",
+                }
+            },
+            "required": ["sql"],
         },
     },
 ]
@@ -528,6 +727,26 @@ async def schema_selection_node(state: AgentState) -> dict:
     }
 
 
+def _execute_validate_sql(
+    sql: str,
+    engine_type: str,
+    authorized_cols_by_table: dict,
+    valid_tables: set,
+    all_physical_cols_by_table: dict,
+) -> str:
+    try:
+        database_service.check_sql_authorized_columns(
+            sql_query=sql,
+            engine_type=engine_type,
+            authorized_cols_by_table=authorized_cols_by_table,
+            valid_tables=valid_tables,
+            all_physical_cols_by_table=all_physical_cols_by_table,
+        )
+        return json.dumps({"valid": True, "reason": ""})
+    except Exception as exc:
+        return json.dumps({"valid": False, "reason": str(exc)})
+
+
 async def sql_generation_node(state: AgentState) -> dict:
     if state.get("context_error"):
         return {
@@ -539,78 +758,158 @@ async def sql_generation_node(state: AgentState) -> dict:
     filtered_schema = (
         state.get("db_filtered_schema") or state.get("db_authorized_schema") or {}
     )
-    generation_attempts = state["sql_generation_attempts"]
-    previous_sql = state.get("generated_sql")
-    sql_generation_error = state.get("sql_generation_error")
+    engine_type = state["db_connection_engine"]
+    conversation_history = state.get("db_session_turns")
+    is_admin = state.get("db_is_admin", False)
 
-    model_id = state.get("model_id")
-    model_id_uuid = (
-        uuid.UUID(model_id) if isinstance(model_id, str) and model_id else model_id
+    authorized_cols_by_table = state.get("db_authorized_cols_by_table", {})
+    valid_tables = state.get("db_valid_tables", set())
+    all_physical_cols_by_table = state.get("db_all_physical_cols_by_table", {})
+
+    system_prompt = (
+        "You are a SQL Generation Agent operating in a ReAct (Reasoning + Acting) loop.\n"
+        "Your goal is to generate a valid, authorized SQL query that answers the user's question.\n\n"
+        "You have two tools:\n"
+        "1. generate_sql - generates SQL from the user query and schema. Pass failed_sql and error_message if correcting a previous attempt.\n"
+        "2. validate_sql - checks whether the SQL accesses only authorized tables and columns.\n\n"
+        "Rules:\n"
+        "- Generate SQL first then validate the generated SQL.\n"
+        "- If validation fails, call generate_sql again with the failed SQL and error message.\n"
+        "- When SQL passes validation, stop and return ONLY this JSON with no extra text:\n"
+        '{"final_sql": "the validated SQL query"}\n'
+        "- Maximum 3 generation attempts. If all fail, return:\n"
+        '{"final_sql": null, "error": "reason why SQL could not be generated"}'
     )
 
-    user_id = state.get("user_id")
-    user_id_uuid = (
-        uuid.UUID(user_id) if isinstance(user_id, str) and user_id else user_id
+    user_prompt = (
+        f"User Query: {query}\n"
+        f"Schema: {json.dumps(filtered_schema)}\n"
+        f"Engine: {engine_type}"
     )
 
-    tenant_id = state.get("tenant_id")
-    tenant_id_uuid = (
-        uuid.UUID(tenant_id) if isinstance(tenant_id, str) and tenant_id else tenant_id
-    )
+    messages = [{"role": "user", "content": user_prompt}]
+    final_sql = None
+    agent_error = None
+    max_turns = 8
 
-    db = get_db_session()
     try:
-        sql_query = await database_service.translate_nl_to_sql(
-            query=query,
-            schema_data_filtered=filtered_schema,
-            engine_type=state["db_connection_engine"],
-            db=db,
-            model_id=model_id_uuid,
-            failed_sql=previous_sql if generation_attempts > 0 else None,
-            error_message=sql_generation_error if generation_attempts > 0 else None,
-            conversation_history=state.get("db_session_turns"),
-            user_id=user_id_uuid,
-            tenant_id=tenant_id_uuid,
-        )
+        client = rag_service._get_async_anthropic_client()
 
-        user = (
-            db.query(User).filter(User.id == user_id_uuid).first()
-            if user_id_uuid
-            else None
-        )
-        is_admin = user.role.is_admin if user and user.role else False
-
-        if not is_admin:
-            database_service.check_sql_authorized_columns(
-                sql_query=sql_query,
-                engine_type=state["db_connection_engine"],
-                authorized_cols_by_table=state["db_authorized_cols_by_table"],
-                valid_tables=state["db_valid_tables"],
-                all_physical_cols_by_table=state["db_all_physical_cols_by_table"],
+        for turn in range(max_turns):
+            response = await client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1024,
+                system=system_prompt,
+                tools=SQL_GENERATION_TOOLS,
+                messages=messages,
             )
 
-        print(f"[SQL Generation] Attempt {generation_attempts + 1}, SQL: {sql_query}")
-        return {
-            "generated_sql": sql_query,
-            "previous_sql": sql_query,
-            "sql_generation_error": None,
-            "sql_generation_attempts": generation_attempts + 1,
-            "sql_execution_result": None,
-            "progress_tokens": [
-                f"**Generated SQL:**\n```sql\n{sql_query}\n```\n\n*Executing...*\n\n"
-            ],
-        }
+            assistant_content = response.content
+            messages.append({"role": "assistant", "content": assistant_content})
+
+            print(
+                f"[SQL Generation Agent] Turn {turn + 1}, stop_reason: {response.stop_reason}"
+            )
+
+            # Agent decided it is done - parse final JSON output
+            if response.stop_reason == "end_turn":
+                # Extract all text blocks from the response
+                text_blocks = [
+                    b.text
+                    for b in assistant_content
+                    if getattr(b, "type", None) == "text" and b.text
+                ]
+
+                # Join text blocks and search for JSON object
+                full_text = " ".join(text_blocks).strip()
+                match = re.search(r"\{.*\}", full_text, re.DOTALL)
+
+                # Parse final_sql and error from agent's JSON decision
+                if match:
+                    parsed = json.loads(match.group(0))
+                    final_sql = parsed.get("final_sql")
+                    agent_error = parsed.get("error")
+                break
+
+            # Execute tool calls
+            tool_use_blocks = [
+                b for b in assistant_content if getattr(b, "type", None) == "tool_use"
+            ]
+
+            if not tool_use_blocks:
+                break
+
+            tool_results = []
+            for block in tool_use_blocks:
+                tool_name = block.name
+                tool_args = block.input or {}
+                print(f"[SQL Generation Agent] Tool Call: {tool_name}({tool_args})")
+
+                if tool_name == "generate_sql":
+                    try:
+                        result = await generate_sql(
+                            query=query,
+                            schema=filtered_schema,
+                            engine_type=engine_type,
+                            conversation_history=conversation_history,
+                            failed_sql=tool_args.get("failed_sql"),
+                            error_message=tool_args.get("error_message"),
+                        )
+                        res_str = json.dumps({"sql": result})
+                        print(f"[SQL Generation Agent] Generated SQL: {result}")
+                    except Exception as exc:
+                        res_str = json.dumps({"error": str(exc)})
+                        print(f"[SQL Generation Agent] generate_sql failed: {exc}")
+
+                elif tool_name == "validate_sql":
+                    sql_to_validate = tool_args.get("sql", "")
+                    if is_admin:
+                        res_str = json.dumps({"valid": True, "reason": ""})
+                    else:
+                        res_str = _execute_validate_sql(
+                            sql=sql_to_validate,
+                            engine_type=engine_type,
+                            authorized_cols_by_table=authorized_cols_by_table,
+                            valid_tables=valid_tables,
+                            all_physical_cols_by_table=all_physical_cols_by_table,
+                        )
+                    print(f"[SQL Generation Agent] Validation result: {res_str}")
+                else:
+                    res_str = json.dumps({"error": f"Unknown tool: {tool_name}"})
+
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": res_str,
+                    }
+                )
+
+            messages.append({"role": "user", "content": tool_results})
+
     except Exception as exc:
-        print(f"[SQL Generation] Attempt {generation_attempts + 1} exception: {exc}")
-        sql_q = locals().get("sql_query", previous_sql)
+        logger.warning(f"[SQL Generation Agent] ReAct loop exception: {exc}")
+        agent_error = str(exc)
+
+    if not final_sql:
+        print(f"[SQL Generation Agent] Failed to produce SQL. Error: {agent_error}")
         return {
-            "generated_sql": sql_q,
-            "sql_generation_error": str(exc),
-            "sql_generation_attempts": generation_attempts + 1,
-            "sql_execution_result": None,
+            "generated_sql": None,
+            "sql_generation_error": agent_error or "SQL generation failed",
+            "sql_generation_attempts": state["sql_generation_attempts"] + 1,
         }
-    finally:
-        db.close()
+
+    print(f"[SQL Generation Agent] Final SQL: {final_sql}")
+    return {
+        "generated_sql": final_sql,
+        "previous_sql": final_sql,
+        "sql_generation_error": None,
+        "sql_generation_attempts": state["sql_generation_attempts"] + 1,
+        "sql_execution_result": None,
+        "progress_tokens": [
+            f"**Generated SQL:**\n```sql\n{final_sql}\n```\n\n*Executing...*\n\n"
+        ],
+    }
 
 
 async def sql_execution_node(state: AgentState) -> dict:

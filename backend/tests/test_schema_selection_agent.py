@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 from app.services.agents.nodes.sql import (
     _execute_schema_tool,
-    schema_intelligence_node,
+    schema_selection_node,
 )
 
 
@@ -125,7 +125,7 @@ async def test_schema_intelligence_node_react_loop(mock_authorized_schema):
     with patch(
         "app.services.rag_service._get_async_anthropic_client", return_value=mock_client
     ):
-        result = await schema_intelligence_node(state)
+        result = await schema_selection_node(state)
 
     filtered_tables = result["db_filtered_schema"]["tables"]
     table_names = [t["name"] for t in filtered_tables]
@@ -174,7 +174,7 @@ async def test_schema_intelligence_node_reformat_json(mock_authorized_schema):
     with patch(
         "app.services.rag_service._get_async_anthropic_client", return_value=mock_client
     ):
-        result = await schema_intelligence_node(state)
+        result = await schema_selection_node(state)
 
     filtered_tables = result["db_filtered_schema"]["tables"]
     assert len(filtered_tables) == 2

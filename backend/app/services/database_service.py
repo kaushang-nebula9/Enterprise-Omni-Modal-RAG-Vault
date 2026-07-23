@@ -1148,39 +1148,41 @@ def check_sql_authorized_columns(
     import sqlglot
     from sqlglot.expressions import Column, Table, CTE
 
+    # Decide SQL dialect
     read_dialect = "postgres" if engine_type.lower() == "postgresql" else "mysql"
 
+    # Parse the SQL query into an AST
     try:
         expression = sqlglot.parse_one(sql_query, read=read_dialect)
-    except Exception:
-        try:
-            expression = sqlglot.parse_one(sql_query)
-        except Exception as e2:
-            raise ValueError(
-                f"SQL validation error: Failed to parse generated SQL query: {e2}"
-            )
+    except Exception as e:
+        raise ValueError(
+            f"SQL validation error: Failed to parse generated SQL query: {e}"
+        )
 
+    # Store a mapping of table aliases to their actual table names
     alias_map = {}
-    for table_expr in expression.find_all(Table):
-        tbl_name = table_expr.name.lower().strip('"`')
-        alias_map[tbl_name] = tbl_name
-        alias_name = table_expr.alias.lower().strip('"`')
+    for table_expression in expression.find_all(Table):
+        table_name = table_expression.name.lower().strip('"`')
+        alias_map[table_name] = table_name
+        alias_name = table_expression.alias.lower().strip('"`')
         if alias_name:
-            alias_map[alias_name] = tbl_name
+            alias_map[alias_name] = table_name
 
-    # Check all referenced tables first (excluding CTE aliases)
+    #  Find and store CTEs
     ctes = {cte.alias.lower().strip('"`') for cte in expression.find_all(CTE)}
-    for table_expr in expression.find_all(Table):
-        tbl_name = table_expr.name.lower().strip('"`')
-        if tbl_name in ctes:
+    for table_expression in expression.find_all(Table):
+        table_name = table_expression.name.lower().strip('"`')
+        #  Skip CTEs
+        if table_name in ctes:
             continue
-        if tbl_name not in authorized_cols_by_table:
-            raise ValueError(f"Access denied: Table '{tbl_name}' is unauthorized.")
+        # If table unauthorized, raise an error
+        if table_name not in authorized_cols_by_table:
+            raise ValueError(f"Access denied: Table '{table_name}' is unauthorized.")
 
-    # Check columns
-    for col_expr in expression.find_all(Column):
-        col_name = col_expr.name.lower().strip('"`')
-        table_alias = col_expr.text("table").lower().strip('"`')
+    # Iterate through every column referenced anywhere in the SQL query and validate its access permissions
+    for col_expression in expression.find_all(Column):
+        col_name = col_expression.name.lower().strip('"`')
+        table_alias = col_expression.text("table").lower().strip('"`')
 
         resolved_table = None
         if table_alias:
@@ -1189,7 +1191,7 @@ def check_sql_authorized_columns(
                 resolved_table = table_alias
         else:
             matching_tables = []
-            for t_alias, t_name in alias_map.items():
+            for t_name in alias_map.items():
                 if (
                     t_name in authorized_cols_by_table
                     and col_name in authorized_cols_by_table[t_name]
@@ -1206,7 +1208,7 @@ def check_sql_authorized_columns(
                         )
                 continue
             else:
-                for t_alias, t_name in alias_map.items():
+                for t_name in alias_map.items():
                     if t_name in valid_tables:
                         resolved_table = t_name
                         break

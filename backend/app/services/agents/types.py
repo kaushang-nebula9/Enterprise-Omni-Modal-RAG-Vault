@@ -46,6 +46,7 @@ class AgentState(TypedDict):
     db_valid_tables: Optional[set]
     db_connection_engine: Optional[str]
     db_connection_name: Optional[str]
+    db_is_admin: bool
     context_error: Optional[str]
 
     # --- Query understanding ---
@@ -157,6 +158,7 @@ if __name__ == "__main__":
         db_valid_tables=None,
         db_connection_engine=None,
         db_connection_name=None,
+        db_is_admin=False,
         context_error=None,
         query_plan=None,
         db_filtered_schema=None,

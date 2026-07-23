@@ -634,6 +634,7 @@ async def run_rag_pipeline(
         "db_valid_tables": None,
         "db_connection_engine": None,
         "db_connection_name": None,
+        "db_is_admin": False,
         "context_error": None,
         "query_plan": None,
         "db_filtered_schema": None,
